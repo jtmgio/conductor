@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  id            String         @id
+  name          String
+  title         String
+  platform      String
+  priority      Int
+  color         String
+  tone          String?
+  context       String?
+  staff         Staff[]
+  tasks         Task[]
+  followUps     FollowUp[]
+  notes         Note[]
+  transcripts   Transcript[]
+  fileUploads   FileUpload[]
+  conversation  Conversation?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Staff {
+  id           String  @id @default(cuid())
+  roleId       String
+  role         Role    @relation(fields: [roleId], references: [id])
+  name         String
+  title        String
+  relationship String?
+  commNotes    String?
+  email        String?
+  slackHandle  String?
+}
+
+model Task {
+  id         String    @id @default(cuid())
+  roleId     String
+  role       Role      @relation(fields: [roleId], references: [id])
+  title      String
+  priority   String    @default("normal")
+  isToday    Boolean   @default(false)
+  done       Boolean   @default(false)
+  doneAt     DateTime?
+  sourceType String?
+  sourceId   String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([roleId, done])
+  @@index([isToday, done])
+}
+
+model FollowUp {
+  id          String    @id @default(cuid())
+  roleId      String
+  role        Role      @relation(fields: [roleId], references: [id])
+  title       String
+  waitingOn   String
+  status      String    @default("waiting")
+  dueDate     DateTime?
+  staleDays   Int       @default(3)
+  resolvedAt  DateTime?
+  sourceType  String?
+  sourceId    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([roleId, status])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+  content   String
+  tags      String[]
+  createdAt DateTime @default(now())
+
+  @@index([roleId, createdAt])
+}
+
+model Transcript {
+  id        String   @id @default(cuid())
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+  rawText   String
+  summary   String?
+  createdAt DateTime @default(now())
+}
+
+model FileUpload {
+  id            String   @id @default(cuid())
+  roleId        String
+  role          Role     @relation(fields: [roleId], references: [id])
+  filename      String
+  mimeType      String
+  size          Int
+  storagePath   String
+  extractedText String?
+  summary       String?
+  createdAt     DateTime @default(now())
+
+  @@index([roleId])
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  roleId    String   @unique
+  role      Role     @relation(fields: [roleId], references: [id])
+  messages  Json
+  updatedAt DateTime @updatedAt
+}
+
+model ScheduleOverride {
+  id      String   @id @default(cuid())
+  blockId String
+  day     String
+  roleId  String
+  weekOf  DateTime
+}

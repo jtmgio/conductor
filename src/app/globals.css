@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Claude-inspired warm dark theme as DEFAULT */
+    --background: 30 5% 18%;
+    --foreground: 35 8% 90%;
+    --card: 30 5% 22%;
+    --card-foreground: 35 8% 90%;
+    --popover: 30 5% 22%;
+    --popover-foreground: 35 8% 90%;
+    --primary: 219 91% 63%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 30 3% 28%;
+    --secondary-foreground: 35 8% 90%;
+    --muted: 30 3% 28%;
+    --muted-foreground: 30 5% 50%;
+    --accent: 30 3% 28%;
+    --accent-foreground: 35 8% 90%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 100% / 0.06;
+    --input: 0 0% 100% / 0.06;
+    --ring: 219 91% 63%;
+    --radius: 0.75rem;
+
+    /* Conductor surface tokens */
+    --surface: #2f2f2a;
+    --surface-raised: #3a3a34;
+    --surface-sunken: #262622;
+    --surface-overlay: #45453e;
+
+    /* Text tokens */
+    --text-primary: #e8e6e1;
+    --text-secondary: #a8a49d;
+    --text-tertiary: #706c65;
+
+    /* Border tokens */
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-default: rgba(255, 255, 255, 0.1);
+
+    /* Sidebar tokens */
+    --sidebar-bg: #1a1a17;
+    --sidebar-text: #a8a49d;
+    --sidebar-text-muted: #706c65;
+    --sidebar-hover: rgba(255, 255, 255, 0.04);
+    --sidebar-active: rgba(255, 255, 255, 0.08);
+
+    /* Role colors — brightened for dark background */
+    --role-blue: #4d8ef7;
+    --accent-blue: #4d8ef7;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    background-color: var(--surface);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: rgba(77, 142, 247, 0.25);
+    color: inherit;
+  }
+}
+
+@layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .tap-highlight-transparent {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
