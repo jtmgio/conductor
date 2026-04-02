@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Camera, ArrowUp, MoreVertical } from "lucide-react";
+import { ArrowUp, MoreVertical, Plus, PenLine, ListChecks, CalendarClock, Sparkles } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 interface Message {
@@ -19,6 +19,13 @@ interface ChatThreadProps {
   onSendMessage: (message: string, attachments?: Array<{ filename: string; text?: string; base64?: string; mimeType?: string }>) => Promise<void>;
   onClearConversation: () => void;
   loading?: boolean;
+}
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
 }
 
 function renderMessageContent(content: string) {
@@ -97,46 +104,110 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const quickPrompts = ["What's next?", "Draft a message", "What's stale?"];
+  const quickPrompts = [
+    { label: "Draft a message", icon: PenLine },
+    { label: "What's next?", icon: ListChecks },
+    { label: "What's stale?", icon: CalendarClock },
+    { label: "Summarize my day", icon: Sparkles },
+  ];
 
+  const isEmpty = messages.length === 0 && !sending && !loading;
+
+  const inputArea = (
+    <div className="w-full">
+      <div className="bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-2xl overflow-hidden">
+        <textarea
+          ref={textareaRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+          placeholder="How can I help you today?"
+          rows={1}
+          className="w-full bg-transparent px-5 pt-4 pb-2 text-[16px] text-[var(--text-primary)] outline-none resize-none placeholder:text-[var(--text-tertiary)]"
+        />
+        <div className="flex items-center justify-between px-3 pb-3">
+          <input ref={fileInputRef} type="file" className="hidden" accept="image/*,.pdf,.docx,.doc,.txt,.md,.csv" onChange={handleFileUpload} />
+          <button
+            className="w-9 h-9 rounded-lg hover:bg-[var(--sidebar-hover)] flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Plus className="h-[18px] w-[18px]" />
+          </button>
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="w-9 h-9 rounded-lg hover:bg-[var(--sidebar-hover)] flex items-center justify-center transition-colors">
+                  <MoreVertical className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={onClearConversation} className="text-red-400">Clear conversation</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || sending}
+              className="w-9 h-9 rounded-lg bg-[var(--accent-blue)] text-white flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-30"
+            >
+              <ArrowUp className="h-[16px] w-[16px]" strokeWidth={2.5} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Empty state — Claude-style centered layout
+  if (isEmpty) {
+    return (
+      <div className="flex flex-col flex-1 min-h-0 items-center justify-center">
+        <div className="flex flex-col items-center w-full max-w-[640px] px-4 -mt-12">
+          {/* Greeting */}
+          <div className="flex items-center gap-3 mb-10">
+            <span className="text-3xl" style={{ color: roleColor }}>*</span>
+            <h1 className="text-[32px] font-semibold text-[var(--text-primary)] tracking-tight">
+              {getGreeting()}, JG
+            </h1>
+          </div>
+
+          {/* Centered input */}
+          {inputArea}
+
+          {/* Quick action chips */}
+          <div className="flex flex-wrap gap-2 justify-center mt-5">
+            {quickPrompts.map((prompt) => (
+              <button
+                key={prompt.label}
+                onClick={() => setInput(prompt.label)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-full text-[14px] border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)] transition-colors"
+
+              >
+                <prompt.icon className="h-3.5 w-3.5 opacity-60" />
+                {prompt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Active conversation layout
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Chat area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-1 py-4 hide-scrollbar space-y-5">
-        {/* Empty state */}
-        {messages.length === 0 && !sending && !loading && (
-          <div className="flex flex-col items-center justify-center h-full gap-4">
-            <Camera className="h-10 w-10 text-[var(--text-tertiary)]" />
-            <div className="text-center">
-              <p className="text-base font-medium text-[var(--text-secondary)]">Upload a calendar screenshot</p>
-              <p className="text-[13px] text-[var(--text-tertiary)] mt-1">I&apos;ll reconfigure your blocks around meetings</p>
-            </div>
-            <div className="flex flex-wrap gap-2 justify-center mt-2">
-              {quickPrompts.map((prompt) => (
-                <button
-                  key={prompt}
-                  onClick={() => setInput(prompt)}
-                  className="px-3.5 py-1.5 rounded-full text-[14px] border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)] transition-colors"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Messages */}
         {messages.map((msg, i) =>
           msg.role === "user" ? (
             <div key={i} className="flex flex-col items-end gap-1">
-              <div className="bg-[var(--surface-raised)] text-[var(--text-primary)] px-4 py-3 rounded-2xl rounded-br-sm max-w-[85%] text-[15px] leading-relaxed whitespace-pre-wrap">
+              <div className="bg-[var(--surface-raised)] text-[var(--text-primary)] px-4 py-3 rounded-2xl rounded-br-sm max-w-[85%] text-[16px] leading-relaxed whitespace-pre-wrap">
                 {renderMessageContent(msg.content)}
               </div>
               {msg.timestamp && <span className="text-[13px] text-[var(--text-tertiary)] px-1">{msg.timestamp}</span>}
             </div>
           ) : (
             <div key={i} className="flex flex-col items-start gap-1">
-              <div className="max-w-[85%] text-[var(--text-primary)] text-[15px] leading-relaxed whitespace-pre-wrap">
+              <div className="max-w-[85%] text-[var(--text-primary)] text-[16px] leading-relaxed whitespace-pre-wrap">
                 {renderMessageContent(msg.content)}
               </div>
               {msg.timestamp && <span className="text-[13px] text-[var(--text-tertiary)] px-1">{msg.timestamp}</span>}
@@ -156,45 +227,9 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
         )}
       </div>
 
-      {/* Input area */}
+      {/* Bottom input */}
       <div className="shrink-0 py-3">
-        <div className="flex items-end gap-2">
-          <input ref={fileInputRef} type="file" className="hidden" accept="image/*,.pdf,.docx,.doc,.txt,.md,.csv" onChange={handleFileUpload} />
-          <button
-            className="w-10 h-10 rounded-xl bg-[var(--surface-raised)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors flex-shrink-0"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Camera className="h-[18px] w-[18px]" />
-          </button>
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-            placeholder="Ask about your day..."
-            rows={1}
-            className="flex-1 bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-xl px-4 py-2.5 text-[15px] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 resize-none placeholder:text-[var(--text-tertiary)]"
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || sending}
-            className="w-10 h-10 rounded-xl bg-[var(--accent-blue)] text-white flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-30 flex-shrink-0"
-          >
-            <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.5} />
-          </button>
-        </div>
-        <div className="flex justify-end mt-1.5">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="w-11 h-11 rounded-lg hover:bg-[var(--sidebar-hover)] flex items-center justify-center transition-colors">
-                <MoreVertical className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onClearConversation} className="text-red-400">Clear conversation</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        {inputArea}
       </div>
     </div>
   );

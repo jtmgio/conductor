@@ -6,10 +6,17 @@ import { AppShell } from "@/components/AppShell";
 import { ChatThread } from "@/components/ChatThread";
 import { DraftVariants } from "@/components/DraftVariants";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 
 interface Role { id: string; name: string; title: string; color: string; }
 interface Message { role: "user" | "assistant"; content: string; timestamp?: string; }
 interface DraftVariant { label: string; text: string; }
+
+const MODELS = [
+  { id: "claude-sonnet-4-6", label: "Sonnet 4.6", description: "Fast & capable" },
+  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", description: "Fastest, cheapest" },
+  { id: "claude-opus-4-6", label: "Opus 4.6", description: "Most capable" },
+];
 
 export function AIPage() {
   const searchParams = useSearchParams();
@@ -18,6 +25,8 @@ export function AIPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [draftVariants, setDraftVariants] = useState<DraftVariant[] | null>(null);
+  const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
+  const { toast } = useToast();
 
   useEffect(() => {
     fetch("/api/roles").then((r) => r.json()).then((data) => {
@@ -33,9 +42,9 @@ export function AIPage() {
 
   const handleDraft = useCallback(async (topic: string, recipient?: string) => {
     setLoading(true);
-    try { const res = await fetch("/api/ai/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roleId: activeRoleId, topic, recipientName: recipient }) }); const data = await res.json(); if (data.variants) setDraftVariants(data.variants); } catch {}
+    try { const res = await fetch("/api/ai/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roleId: activeRoleId, topic, recipientName: recipient, model: selectedModel }) }); const data = await res.json(); if (data.variants) setDraftVariants(data.variants); } catch {}
     setLoading(false);
-  }, [activeRoleId]);
+  }, [activeRoleId, selectedModel]);
 
   useEffect(() => {
     if (activeRoleId) {
@@ -49,7 +58,15 @@ export function AIPage() {
   const handleSendMessage = async (message: string, attachments?: Array<{ filename: string; text?: string; base64?: string; mimeType?: string }>) => {
     setMessages((prev) => [...prev, { role: "user", content: message }]);
     setLoading(true);
-    try { const res = await fetch(`/api/conversations/${activeRoleId}/message`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, attachments }) }); const data = await res.json(); if (data.response) setMessages((prev) => [...prev, { role: "assistant", content: data.response }]); } catch {}
+    try {
+      const res = await fetch(`/api/conversations/${activeRoleId}/message`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, attachments, model: selectedModel }) });
+      if (!res.ok) throw new Error("Failed to get response");
+      const data = await res.json();
+      if (data.response) setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
+    } catch {
+      toast("Failed to send message", "error");
+      setMessages((prev) => prev.slice(0, -1)); // Remove optimistic user message
+    }
     setLoading(false);
   };
 
@@ -59,27 +76,38 @@ export function AIPage() {
   return (
     <AppShell>
       <div className="py-4 flex flex-col h-[calc(100vh-80px)] lg:h-[calc(100vh-48px)]">
-        {/* Role tabs */}
-        <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 mb-4 shrink-0">
-          {roles.map((role) => {
-            const active = role.id === activeRoleId;
-            return (
-              <button
-                key={role.id}
-                onClick={() => setActiveRoleId(role.id)}
-                className={cn(
-                  "px-4 py-1.5 rounded-full text-[14px] font-medium whitespace-nowrap transition-colors shrink-0 flex items-center gap-1.5",
-                  active
-                    ? "text-white"
-                    : "border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)]"
-                )}
-                style={active ? { backgroundColor: role.color } : undefined}
-              >
-                {!active && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: role.color }} />}
-                {role.name}
-              </button>
-            );
-          })}
+        {/* Role tabs + model selector */}
+        <div className="flex items-center gap-3 mb-4 shrink-0">
+          <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 flex-1">
+            {roles.map((role) => {
+              const active = role.id === activeRoleId;
+              return (
+                <button
+                  key={role.id}
+                  onClick={() => setActiveRoleId(role.id)}
+                  className={cn(
+                    "px-4 py-1.5 rounded-full text-[15px] font-medium whitespace-nowrap transition-colors shrink-0 flex items-center gap-1.5",
+                    active
+                      ? "text-white"
+                      : "border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)]"
+                  )}
+                  style={active ? { backgroundColor: role.color } : undefined}
+                >
+                  {!active && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: role.color }} />}
+                  {role.name}
+                </button>
+              );
+            })}
+          </div>
+          <select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            className="bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-lg px-3 py-1.5 text-[13px] text-[var(--text-secondary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 shrink-0 cursor-pointer"
+          >
+            {MODELS.map((m) => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
         </div>
 
         {draftVariants && (

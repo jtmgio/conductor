@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getCurrentBlock, getNextBlocks, getTimeLabel, getOffClockMessage } from "@/lib/schedule";
+import { getCurrentBlock, getNextBlocks, getAllBlocks, getTimeLabel, getOffClockMessage } from "@/lib/schedule";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -11,6 +11,8 @@ export async function GET() {
   const now = new Date();
   const current = getCurrentBlock(now);
   const next = getNextBlocks(3, now);
+  const allBlocks = getAllBlocks();
+  const dayOfWeek = now.getDay();
   const offClockMessage = getOffClockMessage(now);
 
   const roles = await prisma.role.findMany({ select: { id: true, name: true, title: true, color: true } });
@@ -38,5 +40,17 @@ export async function GET() {
       roleTitle: n.roleId ? roleMap[n.roleId]?.title : null,
     })),
     offClockMessage,
+    allBlocks: allBlocks.map((b) => {
+      const roleId = b.getRoleId(dayOfWeek);
+      return {
+        id: b.id,
+        label: b.label,
+        timeLabel: getTimeLabel(b),
+        roleId,
+        roleName: roleId ? roleMap[roleId]?.name : null,
+        roleColor: roleId ? roleMap[roleId]?.color : null,
+        roleTitle: roleId ? roleMap[roleId]?.title : null,
+      };
+    }),
   });
 }

@@ -57,13 +57,20 @@ Follow-ups: ${activeFollowUps} active, ${staleFollowUps} stale`;
 
 // Layer 3: Role context
 async function buildRoleContext(roleId: string): Promise<string> {
-  const role = await prisma.role.findUnique({
-    where: { id: roleId },
-    include: {
-      staff: true,
-      notes: { take: 5, orderBy: { createdAt: "desc" } },
-    },
-  });
+  const [role, recentTranscripts] = await Promise.all([
+    prisma.role.findUnique({
+      where: { id: roleId },
+      include: {
+        staff: true,
+        notes: { take: 5, orderBy: { createdAt: "desc" } },
+      },
+    }),
+    prisma.transcript.findMany({
+      where: { roleId },
+      take: 3,
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
   if (!role) return "";
 
   const staffLines = role.staff.map((s) =>
@@ -74,6 +81,11 @@ async function buildRoleContext(roleId: string): Promise<string> {
     `- [${n.createdAt.toLocaleDateString()}] ${n.content.slice(0, 200)}`
   ).join("\n");
 
+  const transcriptLines = recentTranscripts.map((t) => {
+    const text = t.summary || t.rawText.slice(0, 500) + (t.rawText.length > 500 ? "..." : "");
+    return `- [${t.createdAt.toLocaleDateString()}] ${text}`;
+  }).join("\n\n");
+
   return `Active role: ${role.name} — ${role.title}
 Platform: ${role.platform}
 Tone: ${role.tone || "Professional"}
@@ -83,38 +95,71 @@ Staff directory:
 ${staffLines || "(no staff)"}
 
 Recent notes:
-${noteLines || "(no notes)"}`;
+${noteLines || "(no notes)"}
+
+Recent transcripts/meeting notes:
+${transcriptLines || "(none)"}`;
 }
 
 // Layer 4: Retrieved context (on demand)
-async function buildRetrievedContext(roleId: string, query: string): Promise<string> {
-  const notes = await prisma.note.findMany({
-    where: {
-      roleId,
-      content: { contains: query, mode: "insensitive" },
-    },
-    take: 5,
-    orderBy: { createdAt: "desc" },
-  });
+const STOP_WORDS = new Set([
+  "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+  "have", "has", "had", "do", "does", "did", "will", "would", "could",
+  "should", "may", "might", "shall", "can", "need", "dare", "ought",
+  "i", "me", "my", "we", "our", "you", "your", "he", "she", "it",
+  "they", "them", "this", "that", "these", "those", "what", "which",
+  "who", "whom", "how", "when", "where", "why", "not", "no", "nor",
+  "and", "or", "but", "if", "then", "so", "than", "too", "very",
+  "just", "about", "up", "out", "on", "off", "over", "under", "in",
+  "to", "from", "with", "at", "by", "for", "of", "into", "any",
+  "all", "go", "went", "get", "got", "tell", "said", "like",
+]);
 
-  const transcripts = await prisma.transcript.findMany({
-    where: {
-      roleId,
-      OR: [
-        { rawText: { contains: query, mode: "insensitive" } },
-        { summary: { contains: query, mode: "insensitive" } },
-      ],
-    },
-    take: 3,
-    orderBy: { createdAt: "desc" },
-  });
+function extractKeywords(query: string): string[] {
+  return query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+}
+
+async function buildRetrievedContext(roleId: string, query: string): Promise<string> {
+  const keywords = extractKeywords(query);
+
+  // If no meaningful keywords, skip retrieval (Layer 3 already has recents)
+  if (keywords.length === 0) return "";
+
+  // Search for notes/transcripts matching ANY keyword
+  const noteConditions = keywords.map((kw) => ({
+    content: { contains: kw, mode: "insensitive" as const },
+  }));
+  const transcriptConditions = keywords.flatMap((kw) => [
+    { rawText: { contains: kw, mode: "insensitive" as const } },
+    { summary: { contains: kw, mode: "insensitive" as const } },
+  ]);
+
+  const [notes, transcripts] = await Promise.all([
+    prisma.note.findMany({
+      where: { roleId, OR: noteConditions },
+      take: 5,
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.transcript.findMany({
+      where: { roleId, OR: transcriptConditions },
+      take: 3,
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
 
   const parts: string[] = [];
   if (notes.length > 0) {
     parts.push("Related notes:\n" + notes.map((n) => `- ${n.content.slice(0, 300)}`).join("\n"));
   }
   if (transcripts.length > 0) {
-    parts.push("Related transcripts:\n" + transcripts.map((t) => `- ${(t.summary || t.rawText).slice(0, 300)}`).join("\n"));
+    parts.push("Related transcripts:\n" + transcripts.map((t) => {
+      const text = t.summary || t.rawText.slice(0, 800) + (t.rawText.length > 800 ? "..." : "");
+      return `- ${text}`;
+    }).join("\n\n"));
   }
   return parts.join("\n\n");
 }

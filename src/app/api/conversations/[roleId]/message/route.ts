@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { assembleContext, getConversationMessages } from "@/lib/ai-context";
 import Anthropic from "@anthropic-ai/sdk";
+import { trackUsage } from "@/lib/ai-usage";
 
 const anthropic = new Anthropic();
 
@@ -12,8 +13,11 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { message, attachments } = await req.json();
+  const { message, attachments, model } = await req.json();
   if (!message) return NextResponse.json({ error: "message required" }, { status: 400 });
+
+  const ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-6"];
+  const selectedModel = ALLOWED_MODELS.includes(model) ? model : "claude-sonnet-4-6";
 
   const { systemPrompt, contextMessages } = await assembleContext({
     roleId: params.roleId,
@@ -50,11 +54,13 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
   messages.push({ role: "user", content: userContent });
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: selectedModel,
     max_tokens: 2048,
     system: systemPrompt,
     messages,
   });
+
+  trackUsage("chat", response.model, response.usage, params.roleId);
 
   const assistantText = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")

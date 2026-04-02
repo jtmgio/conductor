@@ -29,7 +29,7 @@ async function main() {
     },
     {
       id: 'xenegrade', name: 'Xenegrade', title: 'Sr Engineer',
-      platform: 'Slack', priority: 5, color: '#57534e',
+      platform: 'Slack', priority: 5, color: '#8cbf6e',
       tone: 'Minimal, efficient. Low-touch communication.',
       context: 'Low maintenance. Tail block / evening work.',
     },
@@ -66,8 +66,28 @@ async function main() {
   }
 
   for (const role of roles) {
-    await prisma.conversation.create({
-      data: { roleId: role.id, messages: [] },
+    await prisma.conversation.upsert({
+      where: { roleId: role.id },
+      update: {},
+      create: { roleId: role.id, messages: [] },
+    });
+  }
+
+  // Default tags
+  const defaultTags = [
+    { name: "frontend", color: "#2dd4bf" },
+    { name: "backend", color: "#fbbf24" },
+    { name: "devops", color: "#fb7185" },
+    { name: "docs", color: "#a8a29e" },
+    { name: "meeting", color: "#a78bfa" },
+    { name: "deploy", color: "#4d8ef7" },
+  ];
+
+  for (const tag of defaultTags) {
+    await prisma.tag.upsert({
+      where: { name: tag.name },
+      update: {},
+      create: tag,
     });
   }
 

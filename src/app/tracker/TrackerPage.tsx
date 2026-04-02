@@ -5,6 +5,7 @@ import { AnimatePresence } from "framer-motion";
 import { AppShell } from "@/components/AppShell";
 import { FollowUpCard } from "@/components/FollowUpCard";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 
 interface FollowUp { id: string; title: string; waitingOn: string; roleId: string; createdAt: string; staleDays: number; role: { id: string; name: string; color: string }; }
 interface Role { id: string; name: string; color: string; }
@@ -13,6 +14,7 @@ export function TrackerPage() {
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [filter, setFilter] = useState<string>("all");
+  const { toast } = useToast();
 
   useEffect(() => {
     async function load() {
@@ -27,8 +29,13 @@ export function TrackerPage() {
   }, []);
 
   const handleResolve = async (id: string) => {
-    await fetch(`/api/followups/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "resolved" }) });
-    setFollowUps((prev) => prev.filter((fu) => fu.id !== id));
+    try {
+      const res = await fetch(`/api/followups/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "resolved" }) });
+      if (!res.ok) throw new Error();
+      setFollowUps((prev) => prev.filter((fu) => fu.id !== id));
+    } catch {
+      toast("Failed to resolve follow-up", "error");
+    }
   };
 
   const handleNudge = (id: string) => {
@@ -54,14 +61,14 @@ export function TrackerPage() {
         <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 mb-8">
           {["all", "stale"].map((key) => (
             <button key={key} onClick={() => setFilter(key)}
-              className={cn("px-4 py-1.5 rounded-full text-[14px] font-medium whitespace-nowrap transition-colors shrink-0",
+              className={cn("px-4 py-1.5 rounded-full text-[15px] font-medium whitespace-nowrap transition-colors shrink-0",
                 filter === key ? "bg-[var(--accent-blue)] text-white" : "border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)]"
               )}
             >{key === "all" ? "All" : "Stale"}</button>
           ))}
           {roles.map((role) => (
             <button key={role.id} onClick={() => setFilter(role.id)}
-              className={cn("px-4 py-1.5 rounded-full text-[14px] font-medium whitespace-nowrap transition-colors shrink-0 flex items-center gap-1.5",
+              className={cn("px-4 py-1.5 rounded-full text-[15px] font-medium whitespace-nowrap transition-colors shrink-0 flex items-center gap-1.5",
                 filter === role.id ? "bg-[var(--accent-blue)] text-white" : "border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)]"
               )}
             >

@@ -3,8 +3,9 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    /* Claude-inspired warm dark theme as DEFAULT */
+  /* ===== WARM DARK (default — current theme) ===== */
+  :root,
+  [data-theme="warm-dark"] {
     --background: 30 5% 18%;
     --foreground: 35 8% 90%;
     --card: 30 5% 22%;
@@ -26,31 +27,116 @@
     --ring: 219 91% 63%;
     --radius: 0.75rem;
 
-    /* Conductor surface tokens */
     --surface: #2f2f2a;
     --surface-raised: #3a3a34;
     --surface-sunken: #262622;
     --surface-overlay: #45453e;
 
-    /* Text tokens */
-    --text-primary: #e8e6e1;
-    --text-secondary: #a8a49d;
-    --text-tertiary: #706c65;
+    --text-primary: #ffffff;
+    --text-secondary: #b8b4ad;
+    --text-tertiary: #8a8580;
 
-    /* Border tokens */
-    --border-subtle: rgba(255, 255, 255, 0.06);
-    --border-default: rgba(255, 255, 255, 0.1);
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-default: rgba(255, 255, 255, 0.14);
 
-    /* Sidebar tokens */
     --sidebar-bg: #1a1a17;
-    --sidebar-text: #a8a49d;
-    --sidebar-text-muted: #706c65;
+    --sidebar-text: #b0b0b0;
+    --sidebar-text-muted: #787878;
     --sidebar-hover: rgba(255, 255, 255, 0.04);
     --sidebar-active: rgba(255, 255, 255, 0.08);
 
-    /* Role colors — brightened for dark background */
     --role-blue: #4d8ef7;
     --accent-blue: #4d8ef7;
+  }
+
+  /* ===== LIGHT ===== */
+  [data-theme="light"] {
+    --background: 0 0% 98%;
+    --foreground: 30 5% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 30 5% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 30 5% 15%;
+    --primary: 219 91% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 30 5% 93%;
+    --secondary-foreground: 30 5% 15%;
+    --muted: 30 5% 93%;
+    --muted-foreground: 30 5% 40%;
+    --accent: 30 5% 93%;
+    --accent-foreground: 30 5% 15%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 30 5% 85%;
+    --input: 30 5% 85%;
+    --ring: 219 91% 55%;
+    --radius: 0.75rem;
+
+    --surface: #f5f4f1;
+    --surface-raised: #ffffff;
+    --surface-sunken: #eae9e5;
+    --surface-overlay: #e0dfdb;
+
+    --text-primary: #1a1a17;
+    --text-secondary: #5c5850;
+    --text-tertiary: #8a8580;
+
+    --border-subtle: rgba(0, 0, 0, 0.08);
+    --border-default: rgba(0, 0, 0, 0.14);
+
+    --sidebar-bg: #eae9e5;
+    --sidebar-text: #5c5850;
+    --sidebar-text-muted: #8a8580;
+    --sidebar-hover: rgba(0, 0, 0, 0.04);
+    --sidebar-active: rgba(0, 0, 0, 0.08);
+
+    --role-blue: #3b7de8;
+    --accent-blue: #3b7de8;
+  }
+
+  /* ===== TRUE DARK ===== */
+  [data-theme="dark"] {
+    --background: 0 0% 5%;
+    --foreground: 0 0% 90%;
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 90%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 90%;
+    --primary: 219 91% 63%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 0 0% 90%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 14%;
+    --accent-foreground: 0 0% 90%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 100% / 0.08;
+    --input: 0 0% 100% / 0.08;
+    --ring: 219 91% 63%;
+    --radius: 0.75rem;
+
+    --surface: #0a0a0a;
+    --surface-raised: #141414;
+    --surface-sunken: #050505;
+    --surface-overlay: #1e1e1e;
+
+    --text-primary: #ffffff;
+    --text-secondary: #a0a0a0;
+    --text-tertiary: #6a6a6a;
+
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-default: rgba(255, 255, 255, 0.14);
+
+    --sidebar-bg: #050505;
+    --sidebar-text: #a0a0a0;
+    --sidebar-text-muted: #606060;
+    --sidebar-hover: rgba(255, 255, 255, 0.04);
+    --sidebar-active: rgba(255, 255, 255, 0.10);
+
+    --role-blue: #5a9aff;
+    --accent-blue: #5a9aff;
   }
 }
 
@@ -61,7 +147,8 @@
   body {
     background-color: var(--surface);
     color: var(--text-primary);
-    line-height: 1.6;
+    font-size: 16px;
+    line-height: 1.65;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }

@@ -4,22 +4,20 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar } from "./Sidebar";
-import { BottomNav } from "./BottomNav";
+import { MobileDrawer } from "./MobileDrawer";
+
+interface BlockInfo {
+  label: string;
+  timeLabel: string;
+  roleId: string | null;
+  roleName?: string;
+  roleColor?: string;
+}
 
 interface AppShellProps {
   children: React.ReactNode;
-  currentBlock?: {
-    label: string;
-    timeLabel: string;
-    roleId: string | null;
-    roleName?: string;
-  } | null;
-  nextBlocks?: Array<{
-    label: string;
-    timeLabel: string;
-    roleId: string | null;
-    roleName?: string;
-  }>;
+  currentBlock?: BlockInfo | null;
+  nextBlocks?: BlockInfo[];
 }
 
 export function AppShell({ children, currentBlock, nextBlocks }: AppShellProps) {
@@ -40,9 +38,10 @@ export function AppShell({ children, currentBlock, nextBlocks }: AppShellProps) 
   return (
     <div className="min-h-screen bg-[var(--surface)] text-[var(--text-primary)]">
       <Sidebar currentBlock={currentBlock} nextBlocks={nextBlocks} />
+      <MobileDrawer currentBlock={currentBlock} />
 
-      <main className="pt-4 pb-20 lg:pb-8 lg:ml-[280px]">
-        <div className="max-w-[480px] mx-auto px-5 lg:max-w-[720px] lg:px-8 lg:pt-8">
+      <main className="pt-16 pb-8 lg:pt-4 lg:pb-8 lg:ml-[280px]">
+        <div className="px-5 lg:px-8 lg:pt-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}
@@ -55,8 +54,6 @@ export function AppShell({ children, currentBlock, nextBlocks }: AppShellProps) 
           </AnimatePresence>
         </div>
       </main>
-
-      <BottomNav />
     </div>
   );
 }

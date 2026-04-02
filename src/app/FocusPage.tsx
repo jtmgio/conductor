@@ -16,6 +16,7 @@ interface BlockInfo {
 export function FocusPage() {
   const [currentBlock, setCurrentBlock] = useState<BlockInfo | null>(null);
   const [nextBlocks, setNextBlocks] = useState<BlockInfo[]>([]);
+  const [allBlocks, setAllBlocks] = useState<BlockInfo[]>([]);
   const [offClockMessage, setOffClockMessage] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -27,6 +28,7 @@ export function FocusPage() {
           const data = await res.json();
           setCurrentBlock(data.currentBlock);
           setNextBlocks(data.nextBlocks || []);
+          setAllBlocks(data.allBlocks || []);
           setOffClockMessage(data.offClockMessage);
         }
       } catch {}
@@ -42,7 +44,7 @@ export function FocusPage() {
       currentBlock={currentBlock}
       nextBlocks={nextBlocks}
     >
-      <FocusView currentBlock={currentBlock} nextBlocks={nextBlocks} offClockMessage={offClockMessage} />
+      <FocusView currentBlock={currentBlock} nextBlocks={nextBlocks} allBlocks={allBlocks} offClockMessage={offClockMessage} />
     </AppShell>
   );
 }

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import { ToastProvider } from "@/components/ui/toast";
 import { SessionProvider } from "@/components/SessionProvider";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -38,9 +39,11 @@ export default function RootLayout({
     <html lang="en" className={`${dmSans.variable} ${jetbrainsMono.variable}`}>
       <body className="font-body antialiased">
         <SessionProvider>
-          <ToastProvider>
-            {children}
-          </ToastProvider>
+          <ThemeProvider>
+            <ToastProvider>
+              {children}
+            </ToastProvider>
+          </ThemeProvider>
         </SessionProvider>
       </body>
     </html>

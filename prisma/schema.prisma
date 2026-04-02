@@ -45,9 +45,15 @@ model Task {
   role       Role      @relation(fields: [roleId], references: [id])
   title      String
   priority   String    @default("normal")
+  status     String    @default("backlog")
   isToday    Boolean   @default(false)
   done       Boolean   @default(false)
   doneAt     DateTime?
+  notes      String?
+  dueDate    DateTime?
+  checklist  Json?
+  tags       TaskTag[]
+  sortOrder  Int       @default(0)
   sourceType String?
   sourceId   String?
   createdAt  DateTime  @default(now())
@@ -55,6 +61,25 @@ model Task {
 
   @@index([roleId, done])
   @@index([isToday, done])
+  @@index([roleId, status])
+}
+
+model Tag {
+  id    String    @id @default(cuid())
+  name  String    @unique
+  color String    @default("#888780")
+  tasks TaskTag[]
+}
+
+model TaskTag {
+  taskId String
+  tagId  String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, tagId])
+  @@index([taskId])
+  @@index([tagId])
 }
 
 model FollowUp {
@@ -124,4 +149,18 @@ model ScheduleOverride {
   day     String
   roleId  String
   weekOf  DateTime
+}
+
+model AiUsage {
+  id           String   @id @default(cuid())
+  roleId       String?
+  endpoint     String
+  model        String
+  inputTokens  Int
+  outputTokens Int
+  costCents    Int
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([roleId])
 }

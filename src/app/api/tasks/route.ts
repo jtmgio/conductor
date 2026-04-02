@@ -17,8 +17,11 @@ export async function GET(req: NextRequest) {
 
   const tasks = await prisma.task.findMany({
     where,
-    include: { role: { select: { id: true, name: true, color: true, priority: true } } },
-    orderBy: [{ role: { priority: "asc" } }, { priority: "desc" }, { createdAt: "asc" }],
+    include: {
+      role: { select: { id: true, name: true, color: true, priority: true } },
+      tags: { include: { tag: true } },
+    },
+    orderBy: [{ role: { priority: "asc" } }, { sortOrder: "asc" }, { priority: "desc" }, { createdAt: "asc" }],
   });
   return NextResponse.json(tasks);
 }
@@ -34,6 +37,9 @@ export async function POST(req: NextRequest) {
       title: body.title,
       priority: body.priority || "normal",
       isToday: body.isToday || false,
+      notes: body.notes,
+      dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
+      checklist: body.checklist,
       sourceType: body.sourceType,
       sourceId: body.sourceId,
     },

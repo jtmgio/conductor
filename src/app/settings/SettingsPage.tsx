@@ -4,8 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ScheduleGrid } from "@/components/ScheduleGrid";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Settings, ChevronDown, Pencil, Save } from "lucide-react";
+import { Settings, ChevronDown, Pencil, Save, LogOut } from "lucide-react";
+import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 
 interface Staff { id: string; name: string; title: string; relationship?: string; commNotes?: string; email?: string; slackHandle?: string; }
 interface Role { id: string; name: string; title: string; platform: string; priority: number; color: string; tone?: string; context?: string; }
@@ -25,6 +27,7 @@ export function SettingsPage() {
   const [staffForm, setStaffForm] = useState<Partial<Staff>>({});
   const [addingRoleId, setAddingRoleId] = useState<string | null>(null);
   const [newStaffForm, setNewStaffForm] = useState<Partial<Staff>>({});
+  const { toast } = useToast();
 
   const fetchData = useCallback(async () => {
     try {
@@ -42,12 +45,12 @@ export function SettingsPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const toggleRole = (roleId: string) => setExpandedRoleId((prev) => (prev === roleId ? null : roleId));
-  const saveRole = async (roleId: string) => { setSaving(true); await fetch(`/api/roles/${roleId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tone: editTone[roleId], context: editContext[roleId] }) }); setSaving(false); };
+  const saveRole = async (roleId: string) => { setSaving(true); try { const res = await fetch(`/api/roles/${roleId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tone: editTone[roleId], context: editContext[roleId] }) }); if (!res.ok) throw new Error(); toast("Role settings saved", "success"); } catch { toast("Failed to save", "error"); } setSaving(false); };
   const openEditStaff = (roleId: string, staff: Staff) => { setEditingStaff(staff); setEditingRoleId(roleId); setStaffForm({ ...staff }); };
-  const saveStaffEdit = async () => { if (!editingStaff || !editingRoleId) return; await fetch(`/api/roles/${editingRoleId}/staff/${editingStaff.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(staffForm) }); setEditingStaff(null); setEditingRoleId(null); setStaffForm({}); fetchData(); };
+  const saveStaffEdit = async () => { if (!editingStaff || !editingRoleId) return; try { const res = await fetch(`/api/roles/${editingRoleId}/staff/${editingStaff.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(staffForm) }); if (!res.ok) throw new Error(); toast("Staff updated", "success"); } catch { toast("Failed to save", "error"); } setEditingStaff(null); setEditingRoleId(null); setStaffForm({}); fetchData(); };
   const openAddStaff = (roleId: string) => { setAddingRoleId(roleId); setNewStaffForm({}); };
-  const saveNewStaff = async () => { if (!addingRoleId || !newStaffForm.name || !newStaffForm.title) return; await fetch(`/api/roles/${addingRoleId}/staff`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newStaffForm) }); setAddingRoleId(null); setNewStaffForm({}); fetchData(); };
-  const resetToday = async () => { await fetch("/api/tasks/reset-today", { method: "POST" }); };
+  const saveNewStaff = async () => { if (!addingRoleId || !newStaffForm.name || !newStaffForm.title) return; try { const res = await fetch(`/api/roles/${addingRoleId}/staff`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newStaffForm) }); if (!res.ok) throw new Error(); toast("Staff added", "success"); } catch { toast("Failed to add staff", "error"); } setAddingRoleId(null); setNewStaffForm({}); fetchData(); };
+  const resetToday = async () => { try { await fetch("/api/tasks/reset-today", { method: "POST" }); toast("Today's tasks reset", "success"); } catch { toast("Failed to reset", "error"); } };
 
   return (
     <AppShell>
@@ -64,10 +67,10 @@ export function SettingsPage() {
             return (
               <div key={role.id} className="border border-[var(--border-subtle)] rounded-xl overflow-hidden bg-[var(--surface-raised)]">
                 <button onClick={() => toggleRole(role.id)} className="w-full flex items-center gap-3 px-4 py-3.5 min-h-[44px] text-left hover:bg-[var(--sidebar-hover)] transition-colors">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold shrink-0" style={{ backgroundColor: `${role.color}1a`, color: role.color }}>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[15px] font-semibold shrink-0" style={{ backgroundColor: `${role.color}1a`, color: role.color }}>
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: role.color }} />{role.name}
                   </span>
-                  <span className="text-sm text-[var(--text-secondary)] flex-1">Staff &amp; Context</span>
+                  <span className="text-[16px] text-[var(--text-secondary)] flex-1">Staff &amp; Context</span>
                   <ChevronDown className={cn("h-4 w-4 text-[var(--text-tertiary)] transition-transform duration-200", isOpen && "rotate-180")} />
                 </button>
                 {isOpen && (
@@ -78,8 +81,8 @@ export function SettingsPage() {
                         {staff.map((s) => (
                           <div key={s.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[var(--sidebar-hover)] transition-colors">
                             <div className="flex-1 min-w-0">
-                              <p className="text-base font-semibold text-[var(--text-primary)]">{s.name}</p>
-                              <p className="text-[13px] text-[var(--text-tertiary)]">{s.title}</p>
+                              <p className="text-[16px] font-semibold text-[var(--text-primary)]">{s.name}</p>
+                              <p className="text-[14px] text-[var(--text-tertiary)]">{s.title}</p>
                             </div>
                             <button onClick={() => openEditStaff(role.id, s)} className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-[var(--surface-overlay)] transition-colors">
                               <Pencil className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
@@ -114,8 +117,14 @@ export function SettingsPage() {
           </div>
         </div>
 
-        <div className="mt-8 pt-6 border-t border-[var(--border-subtle)]">
+        <div className="mt-8 pt-6 border-t border-[var(--border-subtle)] flex items-center justify-between">
           <button onClick={resetToday} className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors">Reset today&apos;s tasks</button>
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="flex items-center gap-1.5 text-sm text-[var(--text-tertiary)] hover:text-red-400 transition-colors"
+          >
+            <LogOut className="h-3.5 w-3.5" /> Sign out
+          </button>
         </div>
       </div>
 
