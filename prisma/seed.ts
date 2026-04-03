@@ -2,77 +2,6 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  const roles = [
-    {
-      id: 'zeta', name: 'Zeta', title: 'UI Director / Staff Engineer',
-      platform: 'Slack', priority: 1, color: '#2563eb',
-      tone: 'Technical, hands-on, IC-level. Direct and efficient. Code-focused.',
-      context: 'Highest-paying role. Deep UI/frontend work. Async, no mandatory meetings.',
-    },
-    {
-      id: 'healthmap', name: 'HealthMap', title: 'Principal UI Architect',
-      platform: 'Teams', priority: 2, color: '#0d9488',
-      tone: 'Architectural, strategic. Focus on system design and patterns.',
-      context: 'Second highest pay. Best efficiency ratio.',
-    },
-    {
-      id: 'vquip', name: 'vQuip', title: 'CTO (3% equity)',
-      platform: 'Slack', priority: 3, color: '#7c3aed',
-      tone: "Strategic, CTO-level. Delegate, don't do. Frame decisions, don't raise concerns. Use 'we' not 'I'. Direct with Cam, supportive with Gates.",
-      context: 'Bluefields insurance tech. 3% equity, long-term hold. Meetings 10:30am-3pm. Three unfilled seats: QA, Architect, DevOps — absorbing this work.',
-    },
-    {
-      id: 'healthme', name: 'HealthMe', title: 'Sr UI Engineer',
-      platform: 'Slack', priority: 4, color: '#d97706',
-      tone: 'Professional, collaborative. Standard senior engineer communication.',
-      context: 'Mid-tier. Compress hours with Claude Code.',
-    },
-    {
-      id: 'xenegrade', name: 'Xenegrade', title: 'Sr Engineer',
-      platform: 'Slack', priority: 5, color: '#8cbf6e',
-      tone: 'Minimal, efficient. Low-touch communication.',
-      context: 'Low maintenance. Tail block / evening work.',
-    },
-    {
-      id: 'reacthealth', name: 'React Health', title: 'Sr Node/NestJS Engineer',
-      platform: 'Teams', priority: 6, color: '#e11d48',
-      tone: 'Minimal, task-focused.',
-      context: 'Lowest touch. Minimal hours. Node/NestJS backend.',
-    },
-  ];
-
-  for (const role of roles) {
-    await prisma.role.upsert({
-      where: { id: role.id },
-      update: role,
-      create: role,
-    });
-  }
-
-  const vquipStaff = [
-    { name: 'Cam', title: 'CEO', relationship: 'My boss. In-office.', commNotes: 'Short Slack messages. Direct, brief. Cc on client-facing.' },
-    { name: 'Jake Serigne', title: 'VP Technology / Product', relationship: 'Peer. In-office with Cam. Owns product roadmap.', commNotes: 'Structured communication. Has proximity advantage.' },
-    { name: 'Gates', title: 'Dev Manager', relationship: 'My direct report. Manages day-to-day dev.', commNotes: 'Supportive tone. Delegate clearly.' },
-    { name: 'Trey', title: 'Project Lead', relationship: 'Reports through Gates.', commNotes: '' },
-    { name: 'Luke', title: 'Project Lead', relationship: 'Reports through Gates.', commNotes: '' },
-    { name: 'Sufian', title: 'QA / Help Desk', relationship: 'Newer team member.', commNotes: 'Scope role carefully.' },
-    { name: 'David Serigne', title: 'Finance', relationship: 'AR/AP, budgeting.', commNotes: '' },
-    { name: 'Manuel Almenara', title: 'Programs', relationship: 'Cross-functional coordination.', commNotes: '' },
-    { name: 'Jack Freudenthal', title: 'Loss Control', relationship: 'Insurance operations.', commNotes: '' },
-  ];
-
-  for (const s of vquipStaff) {
-    await prisma.staff.create({ data: { ...s, roleId: 'vquip' } });
-  }
-
-  for (const role of roles) {
-    await prisma.conversation.upsert({
-      where: { roleId: role.id },
-      update: {},
-      create: { roleId: role.id, messages: [] },
-    });
-  }
-
   // Default tags
   const defaultTags = [
     { name: "frontend", color: "#2dd4bf" },
@@ -91,7 +20,240 @@ async function main() {
     });
   }
 
-  console.log('Seeded successfully');
+  // Empty user profile (filled during onboarding)
+  await prisma.userProfile.upsert({
+    where: { id: "default" },
+    update: {},
+    create: { id: "default", displayName: "" },
+  });
+
+  // Default schedule block templates (times only, no role assignments)
+  const defaultBlocks = [
+    { label: "Morning", startHour: 7, startMinute: 30, endHour: 10, endMinute: 0, sortOrder: 1 },
+    { label: "Triage", startHour: 10, startMinute: 0, endHour: 10, endMinute: 30, sortOrder: 2 },
+    { label: "Midday", startHour: 10, startMinute: 30, endHour: 15, endMinute: 0, sortOrder: 3 },
+    { label: "Afternoon", startHour: 15, startMinute: 0, endHour: 16, endMinute: 0, sortOrder: 4 },
+    { label: "Late Afternoon", startHour: 16, startMinute: 0, endHour: 17, endMinute: 0, sortOrder: 5 },
+    { label: "Evening", startHour: 19, startMinute: 0, endHour: 20, endMinute: 0, sortOrder: 6 },
+  ];
+
+  const existingBlocks = await prisma.scheduleBlock.count();
+  if (existingBlocks === 0) {
+    for (const block of defaultBlocks) {
+      await prisma.scheduleBlock.create({ data: block });
+    }
+  }
+
+  // Built-in skills (generic, not user-specific)
+  const builtInSkills = [
+    {
+      name: "standup-prep",
+      label: "Standup prep",
+      description: "Generate standup notes for current role",
+      icon: "Mic",
+      category: "daily",
+      sortOrder: 1,
+      prompt: `Generate standup prep for my {{roleName}} role ({{roleTitle}}).
+
+Today's tasks:
+{{todayTasks}}
+
+Recently completed (last 24h):
+{{recentCompleted}}
+
+Stale follow-ups for this role:
+{{staleFollowUps}}
+
+Format as:
+- What I did yesterday (completed tasks)
+- What I'm doing today (today's tasks)
+- Blockers (blocked tasks + stale follow-ups)
+
+Keep it concise — this is for a 2-minute verbal update, not a report.`,
+    },
+    {
+      name: "weekly-summary",
+      label: "Weekly summary",
+      description: "Summarize completed work across all roles this week",
+      icon: "Calendar",
+      category: "reporting",
+      sortOrder: 2,
+      prompt: `Generate a weekly summary across all my roles.
+
+Completed tasks this week:
+{{weeklyCompleted}}
+
+Follow-ups resolved this week:
+{{weeklyResolved}}
+
+Still active follow-ups:
+{{activeFollowUps}}
+
+Current quarterly goals:
+{{quarterlyGoals}}
+
+Format as a brief executive summary — what moved forward this week, what's still in progress, any concerns. Group by role. 3-4 sentences per role max.`,
+    },
+    {
+      name: "draft-update",
+      label: "Draft status update",
+      description: "Draft a status update for leadership",
+      icon: "Send",
+      category: "drafting",
+      sortOrder: 3,
+      prompt: `Draft a status update for {{roleName}} ({{roleTitle}}) leadership.
+
+My responsibilities:
+{{responsibilities}}
+
+Quarterly goals:
+{{quarterlyGoals}}
+
+Tasks in progress:
+{{inProgressTasks}}
+
+Tasks completed recently:
+{{recentCompleted}}
+
+Blocked items:
+{{blockedTasks}}
+
+Follow-ups waiting:
+{{activeFollowUps}}
+
+Write in my voice. Keep it to 4-6 bullet points. Lead with progress, then blockers. No fluff.`,
+    },
+    {
+      name: "stale-report",
+      label: "Stale report",
+      description: "All stale follow-ups with nudge suggestions",
+      icon: "AlertCircle",
+      category: "daily",
+      sortOrder: 4,
+      prompt: `Review all stale follow-ups across all my roles:
+
+{{allStaleFollowUps}}
+
+For each one:
+1. How many days stale
+2. Who owes me what
+3. Suggested nudge message (in my voice, for the appropriate platform)
+4. Escalation risk — should I mention this to their manager?
+
+Prioritize by staleness and business impact.`,
+    },
+    {
+      name: "sprint-plan",
+      label: "Sprint plan",
+      description: "Plan next sprint from backlog",
+      icon: "Target",
+      category: "planning",
+      sortOrder: 5,
+      prompt: `Help me plan the next sprint for {{roleName}}.
+
+Current backlog (not started):
+{{backlogTasks}}
+
+In progress:
+{{inProgressTasks}}
+
+Quarterly goals:
+{{quarterlyGoals}}
+
+Suggest which backlog items to pull into the next sprint. Prioritize based on:
+1. Alignment with quarterly goals
+2. Items that unblock other work
+3. Quick wins that reduce backlog noise
+4. Urgency
+
+Recommend 5-8 items max for a 2-week sprint. Explain your reasoning briefly.`,
+    },
+    {
+      name: "meeting-prep",
+      label: "Meeting prep",
+      description: "Prep notes for your next meeting",
+      icon: "Users",
+      category: "daily",
+      sortOrder: 6,
+      prompt: `Prepare me for my upcoming meeting.
+
+Role: {{roleName}} ({{roleTitle}})
+Today's calendar tasks:
+{{calendarTasks}}
+
+Staff directory for this role:
+{{staff}}
+
+Stale follow-ups involving people I might meet:
+{{staleFollowUps}}
+
+Recent notes and transcripts:
+{{recentNotes}}
+
+Give me:
+1. Key items to bring up
+2. Follow-ups to chase
+3. Decisions to push for
+4. One sentence on the overall priority for this meeting`,
+    },
+    {
+      name: "role-switch",
+      label: "Role context brief",
+      description: "Quick context brief when switching roles",
+      icon: "RefreshCw",
+      category: "daily",
+      sortOrder: 7,
+      prompt: `I'm switching to my {{roleName}} role ({{roleTitle}}). Give me a 30-second context brief:
+
+Today's tasks for this role:
+{{roleTodayTasks}}
+
+Active follow-ups:
+{{roleFollowUps}}
+
+Recent notes:
+{{recentNotes}}
+
+Quarterly goals:
+{{quarterlyGoals}}
+
+Tell me:
+1. What's the most important thing right now?
+2. Anything stale or overdue?
+3. Any recent decisions or context I should remember?
+
+Keep it tight — I need to switch contexts fast.`,
+    },
+    {
+      name: "blocked",
+      label: "Blocked items",
+      description: "List blocked tasks with unblock suggestions",
+      icon: "XCircle",
+      category: "daily",
+      sortOrder: 8,
+      prompt: `Show me all blocked tasks across all roles:
+
+{{allBlockedTasks}}
+
+For each blocked task:
+1. What's blocking it?
+2. Who can unblock it?
+3. What's the concrete next action to get it moving?
+4. How long has it been blocked?
+
+Suggest an order of attack — which blocked item should I tackle first?`,
+    },
+  ];
+
+  for (const skill of builtInSkills) {
+    await prisma.skill.upsert({
+      where: { name: skill.name },
+      update: { ...skill, isBuiltIn: true },
+      create: { ...skill, isBuiltIn: true },
+    });
+  }
+
+  console.log('Seeded successfully (clean slate — add companies via the app)');
 }
 
 main().catch(console.error).finally(() => prisma.$disconnect());

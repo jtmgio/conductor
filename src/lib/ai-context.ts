@@ -1,35 +1,71 @@
 import { prisma } from "./prisma";
-import { getCurrentBlock, getTimeLabel } from "./schedule";
+import { getCurrentBlock, getTimeLabel, getScheduleBlocks } from "./schedule";
 
-// Layer 1: System prompt
-function buildSystemPrompt(): string {
-  return `You are the AI assistant for Conductor, a personal productivity system for an engineer managing 6 concurrent W2 engineering roles.
+// Layer 1: System prompt (built dynamically from DB)
+async function buildSystemPrompt(): Promise<string> {
+  const roles = await prisma.role.findMany({
+    where: { active: true },
+    orderBy: { priority: "asc" },
+  });
+
+  const roleList = roles.length > 0
+    ? roles.map((r, i) => `${i + 1}. ${r.name} — ${r.title} (${r.platform})${r.context ? ` — ${r.context}` : ""}`).join("\n")
+    : "(No roles configured yet)";
+
+  const blocks = await getScheduleBlocks();
+  const scheduleDesc = blocks.length > 0
+    ? blocks.map((b) => `${b.label} (${getTimeLabel(b)})`).join(", ")
+    : "(No schedule configured)";
+
+  return `You are the AI assistant for Conductor, a personal productivity system for an engineer managing multiple concurrent roles.
 
 Roles (priority order):
-1. Zeta — UI Director / Staff Engineer (Slack) — highest pay
-2. HealthMap — Principal UI Architect (Teams)
-3. vQuip — CTO, 3% equity (Slack) — meetings 10:30am-3pm
-4. HealthMe — Sr UI Engineer (Slack)
-5. Xenegrade — Sr Engineer (Slack)
-6. React Health — Sr Node/NestJS Engineer (Teams) — lowest touch
+${roleList}
 
 Priority waterfall: When a time block has no work, pull from the highest-priority role that has tasks.
 
-Schedule: b1(7:30-10), b2(10-10:30 triage), b3(10:30-3 vQuip), b4(3-4), b5(4-5), b6(7-8pm).
-5 PM hard stop for family. 7-8 PM low-touch work.
+Schedule: ${scheduleDesc}
 
 Rules:
 - Be concise and actionable
-- When drafting messages, match the role's tone
+- When drafting messages, match the user's personal voice EXACTLY. Do not add formality, filler, or corporate language. The user's sample messages are your primary tone reference.
+- Never start drafts with "Hi [name]," or "Hey [name]," unless the user's samples show that pattern.
+- Never use "I hope this finds you well", "just wanted to follow up", "per our conversation", "please don't hesitate to reach out" or similar filler.
 - Never suggest time tracking or hour logging
 - Follow-ups are separate from tasks
-- Refer to staff by name when relevant`;
+- Refer to staff by name when relevant
+- When discussing goals, reference the current quarterly goals for the active role
+
+Artifacts:
+When the user asks you to visualize, diagram, chart, or build an interactive tool, you can create an artifact.
+Wrap the code in :::artifact{title="..." type="html|react|mermaid"} ... ::: delimiters.
+The artifact renders as a live interactive widget in the chat. For HTML artifacts, you have access to window.CONDUCTOR_DATA which contains the user's real roles, tasks, follow-ups, and current schedule.
+Use artifacts for: workflow diagrams, task/role visualizations, charts, sprint planning boards, data dashboards, interactive calculators, mermaid diagrams for architecture.
+Don't use artifacts for: simple text answers, short lists or tables (use markdown), anything that doesn't benefit from interactivity.`;
+}
+
+// Layer 1.5: Voice profile
+async function buildVoiceProfile(): Promise<string> {
+  const profile = await prisma.userProfile.findUnique({ where: { id: "default" } });
+  if (!profile) return "";
+
+  const parts: string[] = [];
+  if (profile.communicationStyle) {
+    parts.push(`CRITICAL — User's communication style (match this EXACTLY in all drafts and responses):\n${profile.communicationStyle}`);
+  }
+  if (profile.sampleMessages) {
+    parts.push(`Real messages from the user (use these as your primary reference for tone, cadence, and vocabulary):\n${profile.sampleMessages}`);
+  }
+  if (profile.globalContext) {
+    parts.push(`About the user:\n${profile.globalContext}`);
+  }
+  return parts.join("\n\n");
 }
 
 // Layer 2: State snapshot
 async function buildStateSnapshot(): Promise<string> {
   const now = new Date();
-  const current = getCurrentBlock(now);
+  const current = await getCurrentBlock(now);
   const todayTasks = await prisma.task.findMany({
     where: { isToday: true, done: false },
     include: { role: { select: { name: true } } },
@@ -43,7 +79,9 @@ async function buildStateSnapshot(): Promise<string> {
     },
   });
 
-  const taskLines = todayTasks.map((t) => `- [${t.role.name}] ${t.title}${t.priority === "urgent" ? " (URGENT)" : ""}`).join("\n");
+  const taskLines = todayTasks.map((t) =>
+    `- [${t.role.name}] ${t.title}${t.priority === "urgent" ? " (URGENT)" : ""}${t.status !== "backlog" ? ` [${t.status}]` : ""}`
+  ).join("\n");
 
   return `Date: ${now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
 Current block: ${current ? `${current.block.label} (${getTimeLabel(current.block)})` : "Off the clock"}
@@ -55,7 +93,7 @@ ${taskLines || "(none selected)"}
 Follow-ups: ${activeFollowUps} active, ${staleFollowUps} stale`;
 }
 
-// Layer 3: Role context
+// Layer 3: Role context (now includes responsibilities + goals)
 async function buildRoleContext(roleId: string): Promise<string> {
   const [role, recentTranscripts] = await Promise.all([
     prisma.role.findUnique({
@@ -88,6 +126,8 @@ async function buildRoleContext(roleId: string): Promise<string> {
 
   return `Active role: ${role.name} — ${role.title}
 Platform: ${role.platform}
+${role.responsibilities ? `\nResponsibilities:\n${role.responsibilities}` : ""}
+${role.quarterlyGoals ? `\nQuarterly goals:\n${role.quarterlyGoals}` : ""}
 Tone: ${role.tone || "Professional"}
 Context: ${role.context || ""}
 
@@ -125,11 +165,8 @@ function extractKeywords(query: string): string[] {
 
 async function buildRetrievedContext(roleId: string, query: string): Promise<string> {
   const keywords = extractKeywords(query);
-
-  // If no meaningful keywords, skip retrieval (Layer 3 already has recents)
   if (keywords.length === 0) return "";
 
-  // Search for notes/transcripts matching ANY keyword
   const noteConditions = keywords.map((kw) => ({
     content: { contains: kw, mode: "insensitive" as const },
   }));
@@ -176,10 +213,14 @@ export async function assembleContext(options: ContextOptions = {}): Promise<{
 }> {
   const parts: string[] = [];
 
+  // Layer 1.5: Voice profile
+  const voiceProfile = await buildVoiceProfile();
+  if (voiceProfile) parts.push(voiceProfile);
+
   // Layer 2: State snapshot
   parts.push(await buildStateSnapshot());
 
-  // Layer 3: Role context
+  // Layer 3: Role context (now includes responsibilities + goals)
   if (options.roleId) {
     parts.push(await buildRoleContext(options.roleId));
   }
@@ -191,7 +232,7 @@ export async function assembleContext(options: ContextOptions = {}): Promise<{
   }
 
   return {
-    systemPrompt: buildSystemPrompt(),
+    systemPrompt: await buildSystemPrompt(),
     contextMessages: parts.join("\n\n---\n\n"),
   };
 }

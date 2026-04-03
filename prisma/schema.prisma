@@ -7,15 +7,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model UserProfile {
+  id                     String   @id @default("default")
+  displayName            String   @default("")
+  communicationStyle     String?
+  sampleMessages         String?
+  globalContext           String?
+  calendarIgnorePatterns String?
+  passwordHash           String?
+  updatedAt              DateTime @updatedAt
+}
+
 model Role {
-  id            String         @id
-  name          String
-  title         String
-  platform      String
-  priority      Int
-  color         String
-  tone          String?
-  context       String?
+  id               String         @id @default(cuid())
+  name             String
+  title            String
+  platform         String         @default("Slack")
+  priority         Int
+  color            String
+  active           Boolean        @default(true)
+  tone             String?
+  context          String?
+  responsibilities String?
+  quarterlyGoals   String?
   staff         Staff[]
   tasks         Task[]
   followUps     FollowUp[]
@@ -143,12 +157,52 @@ model Conversation {
   updatedAt DateTime @updatedAt
 }
 
+model ScheduleBlock {
+  id             String   @id @default(cuid())
+  label          String
+  startHour      Int
+  startMinute    Int
+  endHour        Int
+  endMinute      Int
+  sortOrder      Int      @default(0)
+  dayAssignments Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 model ScheduleOverride {
   id      String   @id @default(cuid())
   blockId String
   day     String
   roleId  String
   weekOf  DateTime
+}
+
+model Skill {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  label       String
+  description String
+  icon        String?
+  prompt      String
+  category    String   @default("general")
+  isBuiltIn   Boolean  @default(false)
+  enabled     Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Integration {
+  id             String    @id @default(cuid())
+  type           String    @unique
+  roleId         String
+  config         Json
+  enabled        Boolean   @default(true)
+  lastSyncAt     DateTime?
+  lastSyncResult String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 model AiUsage {

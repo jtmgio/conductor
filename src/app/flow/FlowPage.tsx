@@ -134,10 +134,9 @@ const steps: Step[] = [
   },
 ];
 
-export function FlowPage() {
+export function FlowContent() {
   return (
-    <AppShell>
-      <div className="py-6 max-w-[680px]">
+    <div className="max-w-[680px]">
         <div className="flex items-center gap-2.5 mb-2">
           <Workflow className="h-6 w-6 text-[var(--text-tertiary)]" />
           <h1 className="text-[32px] font-semibold text-[var(--text-primary)]">Daily Flow</h1>
@@ -219,6 +218,15 @@ export function FlowPage() {
             ))}
           </div>
         </div>
+    </div>
+  );
+}
+
+export function FlowPage() {
+  return (
+    <AppShell>
+      <div className="py-6">
+        <FlowContent />
       </div>
     </AppShell>
   );

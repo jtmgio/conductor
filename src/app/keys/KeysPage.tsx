@@ -54,10 +54,9 @@ const groups: ShortcutGroup[] = [
   },
 ];
 
-export function KeysPage() {
+export function KeysContent() {
   return (
-    <AppShell>
-      <div className="py-6 max-w-[680px]">
+    <div className="max-w-[680px]">
         <div className="flex items-center gap-2.5 mb-2">
           <Keyboard className="h-6 w-6 text-[var(--text-tertiary)]" />
           <h1 className="text-[32px] font-semibold text-[var(--text-primary)]">Keyboard Shortcuts</h1>
@@ -88,6 +87,15 @@ export function KeysPage() {
             </div>
           ))}
         </div>
+    </div>
+  );
+}
+
+export function KeysPage() {
+  return (
+    <AppShell>
+      <div className="py-6">
+        <KeysContent />
       </div>
     </AppShell>
   );

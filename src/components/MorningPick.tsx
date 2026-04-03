@@ -9,8 +9,7 @@ interface Task { id: string; title: string; priority: string; roleId: string; }
 interface Role { id: string; name: string; color: string; }
 interface MorningPickProps { tasksByRole: Array<{ role: Role; tasks: Task[] }>; onConfirm: (selectedIds: string[]) => void; onSkip: () => void; }
 
-const ALL_ROLE_IDS = ["zeta", "healthmap", "vquip", "healthme", "xenegrade", "reacthealth"];
-const ROLE_COLORS: Record<string, string> = { zeta: "#4d8ef7", healthmap: "#2dd4bf", vquip: "#a78bfa", healthme: "#fbbf24", xenegrade: "#8cbf6e", reacthealth: "#fb7185" };
+// Derived from props — no hardcoded role data
 
 export function MorningPick({ tasksByRole, onConfirm, onSkip }: MorningPickProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -24,8 +23,8 @@ export function MorningPick({ tasksByRole, onConfirm, onSkip }: MorningPickProps
         <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] mb-1.5">Morning Pick</p>
         <h1 className="text-[36px] font-bold text-[var(--text-primary)]">{dayName}</h1>
         <div className="flex gap-1.5 mt-5 mb-10">
-          {ALL_ROLE_IDS.map((roleId) => (
-            <div key={roleId} className="flex-1 h-1 rounded-full" style={{ backgroundColor: rolesWithTasks.has(roleId) ? ROLE_COLORS[roleId] : "rgba(255,255,255,0.1)" }} />
+          {tasksByRole.map(({ role }) => (
+            <div key={role.id} className="flex-1 h-1 rounded-full" style={{ backgroundColor: rolesWithTasks.has(role.id) ? role.color : "rgba(255,255,255,0.1)" }} />
           ))}
         </div>
         <div className="space-y-6">

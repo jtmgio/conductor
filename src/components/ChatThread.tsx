@@ -1,13 +1,30 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ArrowUp, MoreVertical, Plus, PenLine, ListChecks, CalendarClock, Sparkles } from "lucide-react";
+import { ArrowUp, MoreVertical, Plus, PenLine, ListChecks, CalendarClock, Sparkles, Mic, Calendar, Send, AlertCircle, Target, Users, RefreshCw, XCircle, Zap, Copy, Maximize2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp?: string;
+}
+
+interface Skill {
+  id: string;
+  name: string;
+  label: string;
+  description: string;
+  icon?: string;
+  category: string;
+}
+
+interface ConductorContext {
+  roles: Array<{ id: string; name: string; color: string; title: string }>;
+  todayTasks: Array<{ id: string; title: string; status: string; roleId: string; tags: string[] }>;
+  followUps: Array<{ id: string; title: string; waitingOn: string; roleId: string; daysSince: number }>;
+  currentBlock: { roleId: string; label: string; timeLabel: string } | null;
+  date: string;
 }
 
 interface ChatThreadProps {
@@ -19,6 +36,7 @@ interface ChatThreadProps {
   onSendMessage: (message: string, attachments?: Array<{ filename: string; text?: string; base64?: string; mimeType?: string }>) => Promise<void>;
   onClearConversation: () => void;
   loading?: boolean;
+  conductorData?: ConductorContext;
 }
 
 function getGreeting(): string {
@@ -26,6 +44,148 @@ function getGreeting(): string {
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
+}
+
+const SKILL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  Mic, Calendar, Send, AlertCircle, Target, Users, RefreshCw, XCircle, Zap,
+  PenLine, ListChecks, CalendarClock, Sparkles,
+};
+
+function SkillIcon({ name, className }: { name?: string; className?: string }) {
+  const Icon = name ? SKILL_ICONS[name] : null;
+  return Icon ? <Icon className={className} /> : <Zap className={className} />;
+}
+
+// --- Artifact parsing and rendering ---
+
+interface ArtifactPart {
+  type: "artifact";
+  title: string;
+  artifactType: string;
+  code: string;
+}
+
+interface TextPart {
+  type: "text";
+  text: string;
+}
+
+type MessagePart = TextPart | ArtifactPart;
+
+function parseArtifacts(content: string): MessagePart[] {
+  const parts: MessagePart[] = [];
+  const regex = /:::artifact\{title="([^"]+)"\s+type="([^"]+)"\}\n([\s\S]*?)\n:::/g;
+
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: "text", text: content.slice(lastIndex, match.index) });
+    }
+    parts.push({
+      type: "artifact",
+      title: match[1],
+      artifactType: match[2],
+      code: match[3],
+    });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < content.length) {
+    parts.push({ type: "text", text: content.slice(lastIndex) });
+  }
+
+  return parts;
+}
+
+function buildRawHTML(code: string, data?: ConductorContext): string {
+  return `<!DOCTYPE html>
+<html><head>
+<style>body { margin: 0; padding: 16px; font-family: system-ui, -apple-system, sans-serif; background: #2f2f2a; color: #ececec; } * { box-sizing: border-box; }</style>
+<script>window.CONDUCTOR_DATA = ${JSON.stringify(data || {})};</script>
+</head><body>${code}</body></html>`;
+}
+
+function buildMermaidHTML(code: string): string {
+  return `<!DOCTYPE html>
+<html><head>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>body { margin: 0; padding: 16px; background: #2f2f2a; color: #ececec; }</style>
+</head><body>
+<pre class="mermaid">${code}</pre>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</body></html>`;
+}
+
+function buildReactHTML(code: string, data?: ConductorContext): string {
+  return `<!DOCTYPE html>
+<html><head>
+<script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/recharts@2/umd/Recharts.js"></script>
+<style>body { margin: 0; padding: 16px; font-family: system-ui, -apple-system, sans-serif; background: #2f2f2a; color: #ececec; } * { box-sizing: border-box; }</style>
+<script>window.CONDUCTOR_DATA = ${JSON.stringify(data || {})};</script>
+</head><body>
+<div id="root"></div>
+<script type="text/babel">
+${code}
+</script>
+</body></html>`;
+}
+
+function ArtifactBlock({ title, type, code, conductorData }: { title: string; type: string; code: string; conductorData?: ConductorContext }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  const htmlContent = type === "mermaid"
+    ? buildMermaidHTML(code)
+    : type === "react"
+    ? buildReactHTML(code, conductorData)
+    : buildRawHTML(code, conductorData);
+
+  const copyCode = () => {
+    navigator.clipboard.writeText(code);
+  };
+
+  const resizeToContent = () => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    try {
+      const body = iframe.contentDocument?.body;
+      if (body) {
+        const height = Math.min(Math.max(body.scrollHeight + 32, 200), expanded ? 2000 : 600);
+        iframe.style.height = height + "px";
+      }
+    } catch {
+      // cross-origin, use default height
+    }
+  };
+
+  return (
+    <div className="my-3 border border-[var(--border-subtle)] rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2 bg-[var(--surface-sunken,var(--surface-raised))] border-b border-[var(--border-subtle)]">
+        <span className="text-[14px] font-medium text-[var(--text-primary)]">{title}</span>
+        <div className="flex gap-2">
+          <button onClick={copyCode} className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1">
+            <Copy className="h-3 w-3" /> Copy
+          </button>
+          <button onClick={() => setExpanded(!expanded)} className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1">
+            <Maximize2 className="h-3 w-3" /> {expanded ? "Collapse" : "Expand"}
+          </button>
+        </div>
+      </div>
+      <iframe
+        ref={iframeRef}
+        srcDoc={htmlContent}
+        sandbox="allow-scripts"
+        className="w-full border-0"
+        style={{ minHeight: 200, maxHeight: expanded ? 2000 : 600 }}
+        onLoad={resizeToContent}
+      />
+    </div>
+  );
 }
 
 function renderMessageContent(content: string) {
@@ -58,12 +218,24 @@ function renderMessageContent(content: string) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle, messages, onSendMessage, onClearConversation, loading }: ChatThreadProps) {
+export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle, messages, onSendMessage, onClearConversation, loading, conductorData }: ChatThreadProps) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [showSkillMenu, setShowSkillMenu] = useState(false);
+  const [skillFilter, setSkillFilter] = useState("");
+  const [selectedSkillIndex, setSelectedSkillIndex] = useState(0);
+  const skillMenuRef = useRef<HTMLDivElement>(null);
+
+  // Load skills once
+  useEffect(() => {
+    fetch("/api/skills").then((r) => r.json()).then((data) => {
+      if (Array.isArray(data)) setSkills(data);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -78,10 +250,44 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
     }
   }, [input]);
 
+  const filteredSkills = skills.filter((s) =>
+    s.name.includes(skillFilter) || s.label.toLowerCase().includes(skillFilter) || s.description.toLowerCase().includes(skillFilter)
+  );
+
+  const handleInputChange = (value: string) => {
+    setInput(value);
+    if (value.startsWith("/")) {
+      setShowSkillMenu(true);
+      setSkillFilter(value.slice(1).toLowerCase());
+      setSelectedSkillIndex(0);
+    } else {
+      setShowSkillMenu(false);
+    }
+  };
+
+  const executeSkill = async (skill: Skill) => {
+    setShowSkillMenu(false);
+    setInput("");
+    setSending(true);
+    try {
+      const res = await fetch("/api/skills/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skillId: skill.id, roleId }),
+      });
+      const data = await res.json();
+      if (data.prompt) {
+        await onSendMessage(data.prompt);
+      }
+    } catch {}
+    setSending(false);
+  };
+
   const handleSend = async () => {
     if (!input.trim() || sending) return;
     const msg = input;
     setInput("");
+    setShowSkillMenu(false);
     setSending(true);
     try {
       await onSendMessage(msg);
@@ -113,15 +319,64 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
 
   const isEmpty = messages.length === 0 && !sending && !loading;
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (showSkillMenu && filteredSkills.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedSkillIndex((i) => Math.min(i + 1, filteredSkills.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedSkillIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        executeSkill(filteredSkills[selectedSkillIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowSkillMenu(false);
+        return;
+      }
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
   const inputArea = (
-    <div className="w-full">
+    <div className="w-full relative">
+      {/* Slash command menu */}
+      {showSkillMenu && filteredSkills.length > 0 && (
+        <div ref={skillMenuRef} className="absolute bottom-full left-0 right-0 mb-2 bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-xl overflow-hidden max-h-[300px] overflow-y-auto z-50">
+          {filteredSkills.map((skill, i) => (
+            <button
+              key={skill.id}
+              onClick={() => executeSkill(skill)}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                i === selectedSkillIndex ? "bg-[var(--sidebar-hover)]" : "hover:bg-[var(--sidebar-hover)]"
+              }`}
+            >
+              <SkillIcon name={skill.icon} className="h-5 w-5 text-[var(--text-tertiary)] shrink-0" />
+              <div className="min-w-0">
+                <span className="text-[15px] font-medium text-[var(--text-primary)]">/{skill.name}</span>
+                <span className="text-[13px] text-[var(--text-tertiary)] ml-2">{skill.description}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-2xl overflow-hidden">
         <textarea
           ref={textareaRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-          placeholder="How can I help you today?"
+          onChange={(e) => handleInputChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="How can I help you today? Type / for commands"
           rows={1}
           className="w-full bg-transparent px-5 pt-4 pb-2 text-[16px] text-[var(--text-primary)] outline-none resize-none placeholder:text-[var(--text-tertiary)]"
         />
@@ -207,8 +462,22 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
             </div>
           ) : (
             <div key={i} className="flex flex-col items-start gap-1">
-              <div className="max-w-[85%] text-[var(--text-primary)] text-[16px] leading-relaxed whitespace-pre-wrap">
-                {renderMessageContent(msg.content)}
+              <div className="max-w-[85%]">
+                {parseArtifacts(msg.content).map((part, j) =>
+                  part.type === "text" ? (
+                    <div key={j} className="text-[var(--text-primary)] text-[16px] leading-relaxed whitespace-pre-wrap">
+                      {renderMessageContent(part.text)}
+                    </div>
+                  ) : (
+                    <ArtifactBlock
+                      key={j}
+                      title={part.title}
+                      type={part.artifactType}
+                      code={part.code}
+                      conductorData={conductorData}
+                    />
+                  )
+                )}
               </div>
               {msg.timestamp && <span className="text-[13px] text-[var(--text-tertiary)] px-1">{msg.timestamp}</span>}
             </div>

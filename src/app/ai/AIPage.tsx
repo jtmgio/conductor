@@ -11,6 +11,13 @@ import { useToast } from "@/components/ui/toast";
 interface Role { id: string; name: string; title: string; color: string; }
 interface Message { role: "user" | "assistant"; content: string; timestamp?: string; }
 interface DraftVariant { label: string; text: string; }
+interface ConductorContext {
+  roles: Array<{ id: string; name: string; color: string; title: string }>;
+  todayTasks: Array<{ id: string; title: string; status: string; roleId: string; tags: string[] }>;
+  followUps: Array<{ id: string; title: string; waitingOn: string; roleId: string; daysSince: number }>;
+  currentBlock: { roleId: string; label: string; timeLabel: string } | null;
+  date: string;
+}
 
 const MODELS = [
   { id: "claude-sonnet-4-6", label: "Sonnet 4.6", description: "Fast & capable" },
@@ -26,6 +33,7 @@ export function AIPage() {
   const [loading, setLoading] = useState(false);
   const [draftVariants, setDraftVariants] = useState<DraftVariant[] | null>(null);
   const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
+  const [conductorData, setConductorData] = useState<ConductorContext | undefined>();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -34,6 +42,7 @@ export function AIPage() {
       setRoles(arr);
       setActiveRoleId(searchParams.get("roleId") || arr[0]?.id || "");
     }).catch(() => {});
+    fetch("/api/context").then((r) => r.json()).then(setConductorData).catch(() => {});
   }, [searchParams]);
 
   const loadConversation = useCallback(async (roleId: string) => {
@@ -118,7 +127,7 @@ export function AIPage() {
         )}
 
         {!draftVariants && activeRole && (
-          <ChatThread roleId={activeRoleId} roleName={activeRole.name} roleColor={activeRole.color} roleTitle={activeRole.title} messages={messages} onSendMessage={handleSendMessage} onClearConversation={handleClearConversation} loading={loading} />
+          <ChatThread roleId={activeRoleId} roleName={activeRole.name} roleColor={activeRole.color} roleTitle={activeRole.title} messages={messages} onSendMessage={handleSendMessage} onClearConversation={handleClearConversation} loading={loading} conductorData={conductorData} />
         )}
       </div>
     </AppShell>

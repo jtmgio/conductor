@@ -4,7 +4,7 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Crosshair, Inbox, ListChecks, Columns3, Sparkles, Workflow, Keyboard, DollarSign, Settings, LogOut } from "lucide-react";
+import { Menu, X, Crosshair, Inbox, ListChecks, Columns3, Sparkles, Settings, LogOut } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { ThemeSwitcher } from "./ThemeSwitcher";
@@ -15,9 +15,6 @@ const navLinks = [
   { href: "/tracker", label: "Tracker", icon: ListChecks },
   { href: "/board", label: "Board", icon: Columns3 },
   { href: "/ai", label: "AI", icon: Sparkles },
-  { href: "/flow", label: "Flow", icon: Workflow },
-  { href: "/keys", label: "Keys", icon: Keyboard },
-  { href: "/costs", label: "Costs", icon: DollarSign },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

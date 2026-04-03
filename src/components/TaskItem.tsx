@@ -34,6 +34,7 @@ interface TaskItemProps {
   dueDate?: string | null;
   checklist?: ChecklistItem[] | null;
   tags?: TagRelation[];
+  sourceType?: string | null;
   onComplete: (id: string) => void;
   onUpdate?: (id: string, data: Record<string, unknown>) => void;
   onDelete?: (id: string) => void;
@@ -54,7 +55,7 @@ function formatDueDate(dateStr: string): { label: string; overdue: boolean } {
 }
 
 export function TaskItem({
-  id, title, priority, status = "backlog", roleColor, roleName, notes, dueDate, checklist, tags,
+  id, title, priority, status = "backlog", roleColor, roleName, notes, dueDate, checklist, tags, sourceType,
   onComplete, onUpdate, onDelete, onStatusChange,
 }: TaskItemProps) {
   const [completing, setCompleting] = useState(false);
@@ -231,7 +232,7 @@ export function TaskItem({
                 </div>
               )}
               {/* Metadata row */}
-              {(dueDateInfo || editChecklist.length > 0 || notes) && !expanded && (
+              {(dueDateInfo || editChecklist.length > 0 || notes || sourceType) && !expanded && (
                 <div className="flex items-center gap-3 mt-0.5">
                   {dueDateInfo && (
                     <span className={`text-[12px] flex items-center gap-1 ${dueDateInfo.overdue ? "text-red-400 font-semibold" : "text-[var(--text-tertiary)]"}`}>
@@ -244,6 +245,18 @@ export function TaskItem({
                     </span>
                   )}
                   {notes && <span className="text-[12px] text-[var(--text-tertiary)]">Has notes</span>}
+                  {sourceType === "linear" && (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-tertiary)]" title="Synced from Linear — change status in Linear">
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2.5 2.5h11v11h-11z" stroke="currentColor" strokeWidth="1" fill="none" rx="2"/><path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/></svg>
+                      Linear
+                    </span>
+                  )}
+                  {sourceType === "calendar" && (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-tertiary)]">
+                      <Calendar className="h-3 w-3" />
+                      Meeting prep
+                    </span>
+                  )}
                 </div>
               )}
             </button>

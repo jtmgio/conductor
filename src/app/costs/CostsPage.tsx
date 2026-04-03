@@ -27,23 +27,7 @@ interface UsageData {
   }>;
 }
 
-const ROLE_NAMES: Record<string, string> = {
-  zeta: "Zeta",
-  healthmap: "HealthMap",
-  vquip: "vQuip",
-  healthme: "HealthMe",
-  xenegrade: "Xenegrade",
-  reacthealth: "React Health",
-};
-
-const ROLE_COLORS: Record<string, string> = {
-  zeta: "#4d8ef7",
-  healthmap: "#2dd4bf",
-  vquip: "#a78bfa",
-  healthme: "#fbbf24",
-  xenegrade: "#8cbf6e",
-  reacthealth: "#fb7185",
-};
+// Role names and colors fetched dynamically — no hardcoded mapping
 
 const ENDPOINT_LABELS: Record<string, string> = {
   chat: "Chat",
@@ -62,35 +46,40 @@ function formatTokens(n: number): string {
   return n.toString();
 }
 
-export function CostsPage() {
+export function CostsContent() {
   const [data, setData] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [roleNames, setRoleNames] = useState<Record<string, string>>({});
+  const [roleColors, setRoleColors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    fetch("/api/ai/usage?days=30")
-      .then((r) => r.json())
-      .then((d) => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+    Promise.all([
+      fetch("/api/ai/usage?days=30").then((r) => r.json()),
+      fetch("/api/roles").then((r) => r.json()),
+    ]).then(([usage, roles]) => {
+      setData(usage);
+      if (Array.isArray(roles)) {
+        setRoleNames(Object.fromEntries(roles.map((r: { id: string; name: string }) => [r.id, r.name])));
+        setRoleColors(Object.fromEntries(roles.map((r: { id: string; color: string }) => [r.id, r.color])));
+      }
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
   if (loading) {
     return (
-      <AppShell>
-        <div className="py-20 flex justify-center">
-          <div className="w-5 h-5 border-2 border-[var(--border-default)] border-t-[var(--accent-blue)] rounded-full animate-spin" />
-        </div>
-      </AppShell>
+      <div className="py-20 flex justify-center">
+        <div className="w-5 h-5 border-2 border-[var(--border-default)] border-t-[var(--accent-blue)] rounded-full animate-spin" />
+      </div>
     );
   }
 
   if (!data) {
     return (
-      <AppShell>
-        <div className="py-6">
-          <h1 className="text-[32px] font-semibold text-[var(--text-primary)] mb-6">AI Costs</h1>
-          <p className="text-[var(--text-tertiary)]">Failed to load usage data.</p>
-        </div>
-      </AppShell>
+      <div>
+        <h1 className="text-[32px] font-semibold text-[var(--text-primary)] mb-6">AI Costs</h1>
+        <p className="text-[var(--text-tertiary)]">Failed to load usage data.</p>
+      </div>
     );
   }
 
@@ -116,12 +105,11 @@ export function CostsPage() {
   const maxRoleCost = Math.max(...roleEntries.map(([, v]) => v.costCents), 1);
 
   return (
-    <AppShell>
-      <div className="py-6">
-        <div className="flex items-center gap-2.5 mb-8">
-          <DollarSign className="h-6 w-6 text-[var(--text-tertiary)]" />
-          <h1 className="text-[32px] font-semibold text-[var(--text-primary)]">AI Costs</h1>
-        </div>
+    <div>
+      <div className="flex items-center gap-2.5 mb-8">
+        <DollarSign className="h-6 w-6 text-[var(--text-tertiary)]" />
+        <h1 className="text-[32px] font-semibold text-[var(--text-primary)]">AI Costs</h1>
+      </div>
 
         {/* Summary cards */}
         <div className="grid grid-cols-3 gap-3 mb-8">
@@ -225,8 +213,8 @@ export function CostsPage() {
               <div key={roleId} className="bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-xl p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ROLE_COLORS[roleId] || "#706c65" }} />
-                    <span className="text-[15px] font-medium text-[var(--text-primary)]">{ROLE_NAMES[roleId] || roleId}</span>
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: roleColors[roleId] || "#706c65" }} />
+                    <span className="text-[15px] font-medium text-[var(--text-primary)]">{roleNames[roleId] || roleId}</span>
                   </span>
                   <div className="flex items-center gap-3">
                     <span className="text-[13px] text-[var(--text-tertiary)]">{stats.calls} calls</span>
@@ -238,7 +226,7 @@ export function CostsPage() {
                     className="h-full rounded-full transition-all"
                     style={{
                       width: `${(stats.costCents / maxRoleCost) * 100}%`,
-                      backgroundColor: ROLE_COLORS[roleId] || "#706c65",
+                      backgroundColor: roleColors[roleId] || "#706c65",
                     }}
                   />
                 </div>
@@ -272,8 +260,8 @@ export function CostsPage() {
                       <td className="px-4 py-2.5">
                         {r.roleId ? (
                           <span className="flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ROLE_COLORS[r.roleId] || "#706c65" }} />
-                            <span className="text-[var(--text-secondary)]">{ROLE_NAMES[r.roleId] || r.roleId}</span>
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: roleColors[r.roleId] || "#706c65" }} />
+                            <span className="text-[var(--text-secondary)]">{roleNames[r.roleId] || r.roleId}</span>
                           </span>
                         ) : (
                           <span className="text-[var(--text-tertiary)]">—</span>
@@ -297,6 +285,15 @@ export function CostsPage() {
             </div>
           </div>
         </div>
+    </div>
+  );
+}
+
+export function CostsPage() {
+  return (
+    <AppShell>
+      <div className="py-6">
+        <CostsContent />
       </div>
     </AppShell>
   );

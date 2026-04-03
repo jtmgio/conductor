@@ -1,3 +1,5 @@
+import { prisma } from "./prisma";
+
 export interface TimeBlock {
   id: string;
   label: string;
@@ -5,91 +7,107 @@ export interface TimeBlock {
   startMinute: number;
   endHour: number;
   endMinute: number;
-  getRoleId: (dayOfWeek: number) => string | null;
+  sortOrder: number;
+  dayAssignments: Record<string, string>; // { "1": roleId, "2": roleId, ... }
 }
 
-const BLOCKS: TimeBlock[] = [
-  {
-    id: "b1",
-    label: "Deep Work",
-    startHour: 7, startMinute: 30,
-    endHour: 10, endMinute: 0,
-    getRoleId: (day) => [1, 3, 5].includes(day) ? "zeta" : [2, 4].includes(day) ? "healthmap" : null,
-  },
-  {
-    id: "b2",
-    label: "Triage",
-    startHour: 10, startMinute: 0,
-    endHour: 10, endMinute: 30,
-    getRoleId: () => "zeta", // triage — defaults to highest priority
-  },
-  {
-    id: "b3",
-    label: "vQuip Block",
-    startHour: 10, startMinute: 30,
-    endHour: 15, endMinute: 0,
-    getRoleId: () => "vquip",
-  },
-  {
-    id: "b4",
-    label: "Afternoon",
-    startHour: 15, startMinute: 0,
-    endHour: 16, endMinute: 0,
-    getRoleId: (day) => [1, 3].includes(day) ? "healthmap" : [2, 4, 5].includes(day) ? "healthme" : null,
-  },
-  {
-    id: "b5",
-    label: "Late Afternoon",
-    startHour: 16, startMinute: 0,
-    endHour: 17, endMinute: 0,
-    getRoleId: (day) => [1, 3].includes(day) ? "healthme" : [2, 4, 5].includes(day) ? "xenegrade" : null,
-  },
-  {
-    id: "b6",
-    label: "Evening",
-    startHour: 19, startMinute: 0,
-    endHour: 20, endMinute: 0,
-    getRoleId: (day) => [1, 3].includes(day) ? "xenegrade" : [2, 4, 5].includes(day) ? "reacthealth" : null,
-  },
-];
+// Cache to avoid DB hit on every request
+let cachedBlocks: TimeBlock[] | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 60_000; // 60 seconds
 
-export function getAllBlocks(): TimeBlock[] {
-  return BLOCKS;
+export async function getScheduleBlocks(): Promise<TimeBlock[]> {
+  const now = Date.now();
+  if (cachedBlocks && now - cacheTimestamp < CACHE_TTL) {
+    return cachedBlocks;
+  }
+
+  const blocks = await prisma.scheduleBlock.findMany({
+    orderBy: { sortOrder: "asc" },
+  });
+
+  cachedBlocks = blocks.map((b) => ({
+    id: b.id,
+    label: b.label,
+    startHour: b.startHour,
+    startMinute: b.startMinute,
+    endHour: b.endHour,
+    endMinute: b.endMinute,
+    sortOrder: b.sortOrder,
+    dayAssignments: (b.dayAssignments as Record<string, string>) || {},
+  }));
+  cacheTimestamp = now;
+  return cachedBlocks;
+}
+
+export function invalidateScheduleCache() {
+  cachedBlocks = null;
+  cacheTimestamp = 0;
 }
 
 function timeToMinutes(h: number, m: number): number {
   return h * 60 + m;
 }
 
-export function getCurrentBlock(now?: Date): { block: TimeBlock; roleId: string | null } | null {
-  const d = now || new Date();
-  const currentMinutes = timeToMinutes(d.getHours(), d.getMinutes());
-  const dayOfWeek = d.getDay(); // 0=Sun, 1=Mon...
+export async function getCurrentBlock(now?: Date): Promise<{
+  block: TimeBlock;
+  roleId: string;
+} | null> {
+  const blocks = await getScheduleBlocks();
+  if (blocks.length === 0) return null;
 
-  for (const block of BLOCKS) {
+  const d = now || new Date();
+  const dayOfWeek = d.getDay(); // 0=Sun, 1=Mon, etc.
+  const currentMinutes = timeToMinutes(d.getHours(), d.getMinutes());
+
+  // Weekend — off the clock
+  if (dayOfWeek === 0 || dayOfWeek === 6) return null;
+
+  for (const block of blocks) {
     const start = timeToMinutes(block.startHour, block.startMinute);
     const end = timeToMinutes(block.endHour, block.endMinute);
+
     if (currentMinutes >= start && currentMinutes < end) {
-      return { block, roleId: block.getRoleId(dayOfWeek) };
+      const roleId = block.dayAssignments[String(dayOfWeek)];
+      if (roleId) {
+        return { block, roleId };
+      }
+      // Block exists but no role assigned for this day — try next block
     }
   }
+
   return null;
 }
 
-export function getNextBlocks(count: number = 3, now?: Date): Array<{ block: TimeBlock; roleId: string | null }> {
-  const d = now || new Date();
-  const currentMinutes = timeToMinutes(d.getHours(), d.getMinutes());
-  const dayOfWeek = d.getDay();
-  const results: Array<{ block: TimeBlock; roleId: string | null }> = [];
+export async function getNextBlocks(count: number = 3, now?: Date): Promise<
+  Array<{
+    block: TimeBlock;
+    roleId: string;
+  }>
+> {
+  const blocks = await getScheduleBlocks();
+  if (blocks.length === 0) return [];
 
-  for (const block of BLOCKS) {
+  const d = now || new Date();
+  const dayOfWeek = d.getDay();
+  const currentMinutes = timeToMinutes(d.getHours(), d.getMinutes());
+
+  if (dayOfWeek === 0 || dayOfWeek === 6) return [];
+
+  const upcoming: Array<{ block: TimeBlock; roleId: string }> = [];
+
+  for (const block of blocks) {
     const start = timeToMinutes(block.startHour, block.startMinute);
     if (start > currentMinutes) {
-      results.push({ block, roleId: block.getRoleId(dayOfWeek) });
-      if (results.length >= count) break;
+      const roleId = block.dayAssignments[String(dayOfWeek)];
+      if (roleId) {
+        upcoming.push({ block, roleId });
+        if (upcoming.length >= count) break;
+      }
     }
   }
-  return results;
+
+  return upcoming;
 }
 
 export function getTimeLabel(block: TimeBlock): string {
@@ -103,14 +121,18 @@ export function getTimeLabel(block: TimeBlock): string {
 
 export function getOffClockMessage(now?: Date): string | null {
   const d = now || new Date();
-  const currentMinutes = timeToMinutes(d.getHours(), d.getMinutes());
-  const dayOfWeek = d.getDay();
+  const day = d.getDay();
+  const hour = d.getHours();
 
-  if (dayOfWeek === 0 || dayOfWeek === 6) return "Weekend. Rest up.";
-  if (currentMinutes < timeToMinutes(7, 30)) return "Day starts at 7:30 AM";
-  if (currentMinutes >= timeToMinutes(17, 0) && currentMinutes < timeToMinutes(19, 0)) return "Family time";
-  if (currentMinutes >= timeToMinutes(20, 0)) return "Done for today";
+  if (day === 0 || day === 6) return "Weekend";
+  if (hour >= 17 && hour < 19) return "Family time";
+  if (hour >= 20) return "Done for the day";
+  if (hour < 7) return "Before hours";
+
   return null;
 }
 
-export type { TimeBlock as Block };
+// Legacy compat — getAllBlocks returns cached blocks synchronously if available, otherwise empty
+export function getAllBlocks(): TimeBlock[] {
+  return cachedBlocks || [];
+}

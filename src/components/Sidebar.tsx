@@ -2,20 +2,13 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Crosshair, Inbox, ListChecks, Columns3, Sparkles, Workflow, Keyboard, DollarSign, Settings, LogOut } from "lucide-react";
+import { Crosshair, Inbox, ListChecks, Columns3, Sparkles, Settings, LogOut, BookOpen } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { GlobalSearch } from "./GlobalSearch";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 
-const ROLE_COLORS: Record<string, string> = {
-  zeta: "#4d8ef7",
-  healthmap: "#2dd4bf",
-  vquip: "#a78bfa",
-  healthme: "#fbbf24",
-  xenegrade: "#8cbf6e",
-  reacthealth: "#fb7185",
-};
+// Role colors come from the currentBlock/nextBlocks props — no hardcoded mapping
 
 const navLinks = [
   { href: "/", label: "Focus", icon: Crosshair },
@@ -23,9 +16,10 @@ const navLinks = [
   { href: "/tracker", label: "Tracker", icon: ListChecks },
   { href: "/board", label: "Board", icon: Columns3 },
   { href: "/ai", label: "AI", icon: Sparkles },
-  { href: "/flow", label: "Flow", icon: Workflow },
-  { href: "/keys", label: "Keys", icon: Keyboard },
-  { href: "/costs", label: "Costs", icon: DollarSign },
+];
+
+const bottomLinks = [
+  { href: "/docs", label: "Docs", icon: BookOpen },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -50,9 +44,7 @@ interface SidebarProps {
 export function Sidebar({ currentBlock, nextBlocks }: SidebarProps) {
   const pathname = usePathname();
 
-  const blockColor = currentBlock?.roleColor
-    || (currentBlock?.roleId ? ROLE_COLORS[currentBlock.roleId] : null)
-    || "#706c65";
+  const blockColor = currentBlock?.roleColor || "#706c65";
 
   return (
     <aside className="fixed left-0 top-0 h-full w-[280px] hidden lg:flex flex-col bg-[var(--sidebar-bg)] z-50">
@@ -101,31 +93,58 @@ export function Sidebar({ currentBlock, nextBlocks }: SidebarProps) {
       </div>
 
       {/* Nav links */}
-      <nav className="flex-1 py-2 px-3 space-y-0.5">
-        {navLinks.map((link) => {
-          const active =
-            link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                "flex items-center gap-3 py-2.5 px-4 rounded-lg transition-all duration-200 border-l-2",
-                active
-                  ? "bg-[var(--sidebar-active)] text-[var(--text-primary)] font-medium border-[var(--accent-blue)]"
-                  : "text-[var(--sidebar-text)] hover:text-[var(--text-primary)] hover:bg-[var(--sidebar-hover)] border-transparent"
-              )}
-            >
-              <link.icon
+      <nav className="flex-1 py-2 px-3 flex flex-col">
+        <div className="space-y-0.5">
+          {navLinks.map((link) => {
+            const active =
+              link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
                 className={cn(
-                  "h-5 w-5",
-                  active ? "opacity-100" : "opacity-60"
+                  "flex items-center gap-3 py-2.5 px-4 rounded-lg transition-all duration-200 border-l-2",
+                  active
+                    ? "bg-[var(--sidebar-active)] text-[var(--text-primary)] font-medium border-[var(--accent-blue)]"
+                    : "text-[var(--sidebar-text)] hover:text-[var(--text-primary)] hover:bg-[var(--sidebar-hover)] border-transparent"
                 )}
-              />
-              <span className="text-[16px]">{link.label}</span>
-            </Link>
-          );
-        })}
+              >
+                <link.icon
+                  className={cn(
+                    "h-5 w-5",
+                    active ? "opacity-100" : "opacity-60"
+                  )}
+                />
+                <span className="text-[16px]">{link.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+        <div className="mt-auto space-y-0.5">
+          {bottomLinks.map((link) => {
+            const active = pathname.startsWith(link.href);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={cn(
+                  "flex items-center gap-3 py-2.5 px-4 rounded-lg transition-all duration-200 border-l-2",
+                  active
+                    ? "bg-[var(--sidebar-active)] text-[var(--text-primary)] font-medium border-[var(--accent-blue)]"
+                    : "text-[var(--sidebar-text)] hover:text-[var(--text-primary)] hover:bg-[var(--sidebar-hover)] border-transparent"
+                )}
+              >
+                <link.icon
+                  className={cn(
+                    "h-5 w-5",
+                    active ? "opacity-100" : "opacity-60"
+                  )}
+                />
+                <span className="text-[16px]">{link.label}</span>
+              </Link>
+            );
+          })}
+        </div>
       </nav>
 
       {/* Coming up */}
@@ -139,7 +158,6 @@ export function Sidebar({ currentBlock, nextBlocks }: SidebarProps) {
             <div className="space-y-2.5">
               {nextBlocks.map((block, i) => {
                 const color = block.roleColor
-                  || (block.roleId ? ROLE_COLORS[block.roleId] : null)
                   || "#706c65";
                 return (
                   <div key={i} className="flex items-center gap-2.5">

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getCurrentBlock, getNextBlocks, getAllBlocks, getTimeLabel, getOffClockMessage } from "@/lib/schedule";
+import { getCurrentBlock, getNextBlocks, getScheduleBlocks, getTimeLabel, getOffClockMessage } from "@/lib/schedule";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -9,13 +9,13 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const now = new Date();
-  const current = getCurrentBlock(now);
-  const next = getNextBlocks(3, now);
-  const allBlocks = getAllBlocks();
+  const current = await getCurrentBlock(now);
+  const next = await getNextBlocks(3, now);
+  const allBlocks = await getScheduleBlocks();
   const dayOfWeek = now.getDay();
   const offClockMessage = getOffClockMessage(now);
 
-  const roles = await prisma.role.findMany({ select: { id: true, name: true, title: true, color: true } });
+  const roles = await prisma.role.findMany({ where: { active: true }, select: { id: true, name: true, title: true, color: true } });
   const roleMap = Object.fromEntries(roles.map((r) => [r.id, r]));
 
   return NextResponse.json({
@@ -41,12 +41,12 @@ export async function GET() {
     })),
     offClockMessage,
     allBlocks: allBlocks.map((b) => {
-      const roleId = b.getRoleId(dayOfWeek);
+      const roleId = b.dayAssignments[String(dayOfWeek)];
       return {
         id: b.id,
         label: b.label,
         timeLabel: getTimeLabel(b),
-        roleId,
+        roleId: roleId || null,
         roleName: roleId ? roleMap[roleId]?.name : null,
         roleColor: roleId ? roleMap[roleId]?.color : null,
         roleTitle: roleId ? roleMap[roleId]?.title : null,
