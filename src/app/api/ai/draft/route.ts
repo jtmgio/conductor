@@ -5,12 +5,14 @@ import { assembleContext } from "@/lib/ai-context";
 import { prisma } from "@/lib/prisma";
 import Anthropic from "@anthropic-ai/sdk";
 import { trackUsage } from "@/lib/ai-usage";
-
-const anthropic = new Anthropic();
+import { getAnthropicApiKey } from "@/lib/api-keys";
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const apiKey = await getAnthropicApiKey();
+  const anthropic = new Anthropic({ apiKey });
 
   const { roleId, recipientName, topic, draftType, model } = await req.json();
   if (!roleId || !topic) {

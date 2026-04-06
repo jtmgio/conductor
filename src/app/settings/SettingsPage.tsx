@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { ScheduleGrid } from "@/components/ScheduleGrid";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -9,6 +10,7 @@ import { CostsContent } from "@/app/costs/CostsPage";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 
 interface Staff { id: string; name: string; title: string; relationship?: string; commNotes?: string; email?: string; slackHandle?: string; }
 interface Role { id: string; name: string; title: string; platform: string; priority: number; color: string; tone?: string; context?: string; responsibilities?: string; quarterlyGoals?: string; }
@@ -29,7 +31,8 @@ const TABS = [
 type TabId = typeof TABS[number]["id"];
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabId>("roles");
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TabId>((searchParams.get("tab") as TabId) || "roles");
   const [roles, setRoles] = useState<Role[]>([]);
   const [staffByRole, setStaffByRole] = useState<Record<string, Staff[]>>({});
   const [expandedRoleId, setExpandedRoleId] = useState<string | null>(null);
@@ -48,8 +51,18 @@ export function SettingsPage() {
   const [savingCalendar, setSavingCalendar] = useState(false);
   const [allSkills, setAllSkills] = useState<Skill[]>([]);
   const [addingSkill, setAddingSkill] = useState(false);
-  const [newSkill, setNewSkill] = useState({ name: "", label: "", description: "", prompt: "", category: "general" });
+  const SKILL_TEMPLATE = `You are helping with {{roleName}} ({{roleTitle}}).
+
+Today's tasks:
+{{todayTasks}}
+
+Active follow-ups:
+{{activeFollowUps}}
+
+Based on the above, provide:`;
+  const [newSkill, setNewSkill] = useState({ name: "", label: "", description: "", prompt: SKILL_TEMPLATE, category: "general" });
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
+  const [expandedSkillId, setExpandedSkillId] = useState<string | null>(null);
   const [addingCompany, setAddingCompany] = useState(false);
   const [newCompany, setNewCompany] = useState({ name: "", title: "", platform: "Slack", color: "#4d8ef7" });
   const COLOR_PRESETS = ["#4d8ef7", "#2dd4bf", "#a78bfa", "#fbbf24", "#8cbf6e", "#fb7185", "#f97316", "#06b6d4", "#ec4899", "#84cc16", "#6366f1", "#14b8a6"];
@@ -57,7 +70,10 @@ export function SettingsPage() {
   const [linearForm, setLinearForm] = useState({ apiKey: "", teamId: "", userId: "", roleId: "" });
   const [addingLinear, setAddingLinear] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [systemSubTab, setSystemSubTab] = useState<"general" | "skills" | "costs">("general");
+  const [systemSubTab, setSystemSubTab] = useState<"general" | "skills" | "costs" | "apikeys">((searchParams.get("sub") as "general" | "skills" | "costs" | "apikeys") || "general");
+  const [anthropicKey, setAnthropicKey] = useState("");
+  const [anthropicKeySaved, setAnthropicKeySaved] = useState(false);
+  const [showAnthropicKey, setShowAnthropicKey] = useState(false);
   const [editSkillForm, setEditSkillForm] = useState({ label: "", description: "", prompt: "", category: "general" });
   const { toast } = useToast();
 
@@ -94,7 +110,7 @@ export function SettingsPage() {
       const resps: Record<string, string> = {}; const goals: Record<string, string> = {};
       for (const r of arr) { tones[r.id] = r.tone || ""; contexts[r.id] = r.context || ""; resps[r.id] = r.responsibilities || ""; goals[r.id] = r.quarterlyGoals || ""; }
       setEditTone(tones); setEditContext(contexts); setEditResponsibilities(resps); setEditGoals(goals);
-      if (profileRes.ok) { const p = await profileRes.json(); setProfile({ communicationStyle: p.communicationStyle || "", sampleMessages: p.sampleMessages || "", globalContext: p.globalContext || "", calendarIgnorePatterns: p.calendarIgnorePatterns || "" }); }
+      if (profileRes.ok) { const p = await profileRes.json(); setProfile({ communicationStyle: p.communicationStyle || "", sampleMessages: p.sampleMessages || "", globalContext: p.globalContext || "", calendarIgnorePatterns: p.calendarIgnorePatterns || "" }); if (p.anthropicApiKeyMasked) setAnthropicKey(p.anthropicApiKeyMasked); if (p.hasAnthropicKey) setAnthropicKeySaved(true); }
       const staffResults: Record<string, Staff[]> = {};
       await Promise.all(arr.map(async (role) => { staffResults[role.id] = await fetch(`/api/roles/${role.id}/staff`).then(r => r.json()); }));
       setStaffByRole(staffResults);
@@ -131,12 +147,14 @@ export function SettingsPage() {
       fetchData();
     } catch { toast("Failed to add", "error"); }
   };
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const toggleRoleActive = async (roleId: string, active: boolean) => {
     try {
       await fetch(`/api/roles/${roleId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active }) });
       fetchData();
     } catch { toast("Failed to update", "error"); }
   };
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const deleteRole = async (roleId: string) => {
     try {
       await fetch(`/api/roles/${roleId}`, { method: "DELETE" });
@@ -493,9 +511,10 @@ export function SettingsPage() {
                 const lastSync = integration.lastSyncAt ? new Date(integration.lastSyncAt) : null;
                 const ago = lastSync ? Math.floor((Date.now() - lastSync.getTime()) / 60000) : null;
                 const agoLabel = ago !== null ? (ago < 1 ? "just now" : ago < 60 ? `${ago}m ago` : `${Math.floor(ago / 60)}h ago`) : "never";
+                const folderMap: Record<string, string> = (integration.config as Record<string, unknown>)?.folderMap as Record<string, string> || {};
 
                 return (
-                  <div key={integration.id} className="border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)] space-y-3 mt-3">
+                  <div key={integration.id} className="border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)] space-y-4 mt-3">
                     <div className="flex items-center justify-between">
                       <p className="text-[16px] font-semibold text-[var(--text-primary)]">Granola (All roles)</p>
                       <button
@@ -511,14 +530,96 @@ export function SettingsPage() {
                         )} />
                       </button>
                     </div>
-                    <div className="text-[14px] text-[var(--text-secondary)] space-y-1">
-                      <p className="text-[13px] text-[var(--text-tertiary)]">Maps Granola folders to roles automatically</p>
-                      <div className="grid grid-cols-2 gap-1 mt-2">
-                        {["Zeta", "HealthMap", "vQuip", "HealthMe", "Xenegrade", "React Health"].map((folder) => (
-                          <span key={folder} className="text-[12px] text-[var(--text-tertiary)]">{folder} folder &rarr; {folder}</span>
+
+                    {/* Folder → Role mapper */}
+                    <div>
+                      <p className="text-[13px] text-[var(--text-tertiary)] mb-2">Map Granola folders to roles</p>
+                      <div className="space-y-2">
+                        {Object.entries(folderMap).map(([folder, roleId]) => (
+                          <div key={folder} className="flex items-center gap-2">
+                            <input
+                              value={folder}
+                              onChange={(e) => {
+                                const newMap = { ...folderMap };
+                                const val = newMap[folder];
+                                delete newMap[folder];
+                                newMap[e.target.value] = val;
+                                fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
+                              }}
+                              onBlur={() => fetchIntegrations()}
+                              placeholder="Granola folder name"
+                              className={`${inputCls} flex-1`}
+                            />
+                            <span className="text-[var(--text-tertiary)] text-[13px] shrink-0">&rarr;</span>
+                            <select
+                              value={roleId}
+                              onChange={(e) => {
+                                const newMap = { ...folderMap, [folder]: e.target.value };
+                                fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
+                              }}
+                              className={`${inputCls} flex-1`}
+                            >
+                              <option value="">Select role...</option>
+                              {roles.map((r) => (
+                                <option key={r.id} value={r.id}>{r.name}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => {
+                                const newMap = { ...folderMap };
+                                delete newMap[folder];
+                                fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
+                              }}
+                              className="text-[var(--text-tertiary)] hover:text-red-400 shrink-0"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         ))}
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => {
+                              const newMap = { ...folderMap, "": "" };
+                              fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
+                            }}
+                            className="flex items-center gap-1.5 text-[13px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+                          >
+                            <Plus className="h-3.5 w-3.5" /> Add manually
+                          </button>
+                          <span className="text-[var(--border-default)]">|</span>
+                          <button
+                            onClick={async () => {
+                              toast("Discovering folders...", "success");
+                              try {
+                                const res = await fetch("/api/integrations/granola/folders");
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error);
+                                const discovered: string[] = (data.folders || []).map((f: { name: string }) => f.name);
+                                if (discovered.length === 0) { toast("No folders found in recent notes", "error"); return; }
+                                const newMap = { ...folderMap };
+                                let added = 0;
+                                for (const name of discovered) {
+                                  if (!Object.keys(newMap).some((k) => k.toLowerCase() === name.toLowerCase())) {
+                                    newMap[name] = "";
+                                    added++;
+                                  }
+                                }
+                                if (added === 0) { toast("All folders already mapped", "success"); return; }
+                                await fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) });
+                                fetchIntegrations();
+                                toast(`Found ${added} new folder${added === 1 ? "" : "s"}`, "success");
+                              } catch (err) { toast(err instanceof Error ? err.message : "Failed to discover folders", "error"); }
+                            }}
+                            className="flex items-center gap-1.5 text-[13px] text-[var(--accent-blue)] hover:text-[var(--text-primary)] transition-colors"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" /> Discover from Granola
+                          </button>
+                        </div>
                       </div>
-                      <p className="mt-2">Syncs every 30 minutes via system cron</p>
+                    </div>
+
+                    <div className="text-[14px] text-[var(--text-secondary)] space-y-1 pt-2 border-t border-[var(--border-subtle)]">
+                      <p>Syncs every 30 minutes via system cron</p>
                       <p>Last sync: <span className="text-[var(--text-tertiary)]">{agoLabel}</span>
                         {integration.lastSyncResult && <span className="text-[var(--text-tertiary)]"> — {integration.lastSyncResult}</span>}
                       </p>
@@ -537,11 +638,11 @@ export function SettingsPage() {
 
               {integrations.filter((i) => i.type === "granola").length === 0 && (
                 <div className="mt-3">
-                  <p className="text-[14px] text-[var(--text-tertiary)] mb-3">Auto-sync meeting transcripts from Granola into tasks and follow-ups across all roles. Requires GRANOLA_API_KEY in .env.local.</p>
+                  <p className="text-[14px] text-[var(--text-tertiary)] mb-3">Auto-sync meeting transcripts from Granola into tasks and follow-ups across all roles.</p>
                   <button
                     onClick={async () => {
                       try {
-                        await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "granola", roleId: "zeta", config: {} }) });
+                        await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "granola", roleId: roles[0]?.id || "", config: { folderMap: {} } }) });
                         toast("Granola integration connected", "success");
                         fetchIntegrations();
                       } catch { toast("Failed to connect", "error"); }
@@ -563,6 +664,7 @@ export function SettingsPage() {
             <div className="w-[160px] shrink-0 space-y-1">
               {([
                 { id: "general" as const, label: "General", icon: Settings },
+                { id: "apikeys" as const, label: "API Keys", icon: Link2 },
                 { id: "skills" as const, label: "Skills", icon: Zap },
                 { id: "costs" as const, label: "Costs", icon: DollarSign },
               ]).map((sub) => (
@@ -617,6 +719,14 @@ export function SettingsPage() {
                     </div>
                   </div>
 
+                  {/* Appearance */}
+                  <div>
+                    <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-3">Appearance</p>
+                    <div className="border border-[var(--border-subtle)] rounded-xl p-5 bg-[var(--surface-raised)]">
+                      <ThemeSwitcher />
+                    </div>
+                  </div>
+
                   {/* Schedule */}
                   <div>
                     <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-3">Schedule</p>
@@ -646,51 +756,194 @@ export function SettingsPage() {
                 </div>
               )}
 
+              {/* API Keys */}
+              {systemSubTab === "apikeys" && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-[16px] font-semibold text-[var(--text-primary)] mb-1">API Keys</h3>
+                    <p className="text-[14px] text-[var(--text-tertiary)]">Manage API keys used by Conductor. Keys stored here override environment variables.</p>
+                  </div>
+
+                  {/* Anthropic */}
+                  <div className="border border-[var(--border-subtle)] rounded-xl p-5 bg-[var(--surface-raised)] space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-[15px] font-medium text-[var(--text-primary)]">Anthropic API Key</p>
+                        <p className="text-[13px] text-[var(--text-tertiary)]">Used for all AI features — chat, drafts, extraction, transcript analysis</p>
+                      </div>
+                      {anthropicKeySaved && (
+                        <span className="text-[12px] text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">Saved</span>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type={showAnthropicKey ? "text" : "password"}
+                          value={anthropicKey}
+                          onChange={(e) => { setAnthropicKey(e.target.value); setAnthropicKeySaved(false); }}
+                          placeholder="sk-ant-..."
+                          className={inputCls}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAnthropicKey(!showAnthropicKey)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                        >
+                          {showAnthropicKey ? "Hide" : "Show"}
+                        </button>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await fetch("/api/profile", {
+                              method: "PUT",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ anthropicApiKey: anthropicKey || null }),
+                            });
+                            setAnthropicKeySaved(true);
+                            toast("API key saved", "success");
+                          } catch {
+                            toast("Failed to save", "error");
+                          }
+                        }}
+                        className="px-4 h-10 rounded-xl bg-[var(--accent-blue)] text-white text-[14px] font-medium hover:opacity-90 shrink-0"
+                      >
+                        Save
+                      </button>
+                    </div>
+                    {anthropicKey && (
+                      <button
+                        onClick={async () => {
+                          await fetch("/api/profile", {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ anthropicApiKey: null }),
+                          });
+                          setAnthropicKey("");
+                          setAnthropicKeySaved(false);
+                          toast("API key removed — will use environment variable", "success");
+                        }}
+                        className="text-[13px] text-red-400 hover:text-red-300"
+                      >
+                        Remove key (fall back to environment variable)
+                      </button>
+                    )}
+                    <p className="text-[12px] text-[var(--text-tertiary)]">
+                      Get your API key from <span className="text-[var(--accent-blue)]">console.anthropic.com</span>. If not set here, the ANTHROPIC_API_KEY environment variable is used.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Skills */}
               {systemSubTab === "skills" && (
                 <div className="space-y-4">
                   <p className="text-[14px] text-[var(--text-tertiary)] mb-3">Slash commands for the AI chat — type / in the chat input</p>
                   <div className="space-y-1 mb-4">
                     {allSkills.filter((s) => s.isBuiltIn).map((skill) => (
-                      <div key={skill.id} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
-                        <SkillIcon name={skill.icon} className="h-5 w-5 text-[var(--text-tertiary)] shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[15px] font-medium text-[var(--text-primary)]">/{skill.name}</p>
-                          <p className="text-[13px] text-[var(--text-tertiary)]">{skill.description}</p>
+                      <div key={skill.id} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
+                        <div className="flex items-center gap-3 px-4 py-3">
+                          <button onClick={() => setExpandedSkillId(expandedSkillId === skill.id ? null : skill.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                            <SkillIcon name={skill.icon} className="h-5 w-5 text-[var(--text-tertiary)] shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[15px] font-medium text-[var(--text-primary)]">/{skill.name}</p>
+                              <p className="text-[13px] text-[var(--text-tertiary)]">{skill.description}</p>
+                            </div>
+                            <ChevronDown className={cn("h-4 w-4 text-[var(--text-tertiary)] shrink-0 transition-transform", expandedSkillId === skill.id && "rotate-180")} />
+                          </button>
+                          <button
+                            onClick={() => toggleSkill(skill)}
+                            className={cn(
+                              "w-11 h-6 rounded-full relative transition-colors shrink-0",
+                              skill.enabled ? "bg-[var(--accent-blue)]" : "bg-[var(--border-default)]"
+                            )}
+                          >
+                            <span className={cn(
+                              "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform",
+                              skill.enabled ? "left-[22px]" : "left-0.5"
+                            )} />
+                          </button>
                         </div>
-                        <button
-                          onClick={() => toggleSkill(skill)}
-                          className={cn(
-                            "w-11 h-6 rounded-full relative transition-colors shrink-0",
-                            skill.enabled ? "bg-[var(--accent-blue)]" : "bg-[var(--border-default)]"
-                          )}
-                        >
-                          <span className={cn(
-                            "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform",
-                            skill.enabled ? "left-[22px]" : "left-0.5"
-                          )} />
-                        </button>
+                        {expandedSkillId === skill.id && (
+                          <div className="px-4 pb-4 pt-1 border-t border-[var(--border-subtle)]">
+                            <p className="text-[12px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-2">Prompt template</p>
+                            <pre className="text-[13px] text-[var(--text-secondary)] bg-[var(--surface-sunken)] rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed max-h-[300px] overflow-y-auto">{skill.prompt}</pre>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
+                  {/* Variable reference */}
+                  <div className="mt-6 mb-4">
+                    <button
+                      onClick={() => setExpandedSkillId(expandedSkillId === "__vars" ? null : "__vars")}
+                      className="flex items-center gap-2 text-[13px] text-[var(--accent-blue)] hover:text-[var(--text-primary)] transition-colors"
+                    >
+                      <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expandedSkillId === "__vars" && "rotate-180")} />
+                      Available template variables
+                    </button>
+                    {expandedSkillId === "__vars" && (
+                      <div className="mt-3 border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)]">
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[13px]">
+                          <p className="text-[12px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium col-span-2 mb-1">Current role</p>
+                          <code className="text-[var(--accent-blue)]">{"{{roleName}}"}</code><span className="text-[var(--text-tertiary)]">Company name</span>
+                          <code className="text-[var(--accent-blue)]">{"{{roleTitle}}"}</code><span className="text-[var(--text-tertiary)]">Your title</span>
+                          <code className="text-[var(--accent-blue)]">{"{{responsibilities}}"}</code><span className="text-[var(--text-tertiary)]">Role responsibilities</span>
+                          <code className="text-[var(--accent-blue)]">{"{{quarterlyGoals}}"}</code><span className="text-[var(--text-tertiary)]">Quarterly goals</span>
+                          <code className="text-[var(--accent-blue)]">{"{{staff}}"}</code><span className="text-[var(--text-tertiary)]">Team members list</span>
+
+                          <p className="text-[12px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium col-span-2 mt-3 mb-1">Tasks</p>
+                          <code className="text-[var(--accent-blue)]">{"{{todayTasks}}"}</code><span className="text-[var(--text-tertiary)]">Today&apos;s tasks for role</span>
+                          <code className="text-[var(--accent-blue)]">{"{{backlogTasks}}"}</code><span className="text-[var(--text-tertiary)]">Backlog items</span>
+                          <code className="text-[var(--accent-blue)]">{"{{inProgressTasks}}"}</code><span className="text-[var(--text-tertiary)]">In-progress items</span>
+                          <code className="text-[var(--accent-blue)]">{"{{blockedTasks}}"}</code><span className="text-[var(--text-tertiary)]">Blocked items (role)</span>
+                          <code className="text-[var(--accent-blue)]">{"{{allBlockedTasks}}"}</code><span className="text-[var(--text-tertiary)]">Blocked items (all roles)</span>
+                          <code className="text-[var(--accent-blue)]">{"{{recentCompleted}}"}</code><span className="text-[var(--text-tertiary)]">Completed in last 24h</span>
+                          <code className="text-[var(--accent-blue)]">{"{{weeklyCompleted}}"}</code><span className="text-[var(--text-tertiary)]">Completed this week (all)</span>
+                          <code className="text-[var(--accent-blue)]">{"{{calendarTasks}}"}</code><span className="text-[var(--text-tertiary)]">Calendar-sourced tasks</span>
+
+                          <p className="text-[12px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium col-span-2 mt-3 mb-1">Follow-ups</p>
+                          <code className="text-[var(--accent-blue)]">{"{{activeFollowUps}}"}</code><span className="text-[var(--text-tertiary)]">Waiting follow-ups (role)</span>
+                          <code className="text-[var(--accent-blue)]">{"{{staleFollowUps}}"}</code><span className="text-[var(--text-tertiary)]">Stale 3+ days (role)</span>
+                          <code className="text-[var(--accent-blue)]">{"{{allStaleFollowUps}}"}</code><span className="text-[var(--text-tertiary)]">Stale 3+ days (all roles)</span>
+                          <code className="text-[var(--accent-blue)]">{"{{weeklyResolved}}"}</code><span className="text-[var(--text-tertiary)]">Resolved this week</span>
+
+                          <p className="text-[12px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium col-span-2 mt-3 mb-1">Other</p>
+                          <code className="text-[var(--accent-blue)]">{"{{recentNotes}}"}</code><span className="text-[var(--text-tertiary)]">Last 5 notes for role</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Custom skills */}
-                  <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mt-6">Custom</p>
+                  <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium">Custom</p>
                   <div className="space-y-1">
                     {allSkills.filter((s) => !s.isBuiltIn).map((skill) => (
-                      <div key={skill.id} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
-                        <Zap className="h-5 w-5 text-[var(--text-tertiary)] shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[15px] font-medium text-[var(--text-primary)]">/{skill.name}</p>
-                          <p className="text-[13px] text-[var(--text-tertiary)]">{skill.description}</p>
-                        </div>
-                        <div className="flex gap-1 shrink-0">
-                          <button onClick={() => { setEditingSkillId(skill.id); setEditSkillForm({ label: skill.label, description: skill.description, prompt: skill.prompt, category: skill.category }); }} className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[var(--sidebar-hover)] transition-colors">
-                            <Pencil className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
+                      <div key={skill.id} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
+                        <div className="flex items-center gap-3 px-4 py-3">
+                          <button onClick={() => setExpandedSkillId(expandedSkillId === skill.id ? null : skill.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                            <Zap className="h-5 w-5 text-[var(--text-tertiary)] shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[15px] font-medium text-[var(--text-primary)]">/{skill.name}</p>
+                              <p className="text-[13px] text-[var(--text-tertiary)]">{skill.description}</p>
+                            </div>
+                            <ChevronDown className={cn("h-4 w-4 text-[var(--text-tertiary)] shrink-0 transition-transform", expandedSkillId === skill.id && "rotate-180")} />
                           </button>
-                          <button onClick={() => deleteSkill(skill.id)} className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[var(--sidebar-hover)] transition-colors">
-                            <Trash2 className="h-3.5 w-3.5 text-red-400" />
-                          </button>
+                          <div className="flex gap-1 shrink-0">
+                            <button onClick={() => { setEditingSkillId(skill.id); setEditSkillForm({ label: skill.label, description: skill.description, prompt: skill.prompt, category: skill.category }); }} className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[var(--sidebar-hover)] transition-colors">
+                              <Pencil className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
+                            </button>
+                            <button onClick={() => deleteSkill(skill.id)} className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[var(--sidebar-hover)] transition-colors">
+                              <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                            </button>
+                          </div>
                         </div>
+                        {expandedSkillId === skill.id && (
+                          <div className="px-4 pb-4 pt-1 border-t border-[var(--border-subtle)]">
+                            <p className="text-[12px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-2">Prompt template</p>
+                            <pre className="text-[13px] text-[var(--text-secondary)] bg-[var(--surface-sunken)] rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed max-h-[300px] overflow-y-auto">{skill.prompt}</pre>
+                          </div>
+                        )}
                       </div>
                     ))}
                     {allSkills.filter((s) => !s.isBuiltIn).length === 0 && !addingSkill && (

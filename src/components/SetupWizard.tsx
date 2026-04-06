@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Upload, ArrowRight, ArrowLeft, Check, Palette } from "lucide-react";
+import { Plus, Trash2, Upload, ArrowRight, ArrowLeft, Check, Palette, MessageSquare, Clock } from "lucide-react";
 
 const COLOR_PRESETS = [
   "#4d8ef7", "#2dd4bf", "#a78bfa", "#fbbf24", "#8cbf6e", "#fb7185",
@@ -12,11 +12,11 @@ const COLOR_PRESETS = [
 interface NewRole {
   name: string;
   title: string;
-  platform: string;
+  platforms: string[];
   color: string;
 }
 
-const STEPS = ["welcome", "password", "companies", "schedule", "profile", "import", "done"] as const;
+const STEPS = ["welcome", "password", "companies", "schedule", "profile", "done"] as const;
 type Step = typeof STEPS[number];
 
 export function SetupWizard({ onComplete }: { onComplete: () => void }) {
@@ -25,11 +25,19 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [roles, setRoles] = useState<NewRole[]>([]);
-  const [newRole, setNewRole] = useState<NewRole>({ name: "", title: "", platform: "Slack", color: COLOR_PRESETS[0] });
+  const [newRole, setNewRole] = useState<NewRole>({ name: "", title: "", platforms: [], color: COLOR_PRESETS[0] });
   const [commStyle, setCommStyle] = useState("");
   const [aboutMe, setAboutMe] = useState("");
   const [saving, setSaving] = useState(false);
-  const [importFile, setImportFile] = useState<File | null>(null);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [savedRoles, setSavedRoles] = useState<Array<{ id: string; name: string; color: string }>>([]);
+  const [scheduleBlocks, setScheduleBlocks] = useState<Array<{
+    label: string; startHour: number; startMinute: number; endHour: number; endMinute: number; roleId: string;
+  }>>([
+    { label: "Morning", startHour: 7, startMinute: 30, endHour: 10, endMinute: 0, roleId: "" },
+    { label: "Midday", startHour: 10, startMinute: 0, endHour: 14, endMinute: 0, roleId: "" },
+    { label: "Afternoon", startHour: 14, startMinute: 0, endHour: 17, endMinute: 0, roleId: "" },
+  ]);
   const [importing, setImporting] = useState(false);
 
   const stepIdx = STEPS.indexOf(step);
@@ -51,8 +59,17 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
     setSaving(true);
     try {
       const res = await fetch("/api/setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
-      if (!res.ok) throw new Error();
-      next();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPasswordError(data.error || "Failed to set password");
+        setSaving(false);
+        return;
+      }
+      // If roles already exist (from import), skip straight to done
+      try {
+        const setupCheck = await fetch("/api/setup").then((r) => r.json());
+        if (!setupCheck.needsSetup) { setStep("done"); } else { next(); }
+      } catch { next(); }
     } catch { setPasswordError("Failed to set password"); }
     setSaving(false);
   };
@@ -60,7 +77,7 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
   const addRole = () => {
     if (!newRole.name.trim() || !newRole.title.trim()) return;
     setRoles([...roles, { ...newRole }]);
-    setNewRole({ name: "", title: "", platform: "Slack", color: COLOR_PRESETS[(roles.length + 1) % COLOR_PRESETS.length] });
+    setNewRole({ name: "", title: "", platforms: [], color: COLOR_PRESETS[(roles.length + 1) % COLOR_PRESETS.length] });
   };
 
   const removeRole = (idx: number) => {
@@ -71,13 +88,18 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
     if (roles.length === 0) return;
     setSaving(true);
     try {
+      const created: Array<{ id: string; name: string; color: string }> = [];
       for (let i = 0; i < roles.length; i++) {
-        await fetch("/api/roles", {
+        const { platforms, ...rest } = roles[i];
+        const res = await fetch("/api/roles", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...roles[i], priority: i + 1 }),
+          body: JSON.stringify({ ...rest, platform: platforms.join(", ") || "Slack", priority: i + 1 }),
         });
+        const role = await res.json();
+        created.push({ id: role.id, name: role.name, color: role.color });
       }
+      setSavedRoles(created);
       next();
     } catch {}
     setSaving(false);
@@ -96,17 +118,57 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
     next();
   };
 
-  const handleImport = async () => {
-    if (!importFile) return;
-    setImporting(true);
+
+
+  const handleSaveSchedule = async () => {
+    setSaving(true);
     try {
-      const text = await importFile.text();
-      const data = JSON.parse(text);
-      const res = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-      if (!res.ok) throw new Error();
-      setStep("done");
+      const validBlocks = scheduleBlocks.filter((b) => b.roleId);
+      for (let i = 0; i < validBlocks.length; i++) {
+        const b = validBlocks[i];
+        const dayAssignments: Record<string, string> = {};
+        // Assign to all weekdays (1=Mon through 5=Fri)
+        for (let d = 1; d <= 5; d++) dayAssignments[String(d)] = b.roleId;
+        await fetch("/api/schedule/blocks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label: b.label,
+            startHour: b.startHour,
+            startMinute: b.startMinute,
+            endHour: b.endHour,
+            endMinute: b.endMinute,
+            dayAssignments,
+            sortOrder: i + 1,
+          }),
+        });
+      }
     } catch {}
-    setImporting(false);
+    setSaving(false);
+    next();
+  };
+
+  const formatTime = (h: number, m: number) => {
+    const suffix = h >= 12 ? "PM" : "AM";
+    const hour = h > 12 ? h - 12 : h === 0 ? 12 : h;
+    return `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
+  };
+
+  const addBlock = () => {
+    const last = scheduleBlocks[scheduleBlocks.length - 1];
+    const startH = last ? last.endHour : 9;
+    const startM = last ? last.endMinute : 0;
+    setScheduleBlocks([...scheduleBlocks, { label: "", startHour: startH, startMinute: startM, endHour: Math.min(startH + 2, 23), endMinute: 0, roleId: "" }]);
+  };
+
+  const removeBlock = (idx: number) => {
+    setScheduleBlocks(scheduleBlocks.filter((_, i) => i !== idx));
+  };
+
+  const updateBlock = (idx: number, updates: Partial<typeof scheduleBlocks[0]>) => {
+    const updated = [...scheduleBlocks];
+    updated[idx] = { ...updated[idx], ...updates };
+    setScheduleBlocks(updated);
   };
 
   const handleFinish = () => {
@@ -147,6 +209,32 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
                 <button onClick={next} className="bg-[var(--accent-blue)] text-white px-8 py-3.5 rounded-xl text-[16px] font-semibold hover:opacity-90 transition-opacity">
                   Get Started <ArrowRight className="inline h-4 w-4 ml-1" />
                 </button>
+                <div className="mt-8 pt-6 border-t border-[var(--border-subtle)]">
+                  <p className="text-[14px] text-[var(--text-tertiary)] mb-3">Already have a Conductor export?</p>
+                  <label className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[var(--border-subtle)] text-[14px] text-[var(--text-secondary)] hover:border-[var(--border-default)] hover:text-[var(--text-primary)] transition-colors cursor-pointer">
+                    <Upload className="h-4 w-4" />
+                    Import config file
+                    <input
+                      type="file"
+                      accept=".json"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setImporting(true);
+                        try {
+                          const text = await file.text();
+                          const data = JSON.parse(text);
+                          const res = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+                          if (!res.ok) throw new Error();
+                          setStep("password");
+                        } catch {}
+                        setImporting(false);
+                      }}
+                    />
+                  </label>
+                  {importing && <p className="text-[13px] text-[var(--accent-blue)] mt-2">Importing...</p>}
+                </div>
               </div>
             )}
 
@@ -179,29 +267,87 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
                 {roles.length > 0 && (
                   <div className="space-y-2 mb-6">
                     {roles.map((role, i) => (
-                      <div key={i} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
-                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[15px] font-medium text-[var(--text-primary)]">{role.name}</p>
-                          <p className="text-[13px] text-[var(--text-tertiary)]">{role.title} ({role.platform})</p>
+                      editingIdx === i ? (
+                        <div key={i} className="border border-[var(--accent-blue)] rounded-xl p-4 bg-[var(--surface-raised)] space-y-3">
+                          <input value={role.name} onChange={(e) => { const updated = [...roles]; updated[i] = { ...role, name: e.target.value }; setRoles(updated); }} placeholder="Company name" className={inputCls} autoFocus />
+                          <input value={role.title} onChange={(e) => { const updated = [...roles]; updated[i] = { ...role, title: e.target.value }; setRoles(updated); }} placeholder="Your title" className={inputCls} />
+                          <div>
+                            <label className="text-[13px] text-[var(--text-tertiary)] mb-1.5 flex items-center gap-1.5">
+                              <MessageSquare className="h-3.5 w-3.5" /> Chat platform
+                            </label>
+                            <div className="flex gap-2">
+                              {["Slack", "Teams", "Other"].map((p) => {
+                                const selected = role.platforms.includes(p);
+                                return (
+                                  <button key={p} type="button" onClick={() => { const updated = [...roles]; updated[i] = { ...role, platforms: selected ? role.platforms.filter((x) => x !== p) : [...role.platforms, p] }; setRoles(updated); }}
+                                    className={`px-4 py-2 rounded-lg text-[14px] border transition-all ${selected ? "border-[var(--accent-blue)] bg-[var(--accent-blue)]/10 text-[var(--accent-blue)]" : "border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"}`}
+                                  >{p}</button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Palette className="h-4 w-4 text-[var(--text-tertiary)]" />
+                            <div className="flex gap-1.5 flex-wrap">
+                              {COLOR_PRESETS.map((c) => (
+                                <button key={c} type="button" onClick={() => { const updated = [...roles]; updated[i] = { ...role, color: c }; setRoles(updated); }}
+                                  className="w-6 h-6 rounded-full border-2 transition-all"
+                                  style={{ backgroundColor: c, borderColor: role.color === c ? "white" : "transparent" }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <button onClick={() => setEditingIdx(null)} className="w-full py-2 rounded-xl bg-[var(--accent-blue)] text-white text-[14px] font-medium hover:opacity-90">
+                            Done
+                          </button>
                         </div>
-                        <button onClick={() => removeRole(i)} className="text-[var(--text-tertiary)] hover:text-red-400"><Trash2 className="h-4 w-4" /></button>
-                      </div>
+                      ) : (
+                        <div key={i} onClick={() => setEditingIdx(i)} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] cursor-pointer hover:border-[var(--border-default)] transition-colors">
+                          <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[15px] font-medium text-[var(--text-primary)]">{role.name}</p>
+                            <p className="text-[13px] text-[var(--text-tertiary)]">{role.title}{role.platforms.length > 0 ? ` (${role.platforms.join(", ")})` : ""}</p>
+                          </div>
+                          <button onClick={(e) => { e.stopPropagation(); removeRole(i); }} className="text-[var(--text-tertiary)] hover:text-red-400"><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                      )
                     ))}
                   </div>
                 )}
 
                 {/* Add form */}
                 <div className="border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)] space-y-3">
-                  <div className="flex gap-3">
-                    <input value={newRole.name} onChange={(e) => setNewRole({ ...newRole, name: e.target.value })} placeholder="Company name" className={`${inputCls} flex-1`} />
-                    <select value={newRole.platform} onChange={(e) => setNewRole({ ...newRole, platform: e.target.value })} className={`${inputCls} w-28`}>
-                      <option>Slack</option>
-                      <option>Teams</option>
-                      <option>Other</option>
-                    </select>
-                  </div>
+                  <input value={newRole.name} onChange={(e) => setNewRole({ ...newRole, name: e.target.value })} placeholder="Company name" className={inputCls} />
                   <input value={newRole.title} onChange={(e) => setNewRole({ ...newRole, title: e.target.value })} placeholder="Your title (e.g., Senior Engineer)" className={inputCls} onKeyDown={(e) => e.key === "Enter" && addRole()} />
+                  <div>
+                    <label className="text-[13px] text-[var(--text-tertiary)] mb-1.5 flex items-center gap-1.5">
+                      <MessageSquare className="h-3.5 w-3.5" /> Chat platform
+                    </label>
+                    <div className="flex gap-2">
+                      {["Slack", "Teams", "Other"].map((p) => {
+                        const selected = newRole.platforms.includes(p);
+                        return (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setNewRole({
+                              ...newRole,
+                              platforms: selected
+                                ? newRole.platforms.filter((x) => x !== p)
+                                : [...newRole.platforms, p],
+                            })}
+                            className={`px-4 py-2 rounded-lg text-[14px] border transition-all ${
+                              selected
+                                ? "border-[var(--accent-blue)] bg-[var(--accent-blue)]/10 text-[var(--accent-blue)]"
+                                : "border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2">
                     <Palette className="h-4 w-4 text-[var(--text-tertiary)]" />
                     <div className="flex gap-1.5 flex-wrap">
@@ -229,18 +375,98 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
               </div>
             )}
 
-            {/* Schedule (skippable) */}
+            {/* Schedule */}
             {step === "schedule" && (
               <div>
                 <h2 className="text-[28px] font-bold text-[var(--text-primary)] mb-2">Configure your schedule</h2>
-                <p className="text-[15px] text-[var(--text-tertiary)] mb-6">Assign companies to time blocks. You can customize this later in Settings.</p>
-                <div className="border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)]">
-                  <p className="text-[14px] text-[var(--text-tertiary)] text-center py-8">Schedule configuration is available in Settings &gt; System &gt; General after setup.</p>
+                <p className="text-[15px] text-[var(--text-tertiary)] mb-4">Divide your day into focused blocks, each dedicated to one company.</p>
+                <div className="rounded-xl bg-[var(--accent-blue)]/5 border border-[var(--accent-blue)]/15 px-4 py-3 mb-6">
+                  <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
+                    <strong className="text-[var(--text-primary)]">How it works:</strong> Conductor uses your schedule to show only the tasks and context for the company you should be focusing on right now. This keeps you from being overwhelmed by all your roles at once. During each block, you&apos;ll see that company&apos;s tasks, follow-ups, and AI context — nothing else.
+                  </p>
                 </div>
+
+                <div className="space-y-3 mb-4">
+                  {scheduleBlocks.map((block, i) => (
+                    <div key={i} className="border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)] space-y-3">
+                      <div className="flex items-center gap-3">
+                        <input
+                          value={block.label}
+                          onChange={(e) => updateBlock(i, { label: e.target.value })}
+                          placeholder="Block name (e.g., Morning Focus)"
+                          className={`${inputCls} flex-1`}
+                        />
+                        <button onClick={() => removeBlock(i)} className="text-[var(--text-tertiary)] hover:text-red-400 shrink-0">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />
+                        <div className="flex items-center gap-2 flex-1">
+                          <select
+                            value={`${block.startHour}:${String(block.startMinute).padStart(2, "0")}`}
+                            onChange={(e) => {
+                              const [h, m] = e.target.value.split(":").map(Number);
+                              updateBlock(i, { startHour: h, startMinute: m });
+                            }}
+                            className={`${inputCls} flex-1`}
+                          >
+                            {Array.from({ length: 48 }, (_, j) => {
+                              const h = Math.floor(j / 2) + 5;
+                              const m = (j % 2) * 30;
+                              if (h > 23) return null;
+                              return <option key={j} value={`${h}:${String(m).padStart(2, "0")}`}>{formatTime(h, m)}</option>;
+                            })}
+                          </select>
+                          <span className="text-[var(--text-tertiary)] text-[14px]">to</span>
+                          <select
+                            value={`${block.endHour}:${String(block.endMinute).padStart(2, "0")}`}
+                            onChange={(e) => {
+                              const [h, m] = e.target.value.split(":").map(Number);
+                              updateBlock(i, { endHour: h, endMinute: m });
+                            }}
+                            className={`${inputCls} flex-1`}
+                          >
+                            {Array.from({ length: 48 }, (_, j) => {
+                              const h = Math.floor(j / 2) + 5;
+                              const m = (j % 2) * 30;
+                              if (h > 23) return null;
+                              return <option key={j} value={`${h}:${String(m).padStart(2, "0")}`}>{formatTime(h, m)}</option>;
+                            })}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 flex-wrap">
+                        {savedRoles.map((r) => (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => updateBlock(i, { roleId: r.id })}
+                            className={`px-3 py-1.5 rounded-lg text-[13px] border transition-all flex items-center gap-1.5 ${
+                              block.roleId === r.id
+                                ? "border-[var(--accent-blue)] bg-[var(--accent-blue)]/10 text-[var(--text-primary)]"
+                                : "border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                            }`}
+                          >
+                            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
+                            {r.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button onClick={addBlock} className="w-full py-2.5 rounded-xl border border-dashed border-[var(--border-default)] text-[14px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] flex items-center justify-center gap-1.5 mb-6">
+                  <Plus className="h-4 w-4" /> Add time block
+                </button>
+
                 <div className="flex gap-3 mt-8">
                   <button onClick={prev} className="px-5 py-3 rounded-xl text-[15px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"><ArrowLeft className="inline h-4 w-4 mr-1" /> Back</button>
-                  <button onClick={next} className="flex-1 bg-[var(--accent-blue)] text-white py-3 rounded-xl text-[15px] font-semibold hover:opacity-90">
-                    Continue
+                  <button onClick={handleSaveSchedule} disabled={saving} className="flex-1 bg-[var(--accent-blue)] text-white py-3 rounded-xl text-[15px] font-semibold hover:opacity-90 disabled:opacity-50">
+                    {saving ? "Saving..." : "Continue"}
                   </button>
                 </div>
               </div>
@@ -250,7 +476,7 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
             {step === "profile" && (
               <div>
                 <h2 className="text-[28px] font-bold text-[var(--text-primary)] mb-2">Your voice</h2>
-                <p className="text-[15px] text-[var(--text-tertiary)] mb-6">Help the AI match your communication style. You can skip this and configure later.</p>
+                <p className="text-[15px] text-[var(--text-tertiary)] mb-6">Describe your general communication style. You can also set per-company tone and context in Settings after setup.</p>
                 <div className="space-y-4">
                   <div>
                     <label className="text-[13px] text-[var(--text-tertiary)] mb-1.5 block">Communication style</label>
@@ -264,35 +490,7 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
                 <div className="flex gap-3 mt-8">
                   <button onClick={prev} className="px-5 py-3 rounded-xl text-[15px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"><ArrowLeft className="inline h-4 w-4 mr-1" /> Back</button>
                   <button onClick={handleSaveProfile} disabled={saving} className="flex-1 bg-[var(--accent-blue)] text-white py-3 rounded-xl text-[15px] font-semibold hover:opacity-90 disabled:opacity-50">
-                    {saving ? "Saving..." : (commStyle || aboutMe ? "Save & Continue" : "Skip")}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Import (optional) */}
-            {step === "import" && (
-              <div>
-                <h2 className="text-[28px] font-bold text-[var(--text-primary)] mb-2">Import existing config</h2>
-                <p className="text-[15px] text-[var(--text-tertiary)] mb-6">Have a Conductor export file? Import it to restore your full setup.</p>
-                <div className="border border-dashed border-[var(--border-default)] rounded-xl p-8 text-center">
-                  <Upload className="h-8 w-8 text-[var(--text-tertiary)] mx-auto mb-3" />
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                    className="block mx-auto text-[14px] text-[var(--text-secondary)]"
-                  />
-                  {importFile && (
-                    <button onClick={handleImport} disabled={importing} className="mt-4 bg-[var(--accent-blue)] text-white px-6 py-2.5 rounded-xl text-[14px] font-semibold hover:opacity-90 disabled:opacity-50">
-                      {importing ? "Importing..." : "Import"}
-                    </button>
-                  )}
-                </div>
-                <div className="flex gap-3 mt-8">
-                  <button onClick={prev} className="px-5 py-3 rounded-xl text-[15px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"><ArrowLeft className="inline h-4 w-4 mr-1" /> Back</button>
-                  <button onClick={next} className="flex-1 bg-[var(--accent-blue)] text-white py-3 rounded-xl text-[15px] font-semibold hover:opacity-90">
-                    Skip
+                    {saving ? "Saving..." : "Continue"}
                   </button>
                 </div>
               </div>

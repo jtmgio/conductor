@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { trackUsage } from "@/lib/ai-usage";
 import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic();
+import { getAnthropicApiKey } from "@/lib/api-keys";
 
 const DEFAULT_IGNORE_PATTERNS = [
   "OOO", "Out of Office", "Busy", "Deep Work", "Focus Time",
@@ -67,6 +66,9 @@ export async function POST(req: NextRequest) {
   const { image, date } = await req.json();
   if (!image) return NextResponse.json({ error: "image required" }, { status: 400 });
   if (!date) return NextResponse.json({ error: "date required" }, { status: 400 });
+
+  const apiKey = await getAnthropicApiKey();
+  const anthropic = new Anthropic({ apiKey });
 
   const ignorePatterns = await getIgnorePatterns();
 

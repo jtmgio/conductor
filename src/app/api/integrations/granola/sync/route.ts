@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import Anthropic from "@anthropic-ai/sdk";
 import { trackUsage } from "@/lib/ai-usage";
+import { getAnthropicApiKey } from "@/lib/api-keys";
 
-const anthropic = new Anthropic();
 const GRANOLA_API = "https://public-api.granola.ai/v1";
 
 // Folder-to-role mapping built dynamically from active roles
@@ -62,18 +62,21 @@ async function fetchNoteWithTranscript(apiKey: string, noteId: string): Promise<
   return res.json();
 }
 
-function matchRole(folderName: string | null | undefined, roleMapping: Record<string, string>, customMappings?: Record<string, string>): string | null {
+function matchRole(folderName: string | null | undefined, roleMapping: Record<string, string>, folderMap: Record<string, string>): string | null {
   if (!folderName) return null;
 
-  // Custom mappings first
-  if (customMappings?.[folderName]) return customMappings[folderName];
+  // Configured folder mappings first (exact)
+  if (folderMap[folderName]) return folderMap[folderName];
 
-  // Exact match against role names
-  if (roleMapping[folderName]) return roleMapping[folderName];
-
-  // Case-insensitive
+  // Case-insensitive folder map
   const lower = folderName.toLowerCase();
-  for (const [name, roleId] of Object.entries({ ...roleMapping, ...customMappings })) {
+  for (const [name, roleId] of Object.entries(folderMap)) {
+    if (name.toLowerCase() === lower) return roleId;
+  }
+
+  // Fallback: match folder name against role names
+  if (roleMapping[folderName]) return roleMapping[folderName];
+  for (const [name, roleId] of Object.entries(roleMapping)) {
     if (name.toLowerCase() === lower) return roleId;
   }
 
@@ -81,16 +84,19 @@ function matchRole(folderName: string | null | undefined, roleMapping: Record<st
 }
 
 export async function POST(_req: NextRequest) {
+  const anthropicApiKey = await getAnthropicApiKey();
+  const anthropic = new Anthropic({ apiKey: anthropicApiKey });
+
   const apiKey = process.env.GRANOLA_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "GRANOLA_API_KEY not configured" }, { status: 500 });
   }
 
   const integration = await prisma.integration.findUnique({ where: { type: "granola" } });
-  const customMappings = (integration?.config as { customFolderMappings?: Record<string, string> })?.customFolderMappings;
+  const folderMap: Record<string, string> = (integration?.config as { folderMap?: Record<string, string> })?.folderMap || {};
   const since = integration?.lastSyncAt || new Date(Date.now() - 2 * 60 * 60 * 1000);
 
-  // Build role name → role ID mapping from active roles
+  // Build role name → role ID mapping from active roles (fallback for unmapped folders)
   const activeRoles = await prisma.role.findMany({ where: { active: true } });
   const roleMapping: Record<string, string> = {};
   for (const role of activeRoles) {
@@ -118,7 +124,7 @@ export async function POST(_req: NextRequest) {
   );
 
   for (const note of notes) {
-    const roleId = matchRole(note.folder?.name, roleMapping, customMappings);
+    const roleId = matchRole(note.folder?.name, roleMapping, folderMap);
 
     if (!roleId) {
       noFolder++;
@@ -311,8 +317,8 @@ Return ONLY valid JSON, no markdown backticks:
     update: { lastSyncAt: new Date(), lastSyncResult: `success: ${resultSummary}` },
     create: {
       type: "granola",
-      roleId: "zeta",
-      config: {},
+      roleId: activeRoles[0]?.id || "",
+      config: { folderMap },
       enabled: true,
       lastSyncAt: new Date(),
       lastSyncResult: `success: ${resultSummary}`,

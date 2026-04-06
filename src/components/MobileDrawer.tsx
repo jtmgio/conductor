@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, Crosshair, Inbox, ListChecks, Columns3, Sparkles, Settings, LogOut } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
-import { ThemeSwitcher } from "./ThemeSwitcher";
 
 const navLinks = [
   { href: "/", label: "Focus", icon: Crosshair },
@@ -118,12 +117,6 @@ export function MobileDrawer({ currentBlock }: MobileDrawerProps) {
                   );
                 })}
               </nav>
-
-              {/* Theme switcher */}
-              <div className="border-t border-[var(--border-subtle)] mx-4" />
-              <div className="px-4 py-3">
-                <ThemeSwitcher />
-              </div>
 
               {/* Sign out */}
               <div className="border-t border-[var(--border-subtle)] mx-4" />

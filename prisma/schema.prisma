@@ -15,6 +15,7 @@ model UserProfile {
   globalContext           String?
   calendarIgnorePatterns String?
   passwordHash           String?
+  anthropicApiKey        String?
   updatedAt              DateTime @updatedAt
 }
 

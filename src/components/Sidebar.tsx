@@ -6,7 +6,6 @@ import { Crosshair, Inbox, ListChecks, Columns3, Sparkles, Settings, LogOut, Boo
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { GlobalSearch } from "./GlobalSearch";
-import { ThemeSwitcher } from "./ThemeSwitcher";
 
 // Role colors come from the currentBlock/nextBlocks props — no hardcoded mapping
 
@@ -178,11 +177,6 @@ export function Sidebar({ currentBlock, nextBlocks }: SidebarProps) {
           </div>
         </div>
       )}
-
-      {/* Theme switcher */}
-      <div className={cn("px-4 pb-2", !nextBlocks?.length && "mt-auto")}>
-        <ThemeSwitcher />
-      </div>
 
       {/* Logout */}
       <div className="px-3 pb-4">

@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { SetupWizard } from "@/components/SetupWizard";
-import { signIn } from "next-auth/react";
 
 export default function SetupPage() {
   const router = useRouter();

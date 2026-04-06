@@ -6,7 +6,7 @@ import { TaskItem } from "./TaskItem";
 import { MorningPick } from "./MorningPick";
 import { STATUS_CONFIG, STATUS_ORDER } from "./TaskItem";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { Plus, Sparkles, Moon, Inbox, Users, MessageSquare, ChevronLeft, ChevronRight, List, Columns3, Check, X, Trash2 } from "lucide-react";
+import { Plus, Sparkles, Moon, Inbox, Users, MessageSquare, ChevronLeft, ChevronRight, List, Columns3, Check, X, Trash2, Clock, Mic, Key, Link2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
@@ -63,6 +63,8 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
   const [boardDragId, setBoardDragId] = useState<string | null>(null);
   const [boardDragOverCol, setBoardDragOverCol] = useState<string | null>(null);
   const [blockOverrideIdx, setBlockOverrideIdx] = useState<number | null>(null);
+  const [onboarding, setOnboarding] = useState<Record<string, boolean> | null>(null);
+  const [showChecklist, setShowChecklist] = useState(true);
   const { toast } = useToast();
 
   // Block navigation: override lets user cycle through all blocks
@@ -104,6 +106,13 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
   }, []);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && localStorage.getItem("conductor-checklist-dismissed") === "true") {
+      setShowChecklist(false);
+    }
+    fetch("/api/onboarding").then((r) => r.json()).then(setOnboarding).catch(() => {});
+  }, [allTasks.length]);
 
   const completeTask = async (id: string) => {
     try {
@@ -237,47 +246,93 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     );
   }
 
-  // First-run welcome
-  if (allTasks.length === 0) {
-    return (
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="py-12">
-        <div className="flex justify-center mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-[var(--surface-raised)] flex items-center justify-center">
-            <Sparkles className="h-6 w-6 text-[var(--text-tertiary)]" />
+  // First-run welcome / onboarding checklist
+  const dismissChecklist = () => {
+    setShowChecklist(false);
+    localStorage.setItem("conductor-checklist-dismissed", "true");
+  };
+
+  const checklistItems: Array<{ key: string; label: string; description: string; icon: React.ElementType; href: string }> = [
+    { key: "tasks", label: "Add your first tasks", description: "Paste a transcript or add tasks manually", icon: Inbox, href: "/inbox" },
+    { key: "schedule", label: "Configure your schedule", description: "Assign companies to time blocks", icon: Clock, href: "/settings?tab=system&sub=general" },
+    { key: "staff", label: "Set up your team", description: "Add staff to each role for smart drafting", icon: Users, href: "/settings?tab=roles" },
+    { key: "voiceProfile", label: "Set your voice profile", description: "Help AI match your communication style", icon: Mic, href: "/settings?tab=profile" },
+    { key: "apiKey", label: "Add an API key", description: "Required for AI chat, drafts, and extraction", icon: Key, href: "/settings?tab=system&sub=apikeys" },
+    { key: "integrations", label: "Connect integrations", description: "Linear for tasks, Granola for meeting transcripts", icon: Link2, href: "/settings?tab=integrations" },
+    { key: "ai", label: "Talk to AI", description: "Ask questions about your schedule or draft messages", icon: MessageSquare, href: "/ai" },
+  ];
+
+  if (allTasks.length === 0 || (onboarding && showChecklist && Object.values(onboarding).some((v) => !v))) {
+    const completedCount = onboarding ? Object.values(onboarding).filter(Boolean).length : 0;
+    const totalCount = checklistItems.length;
+    const allDone = completedCount === totalCount;
+
+    if (allTasks.length === 0 || showChecklist) {
+      return (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="py-12">
+          <div className="flex justify-center mb-6">
+            <div className="w-12 h-12 rounded-2xl bg-[var(--surface-raised)] flex items-center justify-center">
+              <Sparkles className="h-6 w-6 text-[var(--text-tertiary)]" />
+            </div>
           </div>
-        </div>
-        <div className="text-center mb-8">
-          <h1 className="text-[28px] font-semibold text-[var(--text-primary)]">Welcome to Conductor</h1>
-          <p className="text-[15px] text-[var(--text-secondary)] mt-1.5">Your 6-role operating system. Start by adding tasks.</p>
-        </div>
-        <div className="space-y-3">
-          <Link href="/inbox" className="flex items-center gap-4 border border-[var(--border-subtle)] rounded-xl p-4 hover:bg-[var(--sidebar-hover)] transition-colors">
-            <Inbox className="h-5 w-5 text-[var(--text-tertiary)] shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[17px] font-medium text-[var(--text-primary)]">Add your first tasks</p>
-              <p className="text-[15px] text-[var(--text-tertiary)] mt-0.5">Paste a transcript or add tasks manually</p>
-            </div>
-            <ChevronRight className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />
-          </Link>
-          <Link href="/settings" className="flex items-center gap-4 border border-[var(--border-subtle)] rounded-xl p-4 hover:bg-[var(--sidebar-hover)] transition-colors">
-            <Users className="h-5 w-5 text-[var(--text-tertiary)] shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[17px] font-medium text-[var(--text-primary)]">Set up your team</p>
-              <p className="text-[15px] text-[var(--text-tertiary)] mt-0.5">Add staff to each role for smart drafting</p>
-            </div>
-            <ChevronRight className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />
-          </Link>
-          <Link href="/ai" className="flex items-center gap-4 border border-[var(--border-subtle)] rounded-xl p-4 hover:bg-[var(--sidebar-hover)] transition-colors">
-            <MessageSquare className="h-5 w-5 text-[var(--text-tertiary)] shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[17px] font-medium text-[var(--text-primary)]">Talk to AI</p>
-              <p className="text-[15px] text-[var(--text-tertiary)] mt-0.5">Ask questions about your schedule or draft messages</p>
-            </div>
-            <ChevronRight className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />
-          </Link>
-        </div>
-      </motion.div>
-    );
+          <div className="text-center mb-8">
+            <h1 className="text-[28px] font-semibold text-[var(--text-primary)]">
+              {allTasks.length === 0 ? "Welcome to Conductor" : "Getting set up"}
+            </h1>
+            <p className="text-[15px] text-[var(--text-secondary)] mt-1.5">
+              {allDone ? "You're all set! Dismiss this checklist to get started." : `${completedCount} of ${totalCount} complete — finish setting up your workspace.`}
+            </p>
+            {/* Progress bar */}
+            {onboarding && (
+              <div className="flex gap-1.5 mt-4 max-w-[320px] mx-auto">
+                {checklistItems.map((item) => (
+                  <div
+                    key={item.key}
+                    className="flex-1 h-1 rounded-full transition-colors"
+                    style={{ backgroundColor: onboarding[item.key] ? "var(--accent-blue)" : "var(--border-subtle)" }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="space-y-2">
+            {checklistItems.map((item) => {
+              const done = onboarding?.[item.key] ?? false;
+              return (
+                <Link
+                  key={item.key}
+                  href={item.href}
+                  className={`flex items-center gap-4 border rounded-xl p-4 transition-colors ${
+                    done
+                      ? "border-[var(--border-subtle)]/50 opacity-60"
+                      : "border-[var(--border-subtle)] hover:bg-[var(--sidebar-hover)]"
+                  }`}
+                >
+                  {done ? (
+                    <CheckCircle2 className="h-5 w-5 text-green-400 shrink-0" />
+                  ) : (
+                    <item.icon className="h-5 w-5 text-[var(--text-tertiary)] shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-[16px] font-medium ${done ? "text-[var(--text-tertiary)] line-through" : "text-[var(--text-primary)]"}`}>{item.label}</p>
+                    <p className="text-[14px] text-[var(--text-tertiary)] mt-0.5">{item.description}</p>
+                  </div>
+                  {!done && <ChevronRight className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />}
+                </Link>
+              );
+            })}
+          </div>
+          <div className="text-center mt-6">
+            <button
+              onClick={dismissChecklist}
+              className="text-[14px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+            >
+              {allDone ? "Dismiss" : "Skip for now"}
+            </button>
+          </div>
+        </motion.div>
+      );
+    }
   }
 
   // Off the clock — show all today's tasks with a subtle indicator

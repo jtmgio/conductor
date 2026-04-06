@@ -7,6 +7,8 @@ import { ChatThread } from "@/components/ChatThread";
 import { DraftVariants } from "@/components/DraftVariants";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { Key } from "lucide-react";
+import Link from "next/link";
 
 interface Role { id: string; name: string; title: string; color: string; }
 interface Message { role: "user" | "assistant"; content: string; timestamp?: string; }
@@ -34,6 +36,7 @@ export function AIPage() {
   const [draftVariants, setDraftVariants] = useState<DraftVariant[] | null>(null);
   const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
   const [conductorData, setConductorData] = useState<ConductorContext | undefined>();
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -43,6 +46,9 @@ export function AIPage() {
       setActiveRoleId(searchParams.get("roleId") || arr[0]?.id || "");
     }).catch(() => {});
     fetch("/api/context").then((r) => r.json()).then(setConductorData).catch(() => {});
+    fetch("/api/profile").then((r) => r.json()).then((p) => {
+      setHasApiKey(p.hasAnthropicKey);
+    }).catch(() => {});
   }, [searchParams]);
 
   const loadConversation = useCallback(async (roleId: string) => {
@@ -85,6 +91,23 @@ export function AIPage() {
   return (
     <AppShell>
       <div className="py-4 flex flex-col h-[calc(100vh-80px)] lg:h-[calc(100vh-48px)]">
+        {/* No API key notice */}
+        {hasApiKey === false && (
+          <div className="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/5 px-5 py-4 flex items-center gap-4">
+            <Key className="h-5 w-5 text-amber-400 shrink-0" />
+            <div className="flex-1">
+              <p className="text-[15px] font-medium text-[var(--text-primary)]">No API key configured</p>
+              <p className="text-[13px] text-[var(--text-tertiary)]">AI features require an Anthropic API key. Add one in Settings to get started.</p>
+            </div>
+            <Link
+              href="/settings?tab=system&sub=apikeys"
+              className="px-4 py-2 rounded-lg bg-[var(--accent-blue)] text-white text-[13px] font-medium hover:opacity-90 shrink-0"
+            >
+              Add API Key
+            </Link>
+          </div>
+        )}
+
         {/* Role tabs + model selector */}
         <div className="flex items-center gap-3 mb-4 shrink-0">
           <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 flex-1">

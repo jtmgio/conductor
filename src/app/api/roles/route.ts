@@ -18,8 +18,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Allow unauthenticated access during setup (no roles = fresh install)
+  const roleCount = await prisma.role.count();
+  if (roleCount > 0) {
+    const session = await getServerSession(authOptions);
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const { name, title, platform, color, priority } = await req.json();
   if (!name || !title) return NextResponse.json({ error: "name and title required" }, { status: 400 });

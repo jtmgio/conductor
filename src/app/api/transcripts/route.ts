@@ -4,10 +4,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import Anthropic from "@anthropic-ai/sdk";
 import { trackUsage } from "@/lib/ai-usage";
+import { getAnthropicApiKey } from "@/lib/api-keys";
 
-const anthropic = new Anthropic();
-
-async function generateAndSaveSummary(transcriptId: string, rawText: string, roleName: string, roleId: string) {
+async function generateAndSaveSummary(anthropic: Anthropic, transcriptId: string, rawText: string, roleName: string, roleId: string) {
   try {
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
@@ -39,6 +38,9 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const apiKey = await getAnthropicApiKey();
+  const anthropic = new Anthropic({ apiKey });
+
   const { roleId, rawText, summary } = await req.json();
   if (!roleId || !rawText) {
     return NextResponse.json({ error: "roleId and rawText required" }, { status: 400 });
@@ -53,7 +55,7 @@ export async function POST(req: NextRequest) {
   if (!summary && rawText.length > 500) {
     const role = await prisma.role.findUnique({ where: { id: roleId }, select: { name: true } });
     // Fire and forget — don't await
-    generateAndSaveSummary(transcript.id, rawText, role?.name || "unknown", roleId);
+    generateAndSaveSummary(anthropic, transcript.id, rawText, role?.name || "unknown", roleId);
   }
 
   return NextResponse.json(transcript);

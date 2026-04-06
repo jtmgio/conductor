@@ -6,12 +6,14 @@ import { Prisma } from "@prisma/client";
 import { assembleContext, getConversationMessages } from "@/lib/ai-context";
 import Anthropic from "@anthropic-ai/sdk";
 import { trackUsage } from "@/lib/ai-usage";
-
-const anthropic = new Anthropic();
+import { getAnthropicApiKey } from "@/lib/api-keys";
 
 export async function POST(req: NextRequest, { params }: { params: { roleId: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const apiKey = await getAnthropicApiKey();
+  const anthropic = new Anthropic({ apiKey });
 
   const { message, attachments, model } = await req.json();
   if (!message) return NextResponse.json({ error: "message required" }, { status: 400 });

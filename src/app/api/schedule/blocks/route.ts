@@ -4,8 +4,11 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const roleCount = await prisma.role.count();
+  if (roleCount > 0) {
+    const session = await getServerSession(authOptions);
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const blocks = await prisma.scheduleBlock.findMany({
     orderBy: { sortOrder: "asc" },
@@ -14,8 +17,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const roleCount = await prisma.role.count();
+  if (roleCount > 0) {
+    const session = await getServerSession(authOptions);
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const { label, startHour, startMinute, endHour, endMinute, dayAssignments, sortOrder } = await req.json();
   if (label === undefined || startHour === undefined || endHour === undefined) {
