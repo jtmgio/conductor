@@ -29,7 +29,7 @@ export const articles: Article[] = [
     title: "What is Conductor?",
     category: "getting-started",
     summary: "A personal productivity OS for managing multiple engineering roles simultaneously.",
-    content: `Conductor is a personal productivity operating system built for an engineer managing 6 concurrent W2 engineering roles. It replaces traditional task managers with a system designed around time blocks, role switching, and AI-powered automation.
+    content: `Conductor is a personal productivity operating system built for an engineer managing multiple concurrent engineering roles. It replaces traditional task managers with a system designed around time blocks, role switching, and AI-powered automation.
 
 **Core philosophy:**
 - One role at a time. Focus mode shows only the current time block's work.
@@ -37,36 +37,28 @@ export const articles: Article[] = [
 - No guilt. End of day is silent — incomplete tasks return to backlog quietly.
 - AI does the busywork. Meeting transcripts become tasks and follow-ups automatically.
 
-**The 6 roles (priority order):**
-1. Zeta — UI Director / Staff Engineer (Slack)
-2. HealthMap — Principal UI Architect (Teams)
-3. vQuip — CTO, 3% equity (Slack)
-4. HealthMe — Sr UI Engineer (Slack)
-5. Xenegrade — Sr Engineer (Slack)
-6. React Health — Sr Node/NestJS Engineer (Teams)
-
-When a time block has no work, pull from the highest-priority role that has tasks. This is called the **priority waterfall**.`,
+**Your roles** are configured in Settings > Roles, each with a priority level, color, platform (Slack or Teams), and communication tone. When a time block has no work, Conductor pulls from the highest-priority role that has tasks. This is called the **priority waterfall**.`,
   },
   {
     slug: "schedule",
     title: "The Daily Schedule",
     category: "getting-started",
-    summary: "6 time blocks from 7:30 AM to 8:00 PM, with a hard family stop at 5 PM.",
-    content: `Conductor divides each weekday into 6 time blocks:
+    summary: "Time blocks divide your day into focused role segments. Fully configurable.",
+    content: `Conductor divides each weekday into time blocks that you configure during onboarding or in Settings > System > Schedule.
 
-**b1 (7:30 - 10:00 AM)** — Zeta or HealthMap (alternating days)
-**b2 (10:00 - 10:30 AM)** — Triage across all Slack and Teams channels
-**b3 (10:30 AM - 3:00 PM)** — vQuip (meetings + CTO async work)
-**b4 (3:00 - 4:00 PM)** — HealthMap or HealthMe
-**b5 (4:00 - 5:00 PM)** — HealthMe or Xenegrade
+**Default blocks** (customizable):
+- **Morning** — Deep focus work
+- **Triage** — Check all communication channels
+- **Midday** — Primary meetings / collaboration
+- **Afternoon** — Secondary role work
+- **Late Afternoon** — Catch-up and async
+- **Evening** — Low-touch, optional block
 
-**5:00 PM is a hard stop.** Family time from 5-7 PM.
-
-**b6 (7:00 - 8:00 PM)** — Low-touch evening block (Xenegrade or React Health, from bed)
+Each block is assigned to a role, and you can set different roles per weekday using the schedule grid.
 
 The sidebar always shows your current block with the role name and color. Focus mode automatically switches to the active role when a new block starts.
 
-Schedule overrides can be configured in Settings > System > General for days when the default doesn't apply.`,
+Schedule overrides can be configured in Settings > System > Schedule for days when the default doesn't apply.`,
   },
   {
     slug: "priority-waterfall",
@@ -76,15 +68,9 @@ Schedule overrides can be configured in Settings > System > General for days whe
     content: `The priority waterfall ensures no time block goes idle when there's work to do.
 
 **How it works:**
-If your current block's assigned role has no tasks marked for today, Conductor looks up the priority list:
-1. Zeta (highest pay, highest priority)
-2. HealthMap
-3. vQuip
-4. HealthMe
-5. Xenegrade
-6. React Health (lowest touch)
+If your current block's assigned role has no tasks marked for today, Conductor looks up your roles in priority order (configured in Settings > Roles). The first role with pending today-tasks becomes the active role for that block.
 
-The first role with pending today-tasks becomes the active role for that block.
+Priority is set per role — priority 1 is highest. When multiple roles have work, the highest-priority role wins.
 
 **This is automatic in Focus mode.** You don't need to manually switch — the system shows you the right work.`,
   },
@@ -103,7 +89,7 @@ The first role with pending today-tasks becomes the active role for that block.
 
 **End of day is silent.** At 5 PM, incomplete tasks quietly return to backlog. No summary, no report, no "you didn't finish X" messaging. Just close the app.
 
-**Focus means ONE role.** The Focus view shows only the current time block's role. No cross-role noise, no "you also have 5 Zeta tasks" reminders.`,
+**Focus means ONE role.** The Focus view shows only the current time block's role. No cross-role noise, no reminders about other roles' tasks.`,
   },
 
   // === DAILY WORKFLOW ===
@@ -132,8 +118,8 @@ After picking (or skipping), Focus view takes over and shows your current block'
     summary: "One role, one task list. Complete tasks by checking the box — they slide away.",
     content: `Focus is the main view you'll use throughout the day. It shows:
 
-- **Current time block** at the top (e.g., "10:30 AM - 3:00 PM")
-- **Active role** with its color (e.g., "vQuip" in purple)
+- **Current time block** at the top with the time range
+- **Active role** with its color
 - **Today's tasks** for that role only
 
 **Working through tasks:**
@@ -195,7 +181,7 @@ Follow-ups can be created manually or extracted automatically from meeting trans
     summary: "AI writes messages in your voice. Select a role, describe what you need, get 2-3 variants.",
     content: `Go to the **AI** tab, select a role, and ask Claude to draft a message.
 
-Example: "Draft a message to Gates about the D22 deployment timeline"
+Example: "Draft a message to Sarah about the deployment timeline"
 
 Claude will:
 - Match your communication style (configured in Settings > Profile)
@@ -205,7 +191,7 @@ Claude will:
 
 Copy the one you want and paste it into Slack/Teams/email.
 
-**Your voice matters:** The AI uses your communication style from Settings > Profile. The more sample messages you provide, the better it matches your tone. It knows you use lowercase in Slack, "yea" not "yeah", and never say "I hope this finds you well."`,
+**Your voice matters:** The AI uses your communication style from Settings > Profile. The more sample messages you provide, the better it matches your tone.`,
   },
 
   // === AI FEATURES ===
@@ -247,7 +233,7 @@ Copy the one you want and paste it into Slack/Teams/email.
 
 **Examples of what you can ask:**
 - "Build me a chart of my task distribution across roles"
-- "Create a mermaid diagram of the vQuip team structure"
+- "Create a mermaid diagram of my team structure"
 - "Show me a dashboard of my follow-up status"
 
 **Types supported:**
@@ -341,13 +327,9 @@ Tasks from Linear show a "Linear" indicator badge so you know where they came fr
 4. Go to Settings > Integrations > Connect Granola
 
 **Folder-to-role mapping:**
-Organize your meetings in Granola folders by company. The folder name maps to a Conductor role:
-- "Zeta" folder → Zeta role
-- "HealthMap" folder → HealthMap role
-- "vQuip" folder → vQuip role
-- (and so on for all 6 roles)
+Organize your meetings in Granola folders by company. Configure the folder-to-role mapping in Settings > Integrations > Granola. Each Granola folder name maps to a Conductor role.
 
-Notes without a recognized folder are skipped.
+Notes without a recognized folder mapping are skipped.
 
 **What happens on each sync:**
 1. Conductor fetches new notes from Granola
@@ -495,7 +477,7 @@ The sidebar also shows your current time block and upcoming blocks so you always
     content: `Settings is organized into 4 main tabs:
 
 **Roles** (default tab)
-Configure each of your 6 roles:
+Configure each of your roles:
 - Responsibilities — what you own and are accountable for
 - Quarterly goals — current objectives
 - Communication tone — how AI should write for this role
@@ -530,16 +512,156 @@ Your personal voice settings (applies to all roles):
 
 **Quarterly Goals:** Current quarter's objectives. The AI uses these in sprint planning (/sprint-plan) and status updates (/draft-update) to align recommendations with your goals.
 
-**Communication Tone:** How AI should write for this role. Examples: "Technical, hands-on, IC-level" for Zeta vs "Strategic, CTO-level. Delegate, don't do" for vQuip.
+**Communication Tone:** How AI should write for this role. Examples: "Technical, hands-on, IC-level" for an engineering role vs "Strategic, executive-level" for a leadership role.
 
-**Role Context:** Freeform context that's always included. Good for things like "3% equity, long-term hold" or "Meetings 10:30am-3pm."
+**Role Context:** Freeform context that's always included. Good for things like meeting schedules, team dynamics, or key relationships.
 
 **Staff Directory:** Team members with:
 - Name and title
 - Relationship (direct report, manager, peer)
-- Communication notes ("Short Slack messages. Direct, brief.")
+- Communication notes (e.g., "Prefers short Slack messages. Direct, brief.")
 - Email and Slack handle
 
 The AI uses the staff directory to match names in transcripts, suggest who to follow up with, and adapt communication style per recipient.`,
+  },
+
+  // === AI FEATURES (new) ===
+  {
+    slug: "morning-briefing",
+    title: "Morning Briefing",
+    category: "ai-features",
+    summary: "Auto-generated daily brief shown on your first Focus page load",
+    content: `# Morning Briefing
+
+On your first Focus page load each day, Conductor generates a personalized morning briefing using AI.
+
+**What it includes:**
+- Top priority tasks across all roles
+- Stale follow-ups that need attention
+- Today's schedule with role assignments
+- Key items from each active role
+
+The briefing appears as a card at the top of the Focus page. Click the X to dismiss it — it won't show again until the next day.
+
+**How it works:** The briefing assembles your full context (tasks, follow-ups, schedule, roles) and sends it to Claude for a concise summary. Uses Sonnet for quality.`,
+  },
+  {
+    slug: "role-handoff",
+    title: "Role Switch Handoff",
+    category: "ai-features",
+    summary: "Context brief when your schedule switches to a new role",
+    content: `# Role Switch Handoff
+
+When your time block changes and you switch to a new role, Conductor shows a brief context handoff — a quick summary of where you left off with the incoming role.
+
+**What it shows:**
+- Open tasks for the role
+- Pending follow-ups
+- Last conversation snippet
+- Recent notes
+
+The handoff card auto-dismisses after 30 seconds, or click X to close it immediately. This eliminates the "what was I doing?" feeling when context-switching between roles.`,
+  },
+  {
+    slug: "ai-search",
+    title: "AI-Powered Search",
+    category: "ai-features",
+    summary: "Natural language search across all your data",
+    content: `# AI-Powered Search
+
+Press **Cmd+K** to open search. Type your query — for keyword searches, results appear instantly. For complex questions, click the **"Ask AI"** button that appears below.
+
+**Examples:**
+- "What did Amanda say about HIPAA?" → AI searches notes and provides a synthesized answer
+- "enrollment form" → Standard keyword results across tasks, follow-ups, notes
+- "What's the status of the NestJS migration?" → AI answer with cited sources
+
+AI search runs a keyword search first, then sends the top results to Claude for a synthesized answer. Sources are cited so you know where the info came from.`,
+  },
+  {
+    slug: "create-tasks-from-chat",
+    title: "Create Tasks from Chat",
+    category: "ai-features",
+    summary: "Turn AI responses into tasks and follow-ups with one click",
+    content: `# Create Tasks from Chat
+
+Every AI assistant message has two action buttons:
+
+**Create Tasks** — Extracts action items from the AI's response and creates them as real tasks and follow-ups. Uses Haiku for fast extraction.
+
+**Save to Drafts** — Saves the AI's response to your Draft Queue for later review and sending.
+
+These buttons appear below every assistant message in the AI chat. After creating tasks, you'll see a confirmation like "Created 3 tasks, 1 follow-up".`,
+  },
+  {
+    slug: "draft-queue",
+    title: "Draft Queue",
+    category: "ai-features",
+    summary: "Review and manage all your drafted messages in one place",
+    content: `# Draft Queue
+
+Navigate to Drafts (Cmd+7) to see all saved draft messages across roles.
+
+**How drafts get created:**
+- Click "Save to drafts" on any AI assistant message in chat
+- AI-generated message drafts can be saved for later review
+
+**Draft Queue features:**
+- Grouped by role with colored badges
+- Each draft shows recipient, platform, and content preview
+- **Copy** — copies to clipboard for pasting into Slack/Teams
+- **Edit** — inline editing with save/cancel
+- **Delete** — remove draft
+
+This lets you batch your outbound messages — draft throughout the day, then review and send in one focused session.`,
+  },
+  {
+    slug: "weekly-retro",
+    title: "Weekly Retrospective",
+    category: "ai-features",
+    summary: "Auto-generated end-of-week summary with insights",
+    content: `# Weekly Retrospective
+
+Generate a comprehensive weekly summary by calling the retro API or using it as a slash command.
+
+**What it covers:**
+- Tasks completed per role
+- Follow-ups resolved vs still pending
+- Notes created and AI usage stats
+- Per-role status (active, stalled, blocked)
+- Time allocation observations
+- One actionable insight for next week
+
+**How to use:**
+- Call POST /api/ai/retro from the API
+- Or ask the AI: "Give me a weekly retro"
+
+The retro queries the last 7 days of activity across all roles and generates a markdown-formatted summary.`,
+  },
+  {
+    slug: "document-management",
+    title: "Documents",
+    category: "views",
+    summary: "Browse, search, pin, and download uploaded files",
+    content: `# Documents
+
+Navigate to Documents (Cmd+6) to see all files you've uploaded across roles.
+
+**Features:**
+- **Filter by role** — click role badges to filter
+- **Search** — find documents by content keywords
+- **Expand** — click a document to see AI summary and text preview
+- **Download** — download the original file (.docx, .pdf, etc.)
+- **Open in AI** — loads the document into the AI chat for that role
+- **Pin to AI context** — pinned documents are ALWAYS included in AI context, regardless of keywords or time
+
+**How uploads work:**
+When you upload a file in AI chat or Inbox, the text is extracted and saved as a Note (for long-term AI retrieval) and a FileUpload record (for download). An AI summary is auto-generated in the background using Haiku.
+
+**AI Memory:**
+- Uploaded docs persist forever as Notes
+- AI finds them via keyword search when you ask related questions
+- Pinned docs are always in context (up to 2,000 chars each)
+- AI summaries are preferred over raw text when available`,
   },
 ];

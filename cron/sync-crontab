@@ -1,0 +1,3 @@
+# Linear sync — every hour at :00
+0 * * * * /scripts/sync.sh >> /var/log/cron.log 2>&1
+

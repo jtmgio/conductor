@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { ScheduleGrid } from "@/components/ScheduleGrid";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Settings, ChevronDown, Pencil, Save, LogOut, User, Briefcase, Wrench, Calendar, Zap, Trash2, Plus, Mic, Send, AlertCircle, Target, Users, RefreshCw, XCircle, Link2, DollarSign } from "lucide-react";
+import { Settings, ChevronDown, Pencil, Save, LogOut, User, Briefcase, Wrench, Calendar, Zap, Trash2, Plus, Mic, Send, AlertCircle, Target, Users, RefreshCw, XCircle, Link2, DollarSign, Download, Upload, Database, Clock, CheckCircle, AlertTriangle } from "lucide-react";
 import { CostsContent } from "@/app/costs/CostsPage";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,7 @@ interface Role { id: string; name: string; title: string; platform: string; prio
 interface UserProfile { communicationStyle?: string; sampleMessages?: string; globalContext?: string; calendarIgnorePatterns?: string; }
 interface Skill { id: string; name: string; label: string; description: string; icon?: string; prompt: string; category: string; isBuiltIn: boolean; enabled: boolean; }
 interface Integration { id: string; type: string; roleId: string; config: Record<string, string>; enabled: boolean; lastSyncAt: string | null; lastSyncResult: string | null; }
+interface SyncLog { id: string; type: string; status: string; trigger: string; startedAt: string; completedAt: string | null; durationMs: number | null; summary: string | null; errorMessage: string | null; itemsFound: number | null; itemsCreated: number | null; itemsUpdated: number | null; itemsSkipped: number | null; meta: Record<string, unknown> | null; }
 
 const inputCls = "w-full h-10 px-3 rounded-xl border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] bg-[var(--surface-raised)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 transition-all placeholder:text-[var(--text-tertiary)]";
 const textareaCls = "w-full min-h-[140px] resize-y bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-xl p-4 text-[15px] leading-relaxed text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 transition-all placeholder:text-[var(--text-tertiary)]";
@@ -65,15 +66,21 @@ Based on the above, provide:`;
   const [expandedSkillId, setExpandedSkillId] = useState<string | null>(null);
   const [addingCompany, setAddingCompany] = useState(false);
   const [newCompany, setNewCompany] = useState({ name: "", title: "", platform: "Slack", color: "#4d8ef7" });
-  const COLOR_PRESETS = ["#4d8ef7", "#2dd4bf", "#a78bfa", "#fbbf24", "#8cbf6e", "#fb7185", "#f97316", "#06b6d4", "#ec4899", "#84cc16", "#6366f1", "#14b8a6"];
+  const COLOR_PRESETS = ["#7c3aed", "#2563eb", "#0d9488", "#d97706", "#e11d48", "#8cbf6e", "#f97316", "#4d8ef7", "#2dd4bf", "#a78bfa", "#fbbf24", "#fb7185", "#06b6d4", "#ec4899", "#84cc16", "#6366f1", "#14b8a6"];
   const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
+  const [syncLogFilter, setSyncLogFilter] = useState<string>("all");
   const [linearForm, setLinearForm] = useState({ apiKey: "", teamId: "", userId: "", roleId: "" });
   const [addingLinear, setAddingLinear] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [integrationsSubTab, setIntegrationsSubTab] = useState<"calendar" | "linear" | "granola" | "sync-log">("calendar");
   const [systemSubTab, setSystemSubTab] = useState<"general" | "skills" | "costs" | "apikeys">((searchParams.get("sub") as "general" | "skills" | "costs" | "apikeys") || "general");
   const [anthropicKey, setAnthropicKey] = useState("");
   const [anthropicKeySaved, setAnthropicKeySaved] = useState(false);
   const [showAnthropicKey, setShowAnthropicKey] = useState(false);
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [openaiKeySaved, setOpenaiKeySaved] = useState(false);
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [editSkillForm, setEditSkillForm] = useState({ label: "", description: "", prompt: "", category: "general" });
   const { toast } = useToast();
 
@@ -101,6 +108,14 @@ Based on the above, provide:`;
     } catch {}
   }, []);
 
+  const fetchSyncLogs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/sync-logs?limit=50");
+      const data = await res.json();
+      if (Array.isArray(data)) setSyncLogs(data);
+    } catch {}
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
       const [rolesRes, profileRes] = await Promise.all([fetch("/api/roles"), fetch("/api/profile")]);
@@ -110,14 +125,14 @@ Based on the above, provide:`;
       const resps: Record<string, string> = {}; const goals: Record<string, string> = {};
       for (const r of arr) { tones[r.id] = r.tone || ""; contexts[r.id] = r.context || ""; resps[r.id] = r.responsibilities || ""; goals[r.id] = r.quarterlyGoals || ""; }
       setEditTone(tones); setEditContext(contexts); setEditResponsibilities(resps); setEditGoals(goals);
-      if (profileRes.ok) { const p = await profileRes.json(); setProfile({ communicationStyle: p.communicationStyle || "", sampleMessages: p.sampleMessages || "", globalContext: p.globalContext || "", calendarIgnorePatterns: p.calendarIgnorePatterns || "" }); if (p.anthropicApiKeyMasked) setAnthropicKey(p.anthropicApiKeyMasked); if (p.hasAnthropicKey) setAnthropicKeySaved(true); }
+      if (profileRes.ok) { const p = await profileRes.json(); setProfile({ communicationStyle: p.communicationStyle || "", sampleMessages: p.sampleMessages || "", globalContext: p.globalContext || "", calendarIgnorePatterns: p.calendarIgnorePatterns || "" }); if (p.anthropicApiKeyMasked) setAnthropicKey(p.anthropicApiKeyMasked); if (p.hasAnthropicKey) setAnthropicKeySaved(true); if (p.openaiApiKeyMasked) setOpenaiKey(p.openaiApiKeyMasked); if (p.hasOpenAIKey) setOpenaiKeySaved(true); }
       const staffResults: Record<string, Staff[]> = {};
       await Promise.all(arr.map(async (role) => { staffResults[role.id] = await fetch(`/api/roles/${role.id}/staff`).then(r => r.json()); }));
       setStaffByRole(staffResults);
     } catch {}
   }, []);
 
-  useEffect(() => { fetchData(); fetchSkills(); fetchIntegrations(); }, [fetchData, fetchSkills, fetchIntegrations]);
+  useEffect(() => { fetchData(); fetchSkills(); fetchIntegrations(); fetchSyncLogs(); }, [fetchData, fetchSkills, fetchIntegrations, fetchSyncLogs]);
 
   const toggleRole = (roleId: string) => setExpandedRoleId((prev) => (prev === roleId ? null : roleId));
   const saveRole = async (roleId: string) => { setSaving(true); try { const res = await fetch(`/api/roles/${roleId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tone: editTone[roleId], context: editContext[roleId], responsibilities: editResponsibilities[roleId], quarterlyGoals: editGoals[roleId] }) }); if (!res.ok) throw new Error(); toast("Role settings saved", "success"); } catch { toast("Failed to save", "error"); } setSaving(false); };
@@ -162,6 +177,8 @@ Based on the above, provide:`;
       fetchData();
     } catch { toast("Failed to deactivate", "error"); }
   };
+  const [importingData, setImportingData] = useState(false);
+  const [exportingFull, setExportingFull] = useState(false);
   const exportConfig = async () => {
     try {
       const res = await fetch("/api/export");
@@ -169,10 +186,39 @@ Based on the above, provide:`;
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = `conductor-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.href = url; a.download = `conductor-config-${new Date().toISOString().slice(0, 10)}.json`;
       a.click(); URL.revokeObjectURL(url);
       toast("Config exported", "success");
     } catch { toast("Failed to export", "error"); }
+  };
+  const exportFullData = async () => {
+    setExportingFull(true);
+    try {
+      const res = await fetch("/api/export/full");
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `conductor-full-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click(); URL.revokeObjectURL(url);
+      toast("Full backup exported", "success");
+    } catch { toast("Failed to export", "error"); }
+    setExportingFull(false);
+  };
+  const importFullData = async (file: File) => {
+    setImportingData(true);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const endpoint = data.type === "full" ? "/api/import/full" : "/api/import";
+      const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: text });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+      const counts = Object.entries(result.results || {}).filter(([, v]) => (v as number) > 0).map(([k, v]) => `${v} ${k}`).join(", ");
+      toast(counts ? `Imported: ${counts}` : "Import complete", "success");
+      fetchData();
+    } catch (err) { toast(err instanceof Error ? err.message : "Failed to import", "error"); }
+    setImportingData(false);
   };
   const createLinearIntegration = async () => {
     if (!linearForm.apiKey || !linearForm.teamId || !linearForm.userId) return;
@@ -205,6 +251,7 @@ Based on the above, provide:`;
       const data = await res.json();
       if (data.success) { toast(`Synced: ${data.summary}`, "success"); } else { toast(data.error || "Sync failed", "error"); }
       fetchIntegrations();
+      fetchSyncLogs();
     } catch { toast("Sync failed", "error"); }
     setSyncing(false);
   };
@@ -388,271 +435,403 @@ Based on the above, provide:`;
 
         {/* TAB: Integrations */}
         {activeTab === "integrations" && (
-          <div className="space-y-8">
-            {/* Calendar */}
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Calendar className="h-4 w-4 text-[var(--text-tertiary)]" />
-                <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium">Calendar</p>
-              </div>
-              <p className="text-[14px] text-[var(--text-tertiary)] mb-3">Meetings matching these patterns are ignored</p>
-              <textarea
-                value={profile.calendarIgnorePatterns || "OOO\nOut of Office\nBusy\nDeep Work\nFocus Time\nBlock\nHold\nNo meetings\nLunch\nPersonal\nIronman\nTraining\nSwim\nBike\nRun"}
-                onChange={(e) => setProfile((p) => ({ ...p, calendarIgnorePatterns: e.target.value }))}
-                placeholder="One pattern per line..."
-                className={`${textareaCls} min-h-[200px]`}
-              />
-              <button onClick={saveCalendarPatterns} disabled={savingCalendar} className="mt-3 bg-[var(--accent-blue)] text-white px-5 py-3 rounded-xl text-[15px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2">
-                <Save className="h-4 w-4" /> {savingCalendar ? "Saving..." : "Save calendar settings"}
-              </button>
+          <div className="flex gap-6 min-h-[500px]">
+            {/* Vertical sub-tabs */}
+            <div className="w-[160px] shrink-0 space-y-1">
+              {([
+                { id: "calendar" as const, label: "Calendar", icon: Calendar },
+                { id: "linear" as const, label: "Linear", icon: Link2 },
+                { id: "granola" as const, label: "Granola", icon: Mic },
+                { id: "sync-log" as const, label: "Sync Log", icon: Clock },
+              ]).map((sub) => (
+                <button
+                  key={sub.id}
+                  onClick={() => setIntegrationsSubTab(sub.id)}
+                  className={cn(
+                    "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[14px] font-medium transition-colors text-left",
+                    integrationsSubTab === sub.id
+                      ? "bg-[var(--sidebar-active)] text-[var(--text-primary)]"
+                      : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)]"
+                  )}
+                >
+                  <sub.icon className="h-4 w-4 shrink-0" />
+                  {sub.label}
+                </button>
+              ))}
             </div>
 
-            {/* Linear */}
-            <div className="border-t border-[var(--border-subtle)] pt-6">
-              <div className="flex items-center gap-2 mb-1">
-                <svg width="16" height="16" viewBox="0 0 16 16" className="text-[var(--text-tertiary)]"><path d="M2.5 2.5h11v11h-11z" stroke="currentColor" strokeWidth="1" fill="none" rx="2"/><path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/></svg>
-                <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium">Linear</p>
-              </div>
+            {/* Sub-tab content */}
+            <div className="flex-1 min-w-0">
 
-              {integrations.filter((i) => i.type === "linear").map((integration) => {
-                const roleName = roles.find((r) => r.id === integration.roleId)?.name || integration.roleId;
-                const lastSync = integration.lastSyncAt ? new Date(integration.lastSyncAt) : null;
-                const ago = lastSync ? Math.floor((Date.now() - lastSync.getTime()) / 60000) : null;
-                const agoLabel = ago !== null ? (ago < 1 ? "just now" : ago < 60 ? `${ago}m ago` : `${Math.floor(ago / 60)}h ago`) : "never";
-
-                return (
-                  <div key={integration.id} className="border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)] space-y-3 mt-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-[16px] font-semibold text-[var(--text-primary)]">Linear ({roleName})</p>
-                        <p className="text-[13px] text-[var(--text-tertiary)]">API Key: {integration.config.apiKey || "not set"}</p>
-                      </div>
-                      <button
-                        onClick={() => toggleIntegration("linear", !integration.enabled)}
-                        className={cn(
-                          "w-11 h-6 rounded-full relative transition-colors shrink-0",
-                          integration.enabled ? "bg-[var(--accent-blue)]" : "bg-[var(--border-default)]"
-                        )}
-                      >
-                        <span className={cn(
-                          "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform",
-                          integration.enabled ? "left-[22px]" : "left-0.5"
-                        )} />
-                      </button>
-                    </div>
-                    <div className="text-[14px] text-[var(--text-secondary)] space-y-1">
-                      <p>Team ID: <span className="text-[var(--text-tertiary)] font-mono text-[13px]">{integration.config.teamId}</span></p>
-                      <p>Syncs to role: <span className="font-medium">{roleName}</span></p>
-                      <p>Last sync: <span className="text-[var(--text-tertiary)]">{agoLabel}</span>
-                        {integration.lastSyncResult && <span className="text-[var(--text-tertiary)]"> — {integration.lastSyncResult}</span>}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <button onClick={() => syncNow("linear")} disabled={syncing} className="bg-[var(--accent-blue)] text-white px-4 py-2 rounded-xl text-[14px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
-                        {syncing ? "Syncing..." : "Sync now"}
-                      </button>
-                      <button onClick={() => deleteIntegration("linear")} className="border border-[var(--border-default)] text-red-400 px-4 py-2 rounded-xl text-[14px] font-medium hover:bg-[var(--sidebar-hover)] transition-colors">
-                        Remove
-                      </button>
-                    </div>
+              {/* Calendar */}
+              {integrationsSubTab === "calendar" && (
+                <div>
+                  <p className="text-[14px] text-[var(--text-tertiary)] mb-3">Meetings matching these patterns are ignored during calendar sync.</p>
+                  <textarea
+                    value={profile.calendarIgnorePatterns || "OOO\nOut of Office\nBusy\nDeep Work\nFocus Time\nBlock\nHold\nNo meetings\nLunch\nPersonal\nIronman\nTraining\nSwim\nBike\nRun"}
+                    onChange={(e) => setProfile((p) => ({ ...p, calendarIgnorePatterns: e.target.value }))}
+                    placeholder="One pattern per line..."
+                    className={`${textareaCls} min-h-[200px]`}
+                  />
+                  <button onClick={saveCalendarPatterns} disabled={savingCalendar} className="mt-3 bg-[var(--accent-blue)] text-white px-5 py-3 rounded-xl text-[15px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2">
+                    <Save className="h-4 w-4" /> {savingCalendar ? "Saving..." : "Save calendar settings"}
+                  </button>
+                  <div className="mt-6 border-t border-[var(--border-subtle)] pt-4">
+                    <p className="text-[13px] text-[var(--text-tertiary)] mb-2">Calendar sync runs daily at 5:00 AM via LaunchAgent, or on first app open each day.</p>
+                    <button
+                      onClick={async () => {
+                        setSyncing(true);
+                        try {
+                          const res = await fetch("/api/calendar/sync", { method: "POST" });
+                          const data = await res.json();
+                          if (data.ok) { toast("Calendar synced", "success"); } else { toast(data.error || "Sync failed", "error"); }
+                          fetchSyncLogs();
+                        } catch { toast("Sync failed", "error"); }
+                        setSyncing(false);
+                      }}
+                      disabled={syncing}
+                      className="bg-[var(--accent-blue)] text-white px-4 py-2 rounded-xl text-[14px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                    >
+                      {syncing ? "Syncing..." : "Sync now"}
+                    </button>
                   </div>
-                );
-              })}
+                </div>
+              )}
 
-              {integrations.filter((i) => i.type === "linear").length === 0 && (
-                <>
-                  {addingLinear ? (
-                    <div className="border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)] space-y-3 mt-3">
-                      <div>
-                        <label className="text-[13px] text-[var(--text-tertiary)] mb-1 block">API Key</label>
-                        <input value={linearForm.apiKey} onChange={(e) => setLinearForm((p) => ({ ...p, apiKey: e.target.value }))} placeholder="lin_api_..." className={inputCls} />
-                      </div>
-                      <div className="flex gap-3">
-                        <div className="flex-1">
-                          <label className="text-[13px] text-[var(--text-tertiary)] mb-1 block">Team ID</label>
-                          <input value={linearForm.teamId} onChange={(e) => setLinearForm((p) => ({ ...p, teamId: e.target.value }))} placeholder="From Linear API" className={inputCls} />
+              {/* Linear */}
+              {integrationsSubTab === "linear" && (
+                <div>
+                  {integrations.filter((i) => i.type === "linear").map((integration) => {
+                    const roleName = roles.find((r) => r.id === integration.roleId)?.name || integration.roleId;
+                    const lastSync = integration.lastSyncAt ? new Date(integration.lastSyncAt) : null;
+                    const ago = lastSync ? Math.floor((Date.now() - lastSync.getTime()) / 60000) : null;
+                    const agoLabel = ago !== null ? (ago < 1 ? "just now" : ago < 60 ? `${ago}m ago` : `${Math.floor(ago / 60)}h ago`) : "never";
+
+                    return (
+                      <div key={integration.id} className="border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)] space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-[16px] font-semibold text-[var(--text-primary)]">Linear ({roleName})</p>
+                            <p className="text-[13px] text-[var(--text-tertiary)]">API Key: {integration.config.apiKey || "not set"}</p>
+                          </div>
+                          <button
+                            onClick={() => toggleIntegration("linear", !integration.enabled)}
+                            className={cn(
+                              "w-11 h-6 rounded-full relative transition-colors shrink-0",
+                              integration.enabled ? "bg-[var(--accent-blue)]" : "bg-[var(--border-default)]"
+                            )}
+                          >
+                            <span className={cn(
+                              "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform",
+                              integration.enabled ? "left-[22px]" : "left-0.5"
+                            )} />
+                          </button>
                         </div>
-                        <div className="flex-1">
-                          <label className="text-[13px] text-[var(--text-tertiary)] mb-1 block">User ID</label>
-                          <input value={linearForm.userId} onChange={(e) => setLinearForm((p) => ({ ...p, userId: e.target.value }))} placeholder="From Linear API" className={inputCls} />
+                        <div className="text-[14px] text-[var(--text-secondary)] space-y-1">
+                          <p>Team ID: <span className="text-[var(--text-tertiary)] font-mono text-[13px]">{integration.config.teamId}</span></p>
+                          <p>Syncs to role: <span className="font-medium">{roleName}</span></p>
+                          <p>Last sync: <span className="text-[var(--text-tertiary)]">{agoLabel}</span>
+                            {integration.lastSyncResult && <span className="text-[var(--text-tertiary)]"> — {integration.lastSyncResult}</span>}
+                          </p>
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button onClick={() => syncNow("linear")} disabled={syncing} className="bg-[var(--accent-blue)] text-white px-4 py-2 rounded-xl text-[14px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
+                            {syncing ? "Syncing..." : "Sync now"}
+                          </button>
+                          <button onClick={() => deleteIntegration("linear")} className="border border-[var(--border-default)] text-red-400 px-4 py-2 rounded-xl text-[14px] font-medium hover:bg-[var(--sidebar-hover)] transition-colors">
+                            Remove
+                          </button>
                         </div>
                       </div>
-                      <div>
-                        <label className="text-[13px] text-[var(--text-tertiary)] mb-1 block">Sync to role</label>
-                        <select value={linearForm.roleId} onChange={(e) => setLinearForm((p) => ({ ...p, roleId: e.target.value }))} className={inputCls}>
-                          {roles.map((r) => <option key={r.id} value={r.id}>{r.name} — {r.title}</option>)}
-                        </select>
+                    );
+                  })}
+
+                  {integrations.filter((i) => i.type === "linear").length === 0 && (
+                    <>
+                      {addingLinear ? (
+                        <div className="border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)] space-y-3">
+                          <div>
+                            <label className="text-[13px] text-[var(--text-tertiary)] mb-1 block">API Key</label>
+                            <input value={linearForm.apiKey} onChange={(e) => setLinearForm((p) => ({ ...p, apiKey: e.target.value }))} placeholder="lin_api_..." className={inputCls} />
+                          </div>
+                          <div className="flex gap-3">
+                            <div className="flex-1">
+                              <label className="text-[13px] text-[var(--text-tertiary)] mb-1 block">Team ID</label>
+                              <input value={linearForm.teamId} onChange={(e) => setLinearForm((p) => ({ ...p, teamId: e.target.value }))} placeholder="From Linear API" className={inputCls} />
+                            </div>
+                            <div className="flex-1">
+                              <label className="text-[13px] text-[var(--text-tertiary)] mb-1 block">User ID</label>
+                              <input value={linearForm.userId} onChange={(e) => setLinearForm((p) => ({ ...p, userId: e.target.value }))} placeholder="From Linear API" className={inputCls} />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-[13px] text-[var(--text-tertiary)] mb-1 block">Sync to role</label>
+                            <select value={linearForm.roleId} onChange={(e) => setLinearForm((p) => ({ ...p, roleId: e.target.value }))} className={inputCls}>
+                              {roles.map((r) => <option key={r.id} value={r.id}>{r.name} — {r.title}</option>)}
+                            </select>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={createLinearIntegration} disabled={!linearForm.apiKey || !linearForm.teamId || !linearForm.userId} className="bg-[var(--accent-blue)] text-white px-4 py-2.5 rounded-xl text-[14px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40">Connect</button>
+                            <button onClick={() => setAddingLinear(false)} className="border border-[var(--border-default)] text-[var(--text-secondary)] px-4 py-2.5 rounded-xl text-[14px] font-medium hover:bg-[var(--sidebar-hover)] transition-colors">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="text-[14px] text-[var(--text-tertiary)] mb-3">Sync tasks from Linear into Conductor automatically.</p>
+                          <button onClick={() => setAddingLinear(true)} className="border border-dashed border-[var(--border-default)] rounded-xl py-3 px-6 text-[15px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:border-[var(--text-tertiary)] transition-colors flex items-center gap-2">
+                            <Plus className="h-4 w-4" /> Connect Linear
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Granola */}
+              {integrationsSubTab === "granola" && (
+                <div>
+                  {integrations.filter((i) => i.type === "granola").map((integration) => {
+                    const lastSync = integration.lastSyncAt ? new Date(integration.lastSyncAt) : null;
+                    const ago = lastSync ? Math.floor((Date.now() - lastSync.getTime()) / 60000) : null;
+                    const agoLabel = ago !== null ? (ago < 1 ? "just now" : ago < 60 ? `${ago}m ago` : `${Math.floor(ago / 60)}h ago`) : "never";
+                    const folderMap: Record<string, string> = (integration.config as Record<string, unknown>)?.folderMap as Record<string, string> || {};
+
+                    return (
+                      <div key={integration.id} className="border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)] space-y-4">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[16px] font-semibold text-[var(--text-primary)]">Granola (All roles)</p>
+                          <button
+                            onClick={() => toggleIntegration("granola", !integration.enabled)}
+                            className={cn(
+                              "w-11 h-6 rounded-full relative transition-colors shrink-0",
+                              integration.enabled ? "bg-[var(--accent-blue)]" : "bg-[var(--border-default)]"
+                            )}
+                          >
+                            <span className={cn(
+                              "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform",
+                              integration.enabled ? "left-[22px]" : "left-0.5"
+                            )} />
+                          </button>
+                        </div>
+
+                        {/* Folder → Role mapper */}
+                        <div>
+                          <p className="text-[13px] text-[var(--text-tertiary)] mb-2">Map Granola folders to roles</p>
+                          <div className="space-y-2">
+                            {Object.entries(folderMap).map(([folder, roleId]) => (
+                              <div key={folder} className="flex items-center gap-2">
+                                <input
+                                  value={folder}
+                                  onChange={(e) => {
+                                    const newMap = { ...folderMap };
+                                    const val = newMap[folder];
+                                    delete newMap[folder];
+                                    newMap[e.target.value] = val;
+                                    fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
+                                  }}
+                                  onBlur={() => fetchIntegrations()}
+                                  placeholder="Granola folder name"
+                                  className={`${inputCls} flex-1`}
+                                />
+                                <span className="text-[var(--text-tertiary)] text-[13px] shrink-0">&rarr;</span>
+                                <select
+                                  value={roleId}
+                                  onChange={(e) => {
+                                    const newMap = { ...folderMap, [folder]: e.target.value };
+                                    fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
+                                  }}
+                                  className={`${inputCls} flex-1`}
+                                >
+                                  <option value="">Select role...</option>
+                                  {roles.map((r) => (
+                                    <option key={r.id} value={r.id}>{r.name}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => {
+                                    const newMap = { ...folderMap };
+                                    delete newMap[folder];
+                                    fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
+                                  }}
+                                  className="text-[var(--text-tertiary)] hover:text-red-400 shrink-0"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ))}
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => {
+                                  const newMap = { ...folderMap, "": "" };
+                                  fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
+                                }}
+                                className="flex items-center gap-1.5 text-[13px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+                              >
+                                <Plus className="h-3.5 w-3.5" /> Add manually
+                              </button>
+                              <span className="text-[var(--border-default)]">|</span>
+                              <button
+                                onClick={async () => {
+                                  toast("Discovering folders...", "success");
+                                  try {
+                                    const res = await fetch("/api/integrations/granola/folders");
+                                    const data = await res.json();
+                                    if (!res.ok) throw new Error(data.error);
+                                    const discovered: string[] = (data.folders || []).map((f: { name: string }) => f.name);
+                                    if (discovered.length === 0) { toast("No folders found in recent notes", "error"); return; }
+                                    const newMap = { ...folderMap };
+                                    let added = 0;
+                                    for (const name of discovered) {
+                                      if (!Object.keys(newMap).some((k) => k.toLowerCase() === name.toLowerCase())) {
+                                        newMap[name] = "";
+                                        added++;
+                                      }
+                                    }
+                                    if (added === 0) { toast("All folders already mapped", "success"); return; }
+                                    await fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) });
+                                    fetchIntegrations();
+                                    toast(`Found ${added} new folder${added === 1 ? "" : "s"}`, "success");
+                                  } catch (err) { toast(err instanceof Error ? err.message : "Failed to discover folders", "error"); }
+                                }}
+                                className="flex items-center gap-1.5 text-[13px] text-[var(--accent-blue)] hover:text-[var(--text-primary)] transition-colors"
+                              >
+                                <RefreshCw className="h-3.5 w-3.5" /> Discover from Granola
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-[14px] text-[var(--text-secondary)] space-y-1 pt-2 border-t border-[var(--border-subtle)]">
+                          <p>Syncs every 30 minutes via system cron</p>
+                          <p>Last sync: <span className="text-[var(--text-tertiary)]">{agoLabel}</span>
+                            {integration.lastSyncResult && <span className="text-[var(--text-tertiary)]"> — {integration.lastSyncResult}</span>}
+                          </p>
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button onClick={() => syncNow("granola")} disabled={syncing} className="bg-[var(--accent-blue)] text-white px-4 py-2 rounded-xl text-[14px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
+                            {syncing ? "Syncing..." : "Sync now"}
+                          </button>
+                          <button onClick={() => deleteIntegration("granola")} className="border border-[var(--border-default)] text-red-400 px-4 py-2 rounded-xl text-[14px] font-medium hover:bg-[var(--sidebar-hover)] transition-colors">
+                            Disconnect
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <button onClick={createLinearIntegration} disabled={!linearForm.apiKey || !linearForm.teamId || !linearForm.userId} className="bg-[var(--accent-blue)] text-white px-4 py-2.5 rounded-xl text-[14px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40">Connect</button>
-                        <button onClick={() => setAddingLinear(false)} className="border border-[var(--border-default)] text-[var(--text-secondary)] px-4 py-2.5 rounded-xl text-[14px] font-medium hover:bg-[var(--sidebar-hover)] transition-colors">Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-3">
-                      <p className="text-[14px] text-[var(--text-tertiary)] mb-3">Sync tasks from Linear into Conductor automatically.</p>
-                      <button onClick={() => setAddingLinear(true)} className="border border-dashed border-[var(--border-default)] rounded-xl py-3 px-6 text-[15px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:border-[var(--text-tertiary)] transition-colors flex items-center gap-2">
-                        <Plus className="h-4 w-4" /> Connect Linear
+                    );
+                  })}
+
+                  {integrations.filter((i) => i.type === "granola").length === 0 && (
+                    <div>
+                      <p className="text-[14px] text-[var(--text-tertiary)] mb-3">Auto-sync meeting transcripts from Granola into tasks and follow-ups across all roles.</p>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "granola", roleId: roles[0]?.id || "", config: { folderMap: {} } }) });
+                            toast("Granola integration connected", "success");
+                            fetchIntegrations();
+                          } catch { toast("Failed to connect", "error"); }
+                        }}
+                        className="border border-dashed border-[var(--border-default)] rounded-xl py-3 px-6 text-[15px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:border-[var(--text-tertiary)] transition-colors flex items-center gap-2"
+                      >
+                        <Plus className="h-4 w-4" /> Connect Granola
                       </button>
                     </div>
                   )}
-                </>
-              )}
-            </div>
-
-            {/* Granola */}
-            <div className="border-t border-[var(--border-subtle)] pt-6">
-              <div className="flex items-center gap-2 mb-1">
-                <Mic className="h-4 w-4 text-[var(--text-tertiary)]" />
-                <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium">Granola</p>
-              </div>
-
-              {integrations.filter((i) => i.type === "granola").map((integration) => {
-                const lastSync = integration.lastSyncAt ? new Date(integration.lastSyncAt) : null;
-                const ago = lastSync ? Math.floor((Date.now() - lastSync.getTime()) / 60000) : null;
-                const agoLabel = ago !== null ? (ago < 1 ? "just now" : ago < 60 ? `${ago}m ago` : `${Math.floor(ago / 60)}h ago`) : "never";
-                const folderMap: Record<string, string> = (integration.config as Record<string, unknown>)?.folderMap as Record<string, string> || {};
-
-                return (
-                  <div key={integration.id} className="border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)] space-y-4 mt-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[16px] font-semibold text-[var(--text-primary)]">Granola (All roles)</p>
-                      <button
-                        onClick={() => toggleIntegration("granola", !integration.enabled)}
-                        className={cn(
-                          "w-11 h-6 rounded-full relative transition-colors shrink-0",
-                          integration.enabled ? "bg-[var(--accent-blue)]" : "bg-[var(--border-default)]"
-                        )}
-                      >
-                        <span className={cn(
-                          "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform",
-                          integration.enabled ? "left-[22px]" : "left-0.5"
-                        )} />
-                      </button>
-                    </div>
-
-                    {/* Folder → Role mapper */}
-                    <div>
-                      <p className="text-[13px] text-[var(--text-tertiary)] mb-2">Map Granola folders to roles</p>
-                      <div className="space-y-2">
-                        {Object.entries(folderMap).map(([folder, roleId]) => (
-                          <div key={folder} className="flex items-center gap-2">
-                            <input
-                              value={folder}
-                              onChange={(e) => {
-                                const newMap = { ...folderMap };
-                                const val = newMap[folder];
-                                delete newMap[folder];
-                                newMap[e.target.value] = val;
-                                fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
-                              }}
-                              onBlur={() => fetchIntegrations()}
-                              placeholder="Granola folder name"
-                              className={`${inputCls} flex-1`}
-                            />
-                            <span className="text-[var(--text-tertiary)] text-[13px] shrink-0">&rarr;</span>
-                            <select
-                              value={roleId}
-                              onChange={(e) => {
-                                const newMap = { ...folderMap, [folder]: e.target.value };
-                                fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
-                              }}
-                              className={`${inputCls} flex-1`}
-                            >
-                              <option value="">Select role...</option>
-                              {roles.map((r) => (
-                                <option key={r.id} value={r.id}>{r.name}</option>
-                              ))}
-                            </select>
-                            <button
-                              onClick={() => {
-                                const newMap = { ...folderMap };
-                                delete newMap[folder];
-                                fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
-                              }}
-                              className="text-[var(--text-tertiary)] hover:text-red-400 shrink-0"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        ))}
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={() => {
-                              const newMap = { ...folderMap, "": "" };
-                              fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
-                            }}
-                            className="flex items-center gap-1.5 text-[13px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
-                          >
-                            <Plus className="h-3.5 w-3.5" /> Add manually
-                          </button>
-                          <span className="text-[var(--border-default)]">|</span>
-                          <button
-                            onClick={async () => {
-                              toast("Discovering folders...", "success");
-                              try {
-                                const res = await fetch("/api/integrations/granola/folders");
-                                const data = await res.json();
-                                if (!res.ok) throw new Error(data.error);
-                                const discovered: string[] = (data.folders || []).map((f: { name: string }) => f.name);
-                                if (discovered.length === 0) { toast("No folders found in recent notes", "error"); return; }
-                                const newMap = { ...folderMap };
-                                let added = 0;
-                                for (const name of discovered) {
-                                  if (!Object.keys(newMap).some((k) => k.toLowerCase() === name.toLowerCase())) {
-                                    newMap[name] = "";
-                                    added++;
-                                  }
-                                }
-                                if (added === 0) { toast("All folders already mapped", "success"); return; }
-                                await fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) });
-                                fetchIntegrations();
-                                toast(`Found ${added} new folder${added === 1 ? "" : "s"}`, "success");
-                              } catch (err) { toast(err instanceof Error ? err.message : "Failed to discover folders", "error"); }
-                            }}
-                            className="flex items-center gap-1.5 text-[13px] text-[var(--accent-blue)] hover:text-[var(--text-primary)] transition-colors"
-                          >
-                            <RefreshCw className="h-3.5 w-3.5" /> Discover from Granola
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-[14px] text-[var(--text-secondary)] space-y-1 pt-2 border-t border-[var(--border-subtle)]">
-                      <p>Syncs every 30 minutes via system cron</p>
-                      <p>Last sync: <span className="text-[var(--text-tertiary)]">{agoLabel}</span>
-                        {integration.lastSyncResult && <span className="text-[var(--text-tertiary)]"> — {integration.lastSyncResult}</span>}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <button onClick={() => syncNow("granola")} disabled={syncing} className="bg-[var(--accent-blue)] text-white px-4 py-2 rounded-xl text-[14px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
-                        {syncing ? "Syncing..." : "Sync now"}
-                      </button>
-                      <button onClick={() => deleteIntegration("granola")} className="border border-[var(--border-default)] text-red-400 px-4 py-2 rounded-xl text-[14px] font-medium hover:bg-[var(--sidebar-hover)] transition-colors">
-                        Disconnect
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {integrations.filter((i) => i.type === "granola").length === 0 && (
-                <div className="mt-3">
-                  <p className="text-[14px] text-[var(--text-tertiary)] mb-3">Auto-sync meeting transcripts from Granola into tasks and follow-ups across all roles.</p>
-                  <button
-                    onClick={async () => {
-                      try {
-                        await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "granola", roleId: roles[0]?.id || "", config: { folderMap: {} } }) });
-                        toast("Granola integration connected", "success");
-                        fetchIntegrations();
-                      } catch { toast("Failed to connect", "error"); }
-                    }}
-                    className="border border-dashed border-[var(--border-default)] rounded-xl py-3 px-6 text-[15px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:border-[var(--text-tertiary)] transition-colors flex items-center gap-2"
-                  >
-                    <Plus className="h-4 w-4" /> Connect Granola
-                  </button>
                 </div>
               )}
+
+              {/* Sync Log */}
+              {integrationsSubTab === "sync-log" && (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-[14px] text-[var(--text-tertiary)]">History of all integration sync runs.</p>
+                    <div className="flex items-center gap-1.5">
+                      {["all", "calendar", "linear", "granola"].map((f) => (
+                        <button
+                          key={f}
+                          onClick={() => setSyncLogFilter(f)}
+                          className={cn(
+                            "px-2.5 py-1 rounded-lg text-[12px] font-medium transition-colors capitalize",
+                            syncLogFilter === f
+                              ? "bg-[var(--accent-blue)] text-white"
+                              : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-raised)]"
+                          )}
+                        >
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {syncLogs.length === 0 ? (
+                    <p className="text-[14px] text-[var(--text-tertiary)]">No sync runs yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {syncLogs
+                        .filter((log) => syncLogFilter === "all" || log.type === syncLogFilter)
+                        .slice(0, 30)
+                        .map((log) => {
+                          const time = new Date(log.startedAt);
+                          const isToday = time.toDateString() === new Date().toDateString();
+                          const timeLabel = isToday
+                            ? time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                            : time.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+                          const durationLabel = log.durationMs != null
+                            ? log.durationMs < 1000 ? `${log.durationMs}ms` : `${(log.durationMs / 1000).toFixed(1)}s`
+                            : null;
+
+                          const typeColors: Record<string, string> = {
+                            calendar: "#fbbf24",
+                            linear: "#5E6AD2",
+                            granola: "#2dd4bf",
+                          };
+
+                          return (
+                            <div key={log.id} className="flex items-start gap-3 px-3 py-2.5 rounded-xl bg-[var(--surface-raised)] border border-[var(--border-subtle)]">
+                              <div className="mt-0.5 shrink-0">
+                                {log.status === "success" ? (
+                                  <CheckCircle className="h-4 w-4 text-green-400" />
+                                ) : log.status === "error" ? (
+                                  <AlertTriangle className="h-4 w-4 text-red-400" />
+                                ) : (
+                                  <AlertCircle className="h-4 w-4 text-yellow-400" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span
+                                    className="px-1.5 py-0.5 rounded text-[11px] font-bold uppercase"
+                                    style={{ backgroundColor: `${typeColors[log.type] || "#888"}20`, color: typeColors[log.type] || "#888" }}
+                                  >
+                                    {log.type}
+                                  </span>
+                                  <span className="text-[12px] text-[var(--text-tertiary)]">{timeLabel}</span>
+                                  {durationLabel && <span className="text-[12px] text-[var(--text-tertiary)]">{durationLabel}</span>}
+                                  <span className="text-[11px] text-[var(--text-tertiary)] opacity-60 capitalize">{log.trigger}</span>
+                                </div>
+                                {log.summary && (
+                                  <p className="text-[13px] text-[var(--text-secondary)] mt-0.5 truncate">{log.summary}</p>
+                                )}
+                                {log.errorMessage && (
+                                  <p className="text-[13px] text-red-400 mt-0.5 truncate">{log.errorMessage}</p>
+                                )}
+                                {(log.itemsFound != null || log.itemsCreated != null) && (
+                                  <div className="flex gap-3 mt-1 text-[12px] text-[var(--text-tertiary)]">
+                                    {log.itemsFound != null && <span>{log.itemsFound} found</span>}
+                                    {log.itemsCreated != null && <span>{log.itemsCreated} created</span>}
+                                    {log.itemsUpdated != null && log.itemsUpdated > 0 && <span>{log.itemsUpdated} updated</span>}
+                                    {log.itemsSkipped != null && log.itemsSkipped > 0 && <span>{log.itemsSkipped} skipped</span>}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
+
             </div>
           </div>
         )}
@@ -735,13 +914,51 @@ Based on the above, provide:`;
                     </div>
                   </div>
 
+                  {/* Data Management */}
+                  <div className="border-t border-[var(--border-subtle)] pt-6 space-y-4">
+                    <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium">Data</p>
+                    <div className="border border-[var(--border-subtle)] rounded-xl p-5 bg-[var(--surface-raised)] space-y-4">
+                      <div className="flex items-start gap-3">
+                        <Database className="h-5 w-5 text-[var(--text-tertiary)] mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-[15px] font-medium text-[var(--text-primary)]">Full Backup</p>
+                          <p className="text-[13px] text-[var(--text-tertiary)]">Export everything — roles, tasks, follow-ups, notes, transcripts, conversations, skills, and settings. Use this to migrate to a new machine.</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={exportFullData}
+                          disabled={exportingFull}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--accent-blue)] text-white text-[14px] font-medium hover:opacity-90 disabled:opacity-50"
+                        >
+                          <Download className="h-4 w-4" /> {exportingFull ? "Exporting..." : "Export full backup"}
+                        </button>
+                        <label className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--border-subtle)] text-[14px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors cursor-pointer ${importingData ? "opacity-50 pointer-events-none" : ""}`}>
+                          <Upload className="h-4 w-4" /> {importingData ? "Importing..." : "Import backup"}
+                          <input
+                            type="file"
+                            accept=".json"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) importFullData(file);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <button onClick={exportConfig} className="flex items-center gap-2 text-[14px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors">
+                        <Download className="h-3.5 w-3.5" /> Export config only
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Actions */}
                   <div className="border-t border-[var(--border-subtle)] pt-6 space-y-4">
                     <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium">Actions</p>
                     <div className="flex flex-col gap-3">
-                      <button onClick={exportConfig} className="text-left text-[15px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors py-2">
-                        Export configuration (JSON)
-                      </button>
                       <button onClick={resetToday} className="text-left text-[15px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors py-2">
                         Reset today&apos;s tasks
                       </button>
@@ -830,6 +1047,75 @@ Based on the above, provide:`;
                     )}
                     <p className="text-[12px] text-[var(--text-tertiary)]">
                       Get your API key from <span className="text-[var(--accent-blue)]">console.anthropic.com</span>. If not set here, the ANTHROPIC_API_KEY environment variable is used.
+                    </p>
+                  </div>
+
+                  {/* OpenAI */}
+                  <div className="border border-[var(--border-subtle)] rounded-xl p-5 bg-[var(--surface-raised)] space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-[15px] font-medium text-[var(--text-primary)]">OpenAI API Key</p>
+                        <p className="text-[13px] text-[var(--text-tertiary)]">Optional — enables GPT-5.4 models in the AI chat model selector</p>
+                      </div>
+                      {openaiKeySaved && (
+                        <span className="text-[12px] text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">Saved</span>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type={showOpenaiKey ? "text" : "password"}
+                          value={openaiKey}
+                          onChange={(e) => { setOpenaiKey(e.target.value); setOpenaiKeySaved(false); }}
+                          placeholder="sk-..."
+                          className={inputCls}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                        >
+                          {showOpenaiKey ? "Hide" : "Show"}
+                        </button>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await fetch("/api/profile", {
+                              method: "PUT",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ openaiApiKey: openaiKey || null }),
+                            });
+                            setOpenaiKeySaved(true);
+                            toast("API key saved", "success");
+                          } catch {
+                            toast("Failed to save", "error");
+                          }
+                        }}
+                        className="px-4 h-10 rounded-xl bg-[var(--accent-blue)] text-white text-[14px] font-medium hover:opacity-90 shrink-0"
+                      >
+                        Save
+                      </button>
+                    </div>
+                    {openaiKey && (
+                      <button
+                        onClick={async () => {
+                          await fetch("/api/profile", {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ openaiApiKey: null }),
+                          });
+                          setOpenaiKey("");
+                          setOpenaiKeySaved(false);
+                          toast("API key removed — will use environment variable", "success");
+                        }}
+                        className="text-[13px] text-red-400 hover:text-red-300"
+                      >
+                        Remove key (fall back to environment variable)
+                      </button>
+                    )}
+                    <p className="text-[12px] text-[var(--text-tertiary)]">
+                      Get your API key from <span className="text-[var(--accent-blue)]">platform.openai.com</span>. If not set here, the OPENAI_API_KEY environment variable is used.
                     </p>
                   </div>
                 </div>

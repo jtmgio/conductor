@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { AppShell } from "@/components/AppShell";
-import { categories, articles, type Article, type Category } from "@/lib/docs-content";
+import { categories, articles, type Article } from "@/lib/docs-content";
 import { Search, BookOpen, Rocket, Clock, Sparkles, Link2, Layout, ChevronRight, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
 

@@ -18,7 +18,7 @@ const steps: Step[] = [
   {
     num: 1,
     title: "Morning Start",
-    trigger: "7:30 AM — Open Conductor",
+    trigger: "First block — Open Conductor",
     color: "#4d8ef7",
     page: { label: "Focus", href: "/" },
     items: [
@@ -111,25 +111,25 @@ const steps: Step[] = [
   {
     num: 8,
     title: "End of Day",
-    trigger: "5:00 PM — Hard stop",
+    trigger: "Last block ends — Done for the day",
     color: "#787878",
     items: [
       "Just close the app",
       "Incomplete today-tasks silently return to backlog",
       "No summary, no report, no \"you didn't finish\" guilt",
-      "5–7 PM is family time — app shows \"off the clock\"",
+      "Between blocks the app shows \"off the clock\"",
     ],
   },
   {
     num: 9,
     title: "Evening Block (Optional)",
-    trigger: "7:00–8:00 PM — Low-touch, from bed",
+    trigger: "Evening — Optional low-touch block",
     color: "#fb7185",
     page: { label: "Focus", href: "/" },
     items: [
-      "Xenegrade or React Health tasks only",
+      "Lowest-priority role tasks only",
       "Light async work — nothing heavy",
-      "8 PM = done for real",
+      "Close the app when you're done",
     ],
   },
 ];

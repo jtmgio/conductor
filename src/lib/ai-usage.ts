@@ -1,10 +1,14 @@
 import { prisma } from "./prisma";
 
-// Sonnet pricing per million tokens
 const RATES: Record<string, { inputPerM: number; outputPerM: number }> = {
+  // Anthropic
   "claude-sonnet-4-6": { inputPerM: 3.0, outputPerM: 15.0 },
   "claude-haiku-4-5-20251001": { inputPerM: 0.25, outputPerM: 1.25 },
   "claude-opus-4-6": { inputPerM: 15.0, outputPerM: 75.0 },
+  // OpenAI
+  "gpt-5.4": { inputPerM: 2.5, outputPerM: 15.0 },
+  "gpt-5.4-mini": { inputPerM: 0.75, outputPerM: 4.5 },
+  "gpt-5.4-pro": { inputPerM: 30.0, outputPerM: 180.0 },
 };
 
 const DEFAULT_RATE = { inputPerM: 3.0, outputPerM: 15.0 };

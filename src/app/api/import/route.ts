@@ -42,12 +42,11 @@ export async function POST(req: NextRequest) {
       } else {
         const role = await prisma.role.create({ data: roleFields });
         roleId = role.id;
-        // Create conversation for new role
-        await prisma.conversation.upsert({
-          where: { roleId },
-          update: {},
-          create: { roleId, messages: [] },
-        });
+        // Create default conversation thread for new role
+        const existingConv = await prisma.conversation.findFirst({ where: { roleId, isDefault: true } });
+        if (!existingConv) {
+          await prisma.conversation.create({ data: { roleId, name: "General", isDefault: true, messages: [] } });
+        }
       }
 
       // Import staff
@@ -101,10 +100,13 @@ export async function POST(req: NextRequest) {
 
   // Import profile
   if (data.profile) {
+    // During setup (unauthenticated import), clear any existing password
+    // so the user sets a fresh one in the next wizard step
+    const profileData = !session ? { ...data.profile, passwordHash: null } : data.profile;
     await prisma.userProfile.upsert({
       where: { id: "default" },
-      update: data.profile,
-      create: { id: "default", ...data.profile },
+      update: profileData,
+      create: { id: "default", ...profileData },
     });
   }
 

@@ -3,9 +3,13 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+async function isSetupComplete() {
+  const profile = await prisma.userProfile.findUnique({ where: { id: "default" }, select: { passwordHash: true } });
+  return !!(profile?.passwordHash || process.env.APP_PASSWORD_HASH);
+}
+
 export async function GET() {
-  const roleCount = await prisma.role.count();
-  if (roleCount > 0) {
+  if (await isSetupComplete()) {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -17,8 +21,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const roleCount = await prisma.role.count();
-  if (roleCount > 0) {
+  if (await isSetupComplete()) {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

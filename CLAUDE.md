@@ -2,7 +2,7 @@
 
 ## What is this
 
-Conductor is a personal productivity operating system for an engineer managing 6 concurrent W2 engineering roles. It replaces Things 3 as a task manager and adds AI-powered follow-up tracking, transcript processing, communication drafting, slash commands, artifact rendering, and persistent per-role conversations. Integrates with Linear (task sync) and Granola (meeting transcript sync).
+Conductor is a personal productivity operating system for an engineer managing multiple concurrent W2 engineering roles. It replaces Things 3 as a task manager and adds AI-powered follow-up tracking, transcript processing, communication drafting, slash commands, artifact rendering, and persistent per-role conversations. Integrates with Linear (task sync) and Granola (meeting transcript sync).
 
 **This is a single-user app.** One person uses it. No multi-tenancy, no registration, no teams. Password-protected with a single password.
 
@@ -11,20 +11,20 @@ Conductor is a personal productivity operating system for an engineer managing 6
 - Next.js 14 (App Router) + React + TypeScript
 - Tailwind CSS + shadcn/ui + Lucide React + Framer Motion
 - PostgreSQL 16 (local on EC2 in prod, Docker in dev)
-- Prisma ORM (15 models)
+- Prisma ORM (16 models)
 - NextAuth (credentials provider, single-user)
 - Anthropic Claude API (Sonnet 4.6 default, Haiku 4.5, Opus 4.6 selectable)
 - File processing: pdf-parse, mammoth, sharp
 
 ## Key schema notes
 
-- 15 models: UserProfile, Role, Staff, Task, Tag, TaskTag, FollowUp, Note, Transcript, FileUpload, Conversation, ScheduleOverride, Skill, Integration, AiUsage
+- 16 models: UserProfile, Role, Staff, Task, Tag, TaskTag, FollowUp, Note, Transcript, FileUpload, Conversation, ScheduleBlock, ScheduleOverride, Skill, Integration, AiUsage
 - Task and FollowUp have `sourceType` + `sourceId` fields for deduplication across integrations (linear, granola, calendar)
 - Indexes on Task(`roleId, done`), Task(`isToday, done`), Task(`roleId, status`), FollowUp(`roleId, status`), Note(`roleId, createdAt`), AiUsage(`createdAt`), AiUsage(`roleId`)
 - Conversation.messages is a JSON column — if a thread exceeds ~100 messages, consider migrating to a Message model
 - Skill model stores slash command templates (8 built-in + custom)
 - Integration model stores third-party configs (Linear, Granola) with lastSyncAt/lastSyncResult
-- Default schedule is hardcoded in `src/lib/schedule.ts` — ScheduleOverride only stores deviations
+- ScheduleBlock stores time blocks; ScheduleOverride stores per-day deviations
 - End-of-day reset triggers via AppShell on first request of each new day (localStorage check, no cron)
 
 ## Getting started
@@ -36,6 +36,8 @@ npx prisma migrate dev --name init # Schema + seed
 mkdir -p uploads                   # File upload dir
 npm run dev                        # http://localhost:3000
 ```
+
+The setup wizard walks through password creation, adding companies/roles, configuring schedule blocks, and setting up a voice profile. No seed data includes company-specific information — all roles and staff are created through the app.
 
 ## Project structure
 
@@ -49,29 +51,42 @@ conductor/
 │   │   ├── ai/ (extract, draft, reconfigure, usage)
 │   │   ├── skills/ (CRUD, resolve)
 │   │   ├── integrations/ (CRUD, linear/sync, granola/sync)
+│   │   ├── documents/          # Document management
+│   │   ├── export/, import/    # Full backup + config export/import
 │   │   ├── context/            # Assembled context for artifacts
-│   │   └── roles/, profile/, schedule/, calendar/, files/, transcripts/
-│   ├── (pages) /, inbox, tracker, board, ai, settings, flow, keys, costs, login
+│   │   ├── setup/, onboarding/ # First-run wizard + checklist
+│   │   └── roles/, profile/, schedule/, calendar/, files/, transcripts/, auth/
+│   ├── (pages) /, inbox, tracker, board, ai, docs, documents, settings, login, setup
+│   ├── (settings subpages) flow, keys, costs
 ├── src/components/             # React components
 │   ├── ui/                     # shadcn/ui primitives
 │   ├── AppShell.tsx            # Responsive layout
-│   ├── Sidebar.tsx             # Desktop nav (6 items + Settings)
+│   ├── Sidebar.tsx             # Desktop nav
+│   ├── BottomNav.tsx           # Mobile nav
+│   ├── MobileDrawer.tsx        # Mobile drawer
 │   ├── ChatThread.tsx          # AI chat with slash commands + artifact rendering
 │   ├── TaskItem.tsx            # Task card with status, tags, source indicators
 │   ├── FocusView.tsx           # Main focus mode
-│   └── GlobalSearch.tsx        # Cmd+K search
+│   ├── GlobalSearch.tsx        # Cmd+K search
+│   ├── SetupWizard.tsx         # Onboarding flow
+│   ├── ScheduleGrid.tsx        # Schedule editor
+│   ├── KeyboardShortcuts.tsx   # Keyboard shortcut handler
+│   └── ConductorLogo.tsx       # App logo
 ├── src/lib/
 │   ├── ai-context.ts           # 5-layer context assembly
 │   ├── skill-resolver.ts       # {{variable}} template resolution
 │   ├── ai-usage.ts             # Token/cost tracking
+│   ├── api-keys.ts             # API key management
 │   ├── file-processor.ts       # PDF/docx/image extraction
 │   ├── schedule.ts             # Time block detection
+│   ├── docs-content.ts         # Knowledge base content
 │   ├── prisma.ts               # Prisma client singleton
-│   └── auth.ts                 # NextAuth config
-├── scripts/                    # Sync scripts + LaunchAgent plists
-│   ├── linear-sync.sh          # Hourly Linear sync
-│   ├── granola-sync.sh         # 30-min Granola sync
-│   └── *.plist                 # macOS LaunchAgent configs
+│   ├── auth.ts                 # NextAuth config
+│   └── utils.ts                # Shared utilities
+├── .env.template               # Environment variable template
+├── cron/                       # Docker cron sync scripts
+│   ├── sync.sh                 # Unified sync runner
+│   └── sync-crontab            # Cron schedule
 ├── infra/                      # AWS CDK stack
 ├── uploads/                    # Local dev file uploads
 └── docker-compose.yml
@@ -89,29 +104,22 @@ Flow, Keys, and Costs were removed from nav — they live inside Settings > Syst
 3. Integrations — Calendar patterns, Linear config + sync, Granola config + sync
 4. System — Schedule, Skills, Flow guide, Keyboard shortcuts, AI Costs, Actions
 
-## The 6 roles (in priority waterfall order)
+## Roles and priority waterfall
 
-1. **Zeta** — UI Director / Staff Engineer (Slack) — #2563eb — highest pay
-2. **HealthMap** — Principal UI Architect (Teams) — #0d9488
-3. **vQuip** — CTO, 3% equity (Slack) — #7c3aed — meetings 10:30am-3pm
-4. **HealthMe** — Sr UI Engineer (Slack) — #d97706
-5. **Xenegrade** — Sr Engineer (Slack) — #8cbf6e
-6. **React Health** — Sr Node/NestJS Engineer (Teams) — #e11d48 — lowest touch
+Roles are user-defined — created during onboarding or in Settings. Each role has:
+- **Name, title, platform** (Slack or Teams), **color**, **priority** (1 = highest)
+- **Tone** — how AI drafts messages for this role
+- **Context** — background info for AI
+- **Responsibilities, quarterly goals** — used by slash commands
+- **Staff directory** — people associated with this role
 
-When a time block has no work, pull from the highest-priority role that has tasks. This is called the **priority waterfall**.
+When a time block has no assigned role or the assigned role has no tasks, pull from the highest-priority role that has tasks. This is called the **priority waterfall**.
 
 ## Schedule
 
-| Block | Time | Default roles |
-|-------|------|---------------|
-| b1 | 7:30–10:00 | Zeta / HealthMap (alternating days) |
-| b2 | 10:00–10:30 | Triage (all Slacks + Teams) |
-| b3 | 10:30–3:00 | vQuip (meetings + CTO async) |
-| b4 | 3:00–4:00 | HealthMap / HealthMe |
-| b5 | 4:00–5:00 | HealthMe / Xenegrade |
-| b6 | 7:00–8:00 PM | Xenegrade / React Health (in bed) |
+Schedule blocks are user-configurable via Settings > System > Schedule. The seed provides default time slots (Morning, Triage, Midday, Afternoon, Late Afternoon, Evening) without role assignments — the user maps roles to blocks during onboarding.
 
-5 PM is a hard stop for family. 5–7 PM is family time. 7–8 PM is low-touch work in bed.
+Each block has: label, start time, end time, and per-weekday role assignments via ScheduleOverride.
 
 ## Critical UX rules (neurodivergent design)
 
@@ -155,16 +163,17 @@ Sonnet 4.6 (default), Haiku 4.5, Opus 4.6. Dropdown in AI page header.
 
 ## Integrations
 
-### Linear (HealthMe role)
-- Hourly sync via LaunchAgent → `POST /api/integrations/linear/sync`
+### Linear
+- Hourly sync via cron/LaunchAgent → `POST /api/integrations/linear/sync`
 - GraphQL API, fetches issues assigned to user on configured team
+- Role mapping configured in Settings > Integrations
 - Status mapping: Backlog/Todo→backlog, In Progress→in_progress, In Review→in_review, Done→done
 - Dedup: `sourceType="linear"`, `sourceId="linear-{uuid}"`
 - Auth: `x-sync-secret` header
 
-### Granola (all roles)
-- 30-min sync via LaunchAgent → `POST /api/integrations/granola/sync`
-- Maps Granola folder name to Conductor role (Zeta→zeta, HealthMap→healthmap, etc.)
+### Granola
+- 30-min sync via cron/LaunchAgent → `POST /api/integrations/granola/sync`
+- Maps Granola folder names to Conductor roles (configured in Settings > Integrations)
 - Fetches AI summary + speaker-labeled transcript → Claude extracts tasks, follow-ups, decisions
 - Dedup: `sourceType="granola"`, `sourceId="granola-{noteId}"`
 
@@ -190,17 +199,17 @@ One persistent conversation per role. Stored in the `Conversation` table as a JS
 
 ## Environment
 
+Copy `.env.template` to `.env` and fill in your values:
 ```bash
-# .env.local (dev)
-DATABASE_URL=postgresql://conductor:localdev@localhost:5432/conductor
-NEXTAUTH_SECRET=local-dev-secret
-NEXTAUTH_URL=http://localhost:3000
-APP_PASSWORD_HASH=$2b$10$...
-ANTHROPIC_API_KEY=sk-ant-...
-UPLOAD_DIR=./uploads
-GRANOLA_API_KEY=grn_...                    # Optional: Granola Business plan API key
-LINEAR_SYNC_SECRET=conductor-linear-sync   # Optional: auth for cron sync requests
+cp .env.template .env
 ```
+
+See `.env.template` for all available variables with descriptions. Key ones:
+- `DATABASE_URL` — PostgreSQL connection string
+- `NEXTAUTH_SECRET` — session secret (generate with `openssl rand -base64 32`)
+- `ANTHROPIC_API_KEY` — Claude API key (can also be set in-app)
+- `GRANOLA_API_KEY` — optional, for meeting transcript sync
+- `LINEAR_SYNC_SECRET` — optional, for cron sync authentication
 
 ## Deployment
 
@@ -208,13 +217,18 @@ LINEAR_SYNC_SECRET=conductor-linear-sync   # Optional: auth for cron sync reques
 - PostgreSQL 16 installed on the same instance
 - Nginx reverse proxy + Let's Encrypt SSL
 - PM2 process manager
-- EventBridge auto start 6 AM ET / stop 9 PM ET, Monday–Friday
+- EventBridge auto start/stop on weekdays
 
 Deploy:
 ```bash
 rsync -avz --exclude=node_modules --exclude=.next --exclude=uploads \
   ./ ubuntu@IP:/opt/conductor/
 ssh ubuntu@IP "cd /opt/conductor && npm install && npx prisma migrate deploy && npm run build && pm2 restart conductor"
+```
+
+Docker (alternative):
+```bash
+docker compose up -d   # Postgres on :5433, app on :3100
 ```
 
 ## Conventions
@@ -224,7 +238,6 @@ ssh ubuntu@IP "cd /opt/conductor && npm install && npx prisma migrate deploy && 
 - Use Lucide React for all icons
 - All API routes in `src/app/api/` using Next.js App Router route handlers
 - Prisma client singleton in `src/lib/prisma.ts` — import from there, never instantiate directly
-- Role colors defined in `tailwind.config.ts` under `theme.extend.colors.role`
 - All touch targets minimum 44px
 - No `console.log` in production — use conditional logging
 - CSS variables for theming: `var(--surface)`, `var(--text-primary)`, `var(--border-subtle)`, etc.
@@ -240,6 +253,3 @@ ssh ubuntu@IP "cd /opt/conductor && npm install && npx prisma migrate deploy && 
 - No "completed tasks" view
 - No end-of-day summary screens
 
-## Spec reference
-
-The original product spec is in `conductor-spec.md` at the project root. Note: it describes the initial design — many features have been added since. For current state, refer to this CLAUDE.md and the memory files in `.claude/projects/.../memory/`.

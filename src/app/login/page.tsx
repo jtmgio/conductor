@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { ConductorLogo } from "@/components/ConductorLogo";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
@@ -29,8 +30,9 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--surface)]">
       <div className="w-full max-w-[380px] px-8 py-10">
-        <div className="text-center">
-          <h1 className="text-[40px] font-bold text-[var(--text-primary)]">Conductor</h1>
+        <div className="flex flex-col items-center">
+          <ConductorLogo size={40} />
+          <h1 className="text-[40px] font-bold text-[var(--text-primary)] mt-4">Conductor</h1>
           <p className="text-[16px] text-[var(--text-tertiary)] mt-2">Personal productivity OS</p>
           <div className="w-10 h-px bg-[var(--border-default)] mx-auto mt-4 mb-8" />
         </div>

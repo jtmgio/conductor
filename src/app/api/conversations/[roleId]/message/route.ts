@@ -4,21 +4,25 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { assembleContext, getConversationMessages } from "@/lib/ai-context";
-import Anthropic from "@anthropic-ai/sdk";
+import { createCompletion, ALLOWED_MODELS, type AIMessage, type AIContentBlock } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
-import { getAnthropicApiKey } from "@/lib/api-keys";
 
 export async function POST(req: NextRequest, { params }: { params: { roleId: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const apiKey = await getAnthropicApiKey();
-  const anthropic = new Anthropic({ apiKey });
-
-  const { message, attachments, model } = await req.json();
+  const { message, attachments, model, threadId } = await req.json();
   if (!message) return NextResponse.json({ error: "message required" }, { status: 400 });
 
-  const ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-6"];
+  // Resolve the conversation thread
+  let conv;
+  if (threadId) {
+    conv = await prisma.conversation.findUnique({ where: { id: threadId } });
+  } else {
+    conv = await prisma.conversation.findFirst({ where: { roleId: params.roleId, isDefault: true } });
+  }
+  if (!conv) return NextResponse.json({ error: "Conversation thread not found" }, { status: 404 });
+
   const selectedModel = ALLOWED_MODELS.includes(model) ? model : "claude-sonnet-4-6";
 
   const { systemPrompt, contextMessages } = await assembleContext({
@@ -27,9 +31,9 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
     includeRetrieved: true,
   });
 
-  const history = await getConversationMessages(params.roleId, 10);
+  const history = await getConversationMessages(params.roleId, 20, conv.id);
 
-  const messages: Anthropic.MessageParam[] = [
+  const messages: AIMessage[] = [
     { role: "user", content: `[Context]\n${contextMessages}` },
     { role: "assistant", content: "Understood. I have the current context." },
     ...history.map((m) => ({
@@ -39,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
   ];
 
   // Build user message content
-  const userContent: Anthropic.ContentBlockParam[] = [];
+  const userContent: AIContentBlock[] = [];
   if (attachments?.length) {
     for (const att of attachments) {
       if (att.base64 && att.mimeType?.startsWith("image/")) {
@@ -55,7 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
   userContent.push({ type: "text", text: message });
   messages.push({ role: "user", content: userContent });
 
-  const response = await anthropic.messages.create({
+  const response = await createCompletion({
     model: selectedModel,
     max_tokens: 2048,
     system: systemPrompt,
@@ -64,24 +68,28 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
 
   trackUsage("chat", response.model, response.usage, params.roleId);
 
-  const assistantText = response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("");
-
   // Save to conversation
-  const conv = await prisma.conversation.findUnique({ where: { roleId: params.roleId } });
-  const existing = (conv?.messages as Array<Record<string, unknown>>) || [];
+  const existing = (conv.messages as Array<Record<string, unknown>>) || [];
+  let savedUserContent = message;
+  if (attachments?.length) {
+    const attachmentTexts = attachments
+      .filter((a: { text?: string }) => a.text)
+      .map((a: { filename?: string; text?: string }) => `[Attached file: ${a.filename}]\n${a.text}`);
+    if (attachmentTexts.length > 0) {
+      savedUserContent = attachmentTexts.join("\n\n") + "\n\n" + message;
+    }
+  }
+
   const updated = [
     ...existing,
-    { role: "user", content: message, timestamp: new Date().toISOString() },
-    { role: "assistant", content: assistantText, timestamp: new Date().toISOString() },
+    { role: "user", content: savedUserContent, timestamp: new Date().toISOString() },
+    { role: "assistant", content: response.text, timestamp: new Date().toISOString() },
   ];
 
   await prisma.conversation.update({
-    where: { roleId: params.roleId },
+    where: { id: conv.id },
     data: { messages: updated as unknown as Prisma.InputJsonValue },
   });
 
-  return NextResponse.json({ response: assistantText });
+  return NextResponse.json({ response: response.text });
 }

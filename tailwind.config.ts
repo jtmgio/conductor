@@ -56,45 +56,6 @@ const config: Config = {
           text: "var(--sidebar-text)",
           muted: "var(--sidebar-text-muted)",
         },
-        // Role colors (refined)
-        role: {
-          zeta: {
-            DEFAULT: "#3B82F6",
-            light: "#EFF6FF",
-            border: "#BFDBFE",
-            text: "#1E40AF",
-          },
-          healthmap: {
-            DEFAULT: "#14B8A6",
-            light: "#F0FDFA",
-            border: "#99F6E4",
-            text: "#0F766E",
-          },
-          vquip: {
-            DEFAULT: "#8B5CF6",
-            light: "#F5F3FF",
-            border: "#C4B5FD",
-            text: "#6D28D9",
-          },
-          healthme: {
-            DEFAULT: "#F59E0B",
-            light: "#FFFBEB",
-            border: "#FDE68A",
-            text: "#B45309",
-          },
-          xenegrade: {
-            DEFAULT: "#78716C",
-            light: "#FAFAF9",
-            border: "#D6D3D1",
-            text: "#44403C",
-          },
-          reacthealth: {
-            DEFAULT: "#F43F5E",
-            light: "#FFF1F2",
-            border: "#FECDD3",
-            text: "#BE123C",
-          },
-        },
       },
       fontFamily: {
         body: ["var(--font-body)", "system-ui", "sans-serif"],

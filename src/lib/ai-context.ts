@@ -93,19 +93,24 @@ ${taskLines || "(none selected)"}
 Follow-ups: ${activeFollowUps} active, ${staleFollowUps} stale`;
 }
 
-// Layer 3: Role context (now includes responsibilities + goals)
+// Layer 3: Role context (includes responsibilities, goals, pinned notes, recent notes)
 async function buildRoleContext(roleId: string): Promise<string> {
-  const [role, recentTranscripts] = await Promise.all([
+  const [role, recentTranscripts, pinnedNotes] = await Promise.all([
     prisma.role.findUnique({
       where: { id: roleId },
       include: {
         staff: true,
-        notes: { take: 5, orderBy: { createdAt: "desc" } },
+        notes: { take: 5, orderBy: { createdAt: "desc" }, where: { pinned: false } },
       },
     }),
     prisma.transcript.findMany({
       where: { roleId },
       take: 3,
+      orderBy: { createdAt: "desc" },
+    }),
+    // Pinned notes always included (improvement #3)
+    prisma.note.findMany({
+      where: { roleId, pinned: true },
       orderBy: { createdAt: "desc" },
     }),
   ]);
@@ -115,9 +120,17 @@ async function buildRoleContext(roleId: string): Promise<string> {
     `- ${s.name} (${s.title})${s.relationship ? ` — ${s.relationship}` : ""}${s.commNotes ? ` [Comm: ${s.commNotes}]` : ""}`
   ).join("\n");
 
-  const noteLines = role.notes.map((n) =>
-    `- [${n.createdAt.toLocaleDateString()}] ${n.content.slice(0, 200)}`
-  ).join("\n");
+  const noteLines = role.notes.map((n) => {
+    // Use summary if available (improvement #4), otherwise slice content
+    const text = n.summary || n.content.slice(0, 300);
+    return `- [${n.createdAt.toLocaleDateString()}] ${text}`;
+  }).join("\n");
+
+  // Pinned notes get more space since user explicitly marked them important
+  const pinnedLines = pinnedNotes.map((n) => {
+    const text = n.summary || n.content.slice(0, 2000);
+    return `- [PINNED] ${text}`;
+  }).join("\n\n");
 
   const transcriptLines = recentTranscripts.map((t) => {
     const text = t.summary || t.rawText.slice(0, 500) + (t.rawText.length > 500 ? "..." : "");
@@ -133,6 +146,7 @@ Context: ${role.context || ""}
 
 Staff directory:
 ${staffLines || "(no staff)"}
+${pinnedNotes.length > 0 ? `\nPinned documents/notes (always available):\n${pinnedLines}` : ""}
 
 Recent notes:
 ${noteLines || "(no notes)"}
@@ -163,6 +177,31 @@ function extractKeywords(query: string): string[] {
     .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
 }
 
+// Find the most relevant chunk of a document for given keywords (improvement #5)
+function findBestChunk(content: string, keywords: string[], chunkSize: number = 3000): string {
+  if (content.length <= chunkSize) return content;
+
+  // Split into overlapping chunks
+  const step = Math.floor(chunkSize * 0.6); // 40% overlap
+  const chunks: Array<{ text: string; score: number }> = [];
+
+  for (let i = 0; i < content.length; i += step) {
+    const chunk = content.slice(i, i + chunkSize);
+    // Score by keyword density
+    const lower = chunk.toLowerCase();
+    const score = keywords.reduce((acc, kw) => {
+      const matches = lower.split(kw.toLowerCase()).length - 1;
+      return acc + matches;
+    }, 0);
+    chunks.push({ text: chunk, score });
+    if (i + chunkSize >= content.length) break;
+  }
+
+  // Return highest-scoring chunk
+  chunks.sort((a, b) => b.score - a.score);
+  return chunks[0]?.text || content.slice(0, chunkSize);
+}
+
 async function buildRetrievedContext(roleId: string, query: string): Promise<string> {
   const keywords = extractKeywords(query);
   if (keywords.length === 0) return "";
@@ -190,12 +229,17 @@ async function buildRetrievedContext(roleId: string, query: string): Promise<str
 
   const parts: string[] = [];
   if (notes.length > 0) {
-    parts.push("Related notes:\n" + notes.map((n) => `- ${n.content.slice(0, 300)}`).join("\n"));
+    parts.push("Related notes:\n" + notes.map((n) => {
+      // Use summary if available (improvement #4)
+      if (n.summary) return `- ${n.summary}`;
+      // Otherwise find the best chunk matching the keywords (improvement #5)
+      return `- ${findBestChunk(n.content, keywords, 3000)}`;
+    }).join("\n\n"));
   }
   if (transcripts.length > 0) {
     parts.push("Related transcripts:\n" + transcripts.map((t) => {
-      const text = t.summary || t.rawText.slice(0, 800) + (t.rawText.length > 800 ? "..." : "");
-      return `- ${text}`;
+      if (t.summary) return `- ${t.summary}`;
+      return `- ${findBestChunk(t.rawText, keywords, 2000)}`;
     }).join("\n\n"));
   }
   return parts.join("\n\n");
@@ -237,8 +281,10 @@ export async function assembleContext(options: ContextOptions = {}): Promise<{
   };
 }
 
-export async function getConversationMessages(roleId: string, limit: number = 10): Promise<Array<{ role: string; content: string }>> {
-  const conv = await prisma.conversation.findUnique({ where: { roleId } });
+export async function getConversationMessages(roleId: string, limit: number = 10, threadId?: string): Promise<Array<{ role: string; content: string }>> {
+  const conv = threadId
+    ? await prisma.conversation.findUnique({ where: { id: threadId } })
+    : await prisma.conversation.findFirst({ where: { roleId, isDefault: true } });
   if (!conv) return [];
   const messages = conv.messages as Array<{ role: string; content: string }>;
   return messages.slice(-limit);

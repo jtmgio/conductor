@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { processFile, getStoragePath, MAX_FILE_SIZE, getUploadDir } from "@/lib/file-processor";
+import { summarizeAndSaveToNote } from "@/lib/document-processor";
 import fs from "fs/promises";
 import path from "path";
 
@@ -39,6 +40,25 @@ export async function POST(req: NextRequest) {
       extractedText: text,
     },
   });
+
+  // Auto-save as Note for long-term AI context retrieval
+  if (text && text.length > 50) {
+    try {
+      const note = await prisma.note.create({
+        data: {
+          roleId,
+          content: `[Uploaded: ${file.name}][FileID: ${upload.id}]\n\n${text.slice(0, 50000)}`,
+          tags: ["upload", file.name.split(".").pop() || "file"],
+        },
+      });
+      // Fire-and-forget AI summary generation
+      if (text.length > 500) {
+        summarizeAndSaveToNote(note.id, text, file.name, roleId);
+      }
+    } catch {
+      // Non-critical
+    }
+  }
 
   return NextResponse.json({ ...upload, base64 });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ArrowUp, MoreVertical, Plus, PenLine, ListChecks, CalendarClock, Sparkles, Mic, Calendar, Send, AlertCircle, Target, Users, RefreshCw, XCircle, Zap, Copy, Maximize2 } from "lucide-react";
+import { ArrowUp, MoreVertical, Plus, PenLine, ListChecks, CalendarClock, Sparkles, Mic, Calendar, Send, AlertCircle, Target, Users, RefreshCw, XCircle, Zap, Copy, Maximize2, CheckSquare, FileOutput, Loader2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 interface Message {
@@ -37,6 +37,7 @@ interface ChatThreadProps {
   onClearConversation: () => void;
   loading?: boolean;
   conductorData?: ConductorContext;
+  threadName?: string;
 }
 
 function getGreeting(): string {
@@ -218,7 +219,7 @@ function renderMessageContent(content: string) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle, messages, onSendMessage, onClearConversation, loading, conductorData }: ChatThreadProps) {
+export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle, messages, onSendMessage, onClearConversation, loading, conductorData, threadName }: ChatThreadProps) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -229,6 +230,49 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
   const [skillFilter, setSkillFilter] = useState("");
   const [selectedSkillIndex, setSelectedSkillIndex] = useState(0);
   const skillMenuRef = useRef<HTMLDivElement>(null);
+  const [extractingIdx, setExtractingIdx] = useState<number | null>(null);
+  const [savingDraftIdx, setSavingDraftIdx] = useState<number | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<Record<number, string>>({});
+
+  const extractTasksFromMessage = async (msgIdx: number, content: string) => {
+    setExtractingIdx(msgIdx);
+    try {
+      const res = await fetch("/api/ai/extract-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: content, roleId }),
+      });
+      const data = await res.json();
+      const tasks = data.tasks || [];
+      const followUps = data.followUps || [];
+      let created = 0;
+      for (const t of tasks) {
+        await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roleId, title: t.title, priority: t.priority || "normal", status: "backlog" }) });
+        created++;
+      }
+      for (const f of followUps) {
+        await fetch("/api/followups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roleId, title: f.title, waitingOn: f.waitingOn || "" }) });
+        created++;
+      }
+      setActionFeedback((prev) => ({ ...prev, [msgIdx]: `Created ${tasks.length} task${tasks.length !== 1 ? "s" : ""}, ${followUps.length} follow-up${followUps.length !== 1 ? "s" : ""}` }));
+      setTimeout(() => setActionFeedback((prev) => { const next = { ...prev }; delete next[msgIdx]; return next; }), 4000);
+    } catch {}
+    setExtractingIdx(null);
+  };
+
+  const saveToDrafts = async (msgIdx: number, content: string) => {
+    setSavingDraftIdx(msgIdx);
+    try {
+      await fetch("/api/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roleId, content, platform: "" }),
+      });
+      setActionFeedback((prev) => ({ ...prev, [msgIdx]: "Saved to drafts" }));
+      setTimeout(() => setActionFeedback((prev) => { const next = { ...prev }; delete next[msgIdx]; return next; }), 3000);
+    } catch {}
+    setSavingDraftIdx(null);
+  };
 
   // Load skills once
   useEffect(() => {
@@ -421,7 +465,7 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
           <div className="flex items-center gap-3 mb-10">
             <span className="text-3xl" style={{ color: roleColor }}>*</span>
             <h1 className="text-[32px] font-semibold text-[var(--text-primary)] tracking-tight">
-              {getGreeting()}, JG
+              {getGreeting()}
             </h1>
           </div>
 
@@ -450,6 +494,12 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
   // Active conversation layout
   return (
     <div className="flex flex-col flex-1 min-h-0">
+      {/* Thread name header */}
+      {threadName && (
+        <div className="shrink-0 px-2 py-1.5 border-b border-[var(--border-subtle)]">
+          <span className="text-[13px] font-medium text-[var(--text-secondary)]">{threadName}</span>
+        </div>
+      )}
       {/* Chat area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-1 py-4 hide-scrollbar space-y-5">
         {messages.map((msg, i) =>
@@ -477,6 +527,28 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
                       conductorData={conductorData}
                     />
                   )
+                )}
+              </div>
+              {/* Action buttons for assistant messages */}
+              <div className="flex items-center gap-1.5 mt-1.5 ml-0.5">
+                <button
+                  onClick={() => extractTasksFromMessage(i, msg.content)}
+                  disabled={extractingIdx === i}
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)] transition-colors disabled:opacity-50"
+                >
+                  {extractingIdx === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckSquare className="h-3 w-3" />}
+                  Create tasks
+                </button>
+                <button
+                  onClick={() => saveToDrafts(i, msg.content)}
+                  disabled={savingDraftIdx === i}
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)] transition-colors disabled:opacity-50"
+                >
+                  {savingDraftIdx === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileOutput className="h-3 w-3" />}
+                  Save to drafts
+                </button>
+                {actionFeedback[i] && (
+                  <span className="text-[11px] text-green-400 ml-1">{actionFeedback[i]}</span>
                 )}
               </div>
               {msg.timestamp && <span className="text-[13px] text-[var(--text-tertiary)] px-1">{msg.timestamp}</span>}

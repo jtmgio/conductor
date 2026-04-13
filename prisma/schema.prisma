@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -16,6 +17,7 @@ model UserProfile {
   calendarIgnorePatterns String?
   passwordHash           String?
   anthropicApiKey        String?
+  openaiApiKey           String?
   updatedAt              DateTime @updatedAt
 }
 
@@ -37,7 +39,8 @@ model Role {
   notes         Note[]
   transcripts   Transcript[]
   fileUploads   FileUpload[]
-  conversation  Conversation?
+  conversations Conversation[]
+  drafts        Draft[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -120,10 +123,13 @@ model Note {
   roleId    String
   role      Role     @relation(fields: [roleId], references: [id])
   content   String
+  summary   String?
   tags      String[]
+  pinned    Boolean  @default(false)
   createdAt DateTime @default(now())
 
   @@index([roleId, createdAt])
+  @@index([roleId, pinned])
 }
 
 model Transcript {
@@ -152,10 +158,16 @@ model FileUpload {
 
 model Conversation {
   id        String   @id @default(cuid())
-  roleId    String   @unique
+  roleId    String
   role      Role     @relation(fields: [roleId], references: [id])
+  name      String   @default("General")
+  isDefault Boolean  @default(false)
   messages  Json
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([roleId, name])
+  @@index([roleId, updatedAt])
 }
 
 model ScheduleBlock {
@@ -204,6 +216,40 @@ model Integration {
   lastSyncResult String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+}
+
+model Draft {
+  id            String   @id @default(cuid())
+  roleId        String
+  role          Role     @relation(fields: [roleId], references: [id])
+  recipientName String?
+  platform      String?
+  content       String
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
+
+  @@index([roleId, status])
+}
+
+model SyncLog {
+  id             String    @id @default(cuid())
+  type           String    // "linear", "granola", "calendar"
+  status         String    // "success", "error", "partial"
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  durationMs     Int?
+  trigger        String    @default("manual") // "manual", "cron", "app-open"
+  summary        String?
+  errorMessage   String?
+  itemsFound     Int?
+  itemsCreated   Int?
+  itemsUpdated   Int?
+  itemsSkipped   Int?
+  meta           Json?     // extra data (e.g. screenshot path, conflicts)
+  createdAt      DateTime  @default(now())
+
+  @@index([type, createdAt])
+  @@index([createdAt])
 }
 
 model AiUsage {

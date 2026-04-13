@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { logSync } from "@/lib/sync-logger";
 
 const LINEAR_API = "https://api.linear.app/graphql";
 
@@ -147,6 +148,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Linear integration missing required config" }, { status: 400 });
   }
 
+  const syncStart = new Date();
+  const trigger = req.headers.get("x-sync-trigger") as "cron" | "manual" || "manual";
+
   try {
     const linearIssues = await fetchLinearIssues(apiKey, teamId, userId);
 
@@ -245,6 +249,18 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    await logSync({
+      type: "linear",
+      trigger,
+      status: "success",
+      summary: resultSummary,
+      itemsFound: linearIssues.length,
+      itemsCreated: created,
+      itemsUpdated: updated,
+      itemsSkipped: unchanged,
+      startedAt: syncStart,
+    });
+
     return NextResponse.json({
       success: true,
       linearIssuesFound: linearIssues.length,
@@ -264,6 +280,14 @@ export async function POST(req: NextRequest) {
         data: { lastSyncResult: `error: ${message}` },
       })
       .catch(() => {});
+
+    await logSync({
+      type: "linear",
+      trigger,
+      status: "error",
+      errorMessage: message,
+      startedAt: syncStart,
+    }).catch(() => {});
 
     return NextResponse.json({ error: message }, { status: 500 });
   }

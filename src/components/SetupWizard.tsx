@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, Upload, ArrowRight, ArrowLeft, Check, Palette, MessageSquare, Clock } from "lucide-react";
 
 const COLOR_PRESETS = [
-  "#4d8ef7", "#2dd4bf", "#a78bfa", "#fbbf24", "#8cbf6e", "#fb7185",
-  "#f97316", "#06b6d4", "#ec4899", "#84cc16", "#6366f1", "#14b8a6",
+  "#7c3aed", "#2563eb", "#0d9488", "#d97706", "#e11d48", "#8cbf6e",
+  "#f97316", "#4d8ef7", "#2dd4bf", "#a78bfa", "#fbbf24", "#fb7185",
+  "#06b6d4", "#ec4899", "#84cc16", "#6366f1", "#14b8a6",
 ];
 
 interface NewRole {
@@ -41,6 +42,15 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
   const [importing, setImporting] = useState(false);
 
   const stepIdx = STEPS.indexOf(step);
+
+  // Fetch roles from API when entering schedule step (covers both manual entry and import)
+  useEffect(() => {
+    if (step === "schedule" && savedRoles.length === 0) {
+      fetch("/api/roles").then((r) => r.json()).then((roles: Array<{ id: string; name: string; color: string }>) => {
+        if (roles.length > 0) setSavedRoles(roles);
+      }).catch(() => {});
+    }
+  }, [step, savedRoles.length]);
 
   const next = () => {
     const nextIdx = stepIdx + 1;

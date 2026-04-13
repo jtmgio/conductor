@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { trackUsage } from "@/lib/ai-usage";
-import Anthropic from "@anthropic-ai/sdk";
-import { getAnthropicApiKey } from "@/lib/api-keys";
+import { createCompletion } from "@/lib/ai-provider";
+import { logSync, type SyncTrigger } from "@/lib/sync-logger";
 
 const DEFAULT_IGNORE_PATTERNS = [
   "OOO", "Out of Office", "Busy", "Deep Work", "Focus Time",
@@ -22,6 +22,7 @@ async function getIgnorePatterns(): Promise<string[]> {
 }
 
 // Role keywords built dynamically from role names, context, and staff
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function buildRoleKeywords(): Promise<Record<string, string[]>> {
   const roles = await prisma.role.findMany({
     where: { active: true },
@@ -30,11 +31,9 @@ async function buildRoleKeywords(): Promise<Record<string, string[]>> {
   const keywords: Record<string, string[]> = {};
   for (const role of roles) {
     const kw = [role.name.toLowerCase()];
-    // Add words from role context
     if (role.context) {
       role.context.toLowerCase().split(/[\s,]+/).filter(w => w.length > 3).slice(0, 5).forEach(w => kw.push(w));
     }
-    // Add staff first names
     for (const s of role.staff) {
       const firstName = s.name.split(" ")[0].toLowerCase();
       if (firstName.length > 2) kw.push(firstName + " ");
@@ -63,12 +62,11 @@ interface CalendarResponse {
 }
 
 export async function POST(req: NextRequest) {
-  const { image, date } = await req.json();
+  const syncStart = new Date();
+  const { image, date, trigger: reqTrigger } = await req.json();
+  const trigger: SyncTrigger = reqTrigger || "manual";
   if (!image) return NextResponse.json({ error: "image required" }, { status: 400 });
   if (!date) return NextResponse.json({ error: "date required" }, { status: 400 });
-
-  const apiKey = await getAnthropicApiKey();
-  const anthropic = new Anthropic({ apiKey });
 
   const ignorePatterns = await getIgnorePatterns();
 
@@ -99,8 +97,8 @@ export async function POST(req: NextRequest) {
           .join("\n")}`
       : "";
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+  const response = await createCompletion({
+    model: "claude-sonnet-4-6",
     max_tokens: 2048,
     messages: [
       {
@@ -129,7 +127,7 @@ For each NON-ignored meeting, determine:
 ${roleList}
   If you can't determine the role from the title, set roleId to null.
 
-- prepTask: a short, actionable prep task for this meeting (e.g., "Review PR list before standup", "Prep status update for Cam")
+- prepTask: a short, actionable prep task for this meeting (e.g., "Review PR list before standup", "Prep status update for leadership")
 
 - relevantFollowUps: if any of these stale follow-ups involve people who might be in the meeting, list them:
 ${staleContext}
@@ -160,19 +158,13 @@ Respond with ONLY valid JSON, no markdown backticks:
 
   await trackUsage("calendar", response.model, response.usage);
 
-  const assistantText = response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("");
-
   let parsed: CalendarResponse;
   try {
-    // Extract JSON from response — handle markdown fences or text before/after JSON
-    const jsonMatch = assistantText.match(/\{[\s\S]*\}/);
+    const jsonMatch = response.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("No JSON object found");
     parsed = JSON.parse(jsonMatch[0]);
   } catch {
-    return NextResponse.json({ error: "Failed to parse AI response", raw: assistantText }, { status: 500 });
+    return NextResponse.json({ error: "Failed to parse AI response", raw: response.text }, { status: 500 });
   }
 
   const createdTasks = [];
@@ -182,7 +174,6 @@ Respond with ONLY valid JSON, no markdown backticks:
 
     const sourceId = `cal-${date}-${meeting.startTime}`;
 
-    // Deduplication
     const existing = await prisma.task.findFirst({
       where: { sourceType: "calendar", sourceId },
     });
@@ -240,10 +231,24 @@ Respond with ONLY valid JSON, no markdown backticks:
     });
   }
 
+  const meetingsIgnored = parsed.meetings.filter((m) => m.isIgnored).length;
+
+  await logSync({
+    type: "calendar",
+    trigger,
+    status: "success",
+    summary: parsed.summary || `${parsed.meetings.length} meetings, ${createdTasks.length} tasks created`,
+    itemsFound: parsed.meetings.length,
+    itemsCreated: createdTasks.length,
+    itemsSkipped: meetingsIgnored,
+    startedAt: syncStart,
+    meta: { date, conflicts: parsed.conflicts },
+  }).catch(() => {});
+
   return NextResponse.json({
     date: parsed.date,
     meetingsFound: parsed.meetings.length,
-    meetingsIgnored: parsed.meetings.filter((m) => m.isIgnored).length,
+    meetingsIgnored,
     tasksCreated: createdTasks.length,
     conflicts: parsed.conflicts,
     summary: parsed.summary,

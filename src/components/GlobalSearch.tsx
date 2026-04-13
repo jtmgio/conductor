@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, X, CheckSquare, Clock, FileText, MessageSquare } from "lucide-react";
+import { Search, X, CheckSquare, Clock, FileText, MessageSquare, Sparkles, Loader2 } from "lucide-react";
 
 interface SearchResult {
   tasks: Array<{ id: string; title: string; priority: string; dueDate?: string; role: { id: string; name: string; color: string } }>;
@@ -16,8 +16,25 @@ export function GlobalSearch() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [aiAnswer, setAiAnswer] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<NodeJS.Timeout>();
+
+  const askAI = async () => {
+    if (!query.trim()) return;
+    setAiLoading(true);
+    try {
+      const res = await fetch("/api/search/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: query.trim() }),
+      });
+      const data = await res.json();
+      if (data.answer) setAiAnswer(data.answer);
+    } catch {}
+    setAiLoading(false);
+  };
 
   // Cmd+K / Ctrl+K to open
   useEffect(() => {
@@ -34,7 +51,7 @@ export function GlobalSearch() {
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 100);
-    if (!open) { setQuery(""); setResults(null); }
+    if (!open) { setQuery(""); setResults(null); setAiAnswer(null); }
   }, [open]);
 
   const doSearch = useCallback(async (q: string) => {
@@ -111,7 +128,35 @@ export function GlobalSearch() {
                   </div>
                 )}
 
-                {!loading && query && results && totalResults === 0 && (
+                {/* AI Answer */}
+                {aiAnswer && (
+                  <div className="mx-3 my-3 rounded-xl border border-[var(--accent-blue)]/20 bg-[var(--accent-blue)]/5 p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Sparkles className="h-4 w-4 text-[var(--accent-blue)]" />
+                      <p className="text-[12px] font-medium text-[var(--accent-blue)]">AI Answer</p>
+                    </div>
+                    <p className="text-[14px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">{aiAnswer}</p>
+                  </div>
+                )}
+
+                {aiLoading && (
+                  <div className="mx-3 my-3 rounded-xl border border-[var(--accent-blue)]/20 bg-[var(--accent-blue)]/5 p-4 flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 text-[var(--accent-blue)] animate-spin" />
+                    <p className="text-[13px] text-[var(--accent-blue)]">Searching with AI...</p>
+                  </div>
+                )}
+
+                {/* Ask AI button */}
+                {!aiLoading && !aiAnswer && query.trim().length > 3 && (
+                  <button
+                    onClick={askAI}
+                    className="mx-3 my-2 flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors w-[calc(100%-24px)]"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" /> Ask AI about &ldquo;{query.trim().slice(0, 40)}&rdquo;
+                  </button>
+                )}
+
+                {!loading && query && results && totalResults === 0 && !aiAnswer && (
                   <div className="py-8 text-center text-[var(--text-tertiary)] text-sm">No results found</div>
                 )}
 

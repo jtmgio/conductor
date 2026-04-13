@@ -2,24 +2,27 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Crosshair, Inbox, ListChecks, Columns3, Sparkles, Settings, LogOut, BookOpen } from "lucide-react";
+import { Crosshair, Inbox, ListChecks, Columns3, Sparkles, Settings, LogOut, BookOpen, FileText, Send } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { GlobalSearch } from "./GlobalSearch";
+import { ConductorLogo } from "./ConductorLogo";
 
 // Role colors come from the currentBlock/nextBlocks props — no hardcoded mapping
 
 const navLinks = [
-  { href: "/", label: "Focus", icon: Crosshair },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/tracker", label: "Tracker", icon: ListChecks },
-  { href: "/board", label: "Board", icon: Columns3 },
-  { href: "/ai", label: "AI", icon: Sparkles },
+  { href: "/", label: "Focus", icon: Crosshair, shortcut: "⌘1" },
+  { href: "/inbox", label: "Inbox", icon: Inbox, shortcut: "⌘2" },
+  { href: "/tracker", label: "Tracker", icon: ListChecks, shortcut: "⌘3" },
+  { href: "/board", label: "Board", icon: Columns3, shortcut: "⌘4" },
+  { href: "/ai", label: "AI", icon: Sparkles, shortcut: "⌘5" },
+  { href: "/documents", label: "Documents", icon: FileText, shortcut: "⌘6" },
+  { href: "/drafts", label: "Drafts", icon: Send, shortcut: "⌘7" },
 ];
 
 const bottomLinks = [
   { href: "/docs", label: "Docs", icon: BookOpen },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings", label: "Settings", icon: Settings, shortcut: "⌘," },
 ];
 
 interface SidebarProps {
@@ -49,9 +52,7 @@ export function Sidebar({ currentBlock, nextBlocks }: SidebarProps) {
     <aside className="fixed left-0 top-0 h-full w-[280px] hidden lg:flex flex-col bg-[var(--sidebar-bg)] z-50">
       {/* Branding */}
       <div className="px-6 pt-7 pb-2">
-        <h1 className="text-[22px] font-semibold text-[var(--text-primary)]">
-          Conductor
-        </h1>
+        <ConductorLogo size={24} showWordmark />
       </div>
 
       {/* Current block card */}
@@ -114,7 +115,12 @@ export function Sidebar({ currentBlock, nextBlocks }: SidebarProps) {
                     active ? "opacity-100" : "opacity-60"
                   )}
                 />
-                <span className="text-[16px]">{link.label}</span>
+                <span className="text-[16px] flex-1">{link.label}</span>
+                {link.shortcut && (
+                  <kbd className="text-[11px] font-mono text-[var(--text-tertiary)] bg-[var(--surface-sunken)] border border-[var(--border-subtle)] rounded px-1.5 py-0.5 opacity-60">
+                    {link.shortcut}
+                  </kbd>
+                )}
               </Link>
             );
           })}
@@ -139,7 +145,12 @@ export function Sidebar({ currentBlock, nextBlocks }: SidebarProps) {
                     active ? "opacity-100" : "opacity-60"
                   )}
                 />
-                <span className="text-[16px]">{link.label}</span>
+                <span className="text-[16px] flex-1">{link.label}</span>
+                {link.shortcut && (
+                  <kbd className="text-[11px] font-mono text-[var(--text-tertiary)] bg-[var(--surface-sunken)] border border-[var(--border-subtle)] rounded px-1.5 py-0.5 opacity-60">
+                    {link.shortcut}
+                  </kbd>
+                )}
               </Link>
             );
           })}

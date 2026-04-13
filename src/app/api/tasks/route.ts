@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
       roleId: body.roleId,
       title: body.title,
       priority: body.priority || "normal",
+      status: body.status || "backlog",
       isToday: body.isToday || false,
       notes: body.notes,
       dueDate: body.dueDate ? new Date(body.dueDate) : undefined,

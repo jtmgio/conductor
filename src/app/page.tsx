@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { FocusPage } from "./FocusPage";
 import { SetupRedirect } from "./SetupRedirect";
 
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   // Check if setup is needed (no roles = fresh install)
   const roleCount = await prisma.role.count();

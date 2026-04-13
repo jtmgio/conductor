@@ -4,7 +4,7 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Crosshair, Inbox, ListChecks, Columns3, Sparkles, Settings, LogOut } from "lucide-react";
+import { Menu, X, Crosshair, Inbox, ListChecks, Columns3, Sparkles, Settings, LogOut, FileText, Send } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +14,8 @@ const navLinks = [
   { href: "/tracker", label: "Tracker", icon: ListChecks },
   { href: "/board", label: "Board", icon: Columns3 },
   { href: "/ai", label: "AI", icon: Sparkles },
+  { href: "/documents", label: "Documents", icon: FileText },
+  { href: "/drafts", label: "Drafts", icon: Send },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

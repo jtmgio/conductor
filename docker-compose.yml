@@ -1,15 +1,61 @@
-version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: conductor
-      POSTGRES_PASSWORD: localdev
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
       POSTGRES_DB: conductor
     volumes:
       - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conductor"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  conductor:
+    build: .
+    ports:
+      - "3100:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://conductor:${POSTGRES_PASSWORD:-localdev}@postgres:5432/conductor
+      NODE_ENV: production
+      UPLOAD_DIR: /opt/conductor/uploads
+      NEXTAUTH_URL: http://localhost:3100
+    volumes:
+      - uploads:/opt/conductor/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  conductor-cron:
+    image: alpine:3.19
+    command: >
+      sh -c "
+        apk add --no-cache curl > /dev/null 2>&1 &&
+        mkdir -p /scripts &&
+        cp /cron-src/sync.sh /scripts/sync.sh &&
+        chmod +x /scripts/sync.sh &&
+        crontab /cron-src/sync-crontab &&
+        touch /var/log/cron.log &&
+        echo 'Cron started — syncs run hourly' &&
+        crond -f -l 2
+      "
+    environment:
+      CONDUCTOR_URL: http://conductor:3000
+      LINEAR_SYNC_SECRET: ${LINEAR_SYNC_SECRET:-conductor-linear-sync}
+    volumes:
+      - ./cron:/cron-src:ro
+    depends_on:
+      - conductor
+    restart: unless-stopped
 
 volumes:
   pgdata:
+  uploads:

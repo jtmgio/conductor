@@ -11,31 +11,38 @@ export async function GET() {
   if (!profile) {
     profile = await prisma.userProfile.create({ data: { id: "default" } });
   }
-  // Mask API key in response
+  // Mask API keys in response
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { anthropicApiKey, passwordHash, ...safe } = profile;
-  const hasKey = !!(anthropicApiKey || process.env.ANTHROPIC_API_KEY);
+  const { anthropicApiKey, openaiApiKey, passwordHash, ...safe } = profile;
+  const hasAnthropicKey = !!(anthropicApiKey || process.env.ANTHROPIC_API_KEY);
+  const hasOpenAIKey = !!(openaiApiKey || process.env.OPENAI_API_KEY);
   return NextResponse.json({
     ...safe,
-    hasAnthropicKey: hasKey,
+    hasAnthropicKey: hasAnthropicKey,
+    hasOpenAIKey: hasOpenAIKey,
     anthropicApiKeySource: anthropicApiKey ? "database" : process.env.ANTHROPIC_API_KEY ? "environment" : null,
     anthropicApiKeyMasked: anthropicApiKey ? `${anthropicApiKey.slice(0, 10)}...${anthropicApiKey.slice(-4)}` : null,
+    openaiApiKeySource: openaiApiKey ? "database" : process.env.OPENAI_API_KEY ? "environment" : null,
+    openaiApiKeyMasked: openaiApiKey ? `${openaiApiKey.slice(0, 10)}...${openaiApiKey.slice(-4)}` : null,
   });
 }
 
 export async function PUT(req: NextRequest) {
-  // Allow unauthenticated access during setup (no roles = fresh install)
-  const roleCount = await prisma.role.count();
-  if (roleCount > 0) {
+  // Allow unauthenticated access during setup (no password = setup in progress)
+  const existingProfile = await prisma.userProfile.findUnique({ where: { id: "default" }, select: { passwordHash: true } });
+  const isSetupComplete = !!(existingProfile?.passwordHash || process.env.APP_PASSWORD_HASH);
+  if (isSetupComplete) {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { communicationStyle, sampleMessages, globalContext, calendarIgnorePatterns, anthropicApiKey } = await req.json();
+  const { communicationStyle, sampleMessages, globalContext, calendarIgnorePatterns, anthropicApiKey, openaiApiKey } = await req.json();
 
   // Only allow API key writes when authenticated (not during setup bypass)
-  const isAuthenticated = roleCount > 0;
-  const safeApiKey = isAuthenticated && anthropicApiKey !== undefined ? { anthropicApiKey } : {};
+  const safeApiKeys = isSetupComplete ? {
+    ...(anthropicApiKey !== undefined ? { anthropicApiKey } : {}),
+    ...(openaiApiKey !== undefined ? { openaiApiKey } : {}),
+  } : {};
 
   const profile = await prisma.userProfile.upsert({
     where: { id: "default" },
@@ -44,7 +51,7 @@ export async function PUT(req: NextRequest) {
       ...(sampleMessages !== undefined && { sampleMessages }),
       ...(globalContext !== undefined && { globalContext }),
       ...(calendarIgnorePatterns !== undefined && { calendarIgnorePatterns }),
-      ...safeApiKey,
+      ...safeApiKeys,
     },
     create: {
       id: "default",
@@ -52,11 +59,11 @@ export async function PUT(req: NextRequest) {
       sampleMessages,
       globalContext,
       calendarIgnorePatterns,
-      ...(isAuthenticated ? { anthropicApiKey } : {}),
+      ...(isSetupComplete ? { anthropicApiKey, openaiApiKey } : {}),
     },
   });
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { anthropicApiKey: _key, passwordHash: _pw, ...safeProfile } = profile;
+  const { anthropicApiKey: _key, openaiApiKey: _oKey, passwordHash: _pw, ...safeProfile } = profile;
   return NextResponse.json(safeProfile);
 }

@@ -18,9 +18,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  // Allow unauthenticated access during setup (no roles = fresh install)
-  const roleCount = await prisma.role.count();
-  if (roleCount > 0) {
+  // Allow unauthenticated access during setup (no password set = setup in progress)
+  const profile = await prisma.userProfile.findUnique({ where: { id: "default" }, select: { passwordHash: true } });
+  const isSetupComplete = !!(profile?.passwordHash || process.env.APP_PASSWORD_HASH);
+  if (isSetupComplete) {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -42,9 +43,9 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Auto-create empty conversation for the new role
+  // Auto-create default "General" conversation thread for the new role
   await prisma.conversation.create({
-    data: { roleId: role.id, messages: [] },
+    data: { roleId: role.id, name: "General", isDefault: true, messages: [] },
   });
 
   return NextResponse.json(role);

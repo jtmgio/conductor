@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar } from "./Sidebar";
 import { MobileDrawer } from "./MobileDrawer";
+import { KeyboardShortcuts } from "./KeyboardShortcuts";
+import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 
 interface BlockInfo {
   label: string;
@@ -22,18 +24,55 @@ interface AppShellProps {
 
 export function AppShell({ children, currentBlock, nextBlocks }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   useEffect(() => {
-    const lastResetKey = "conductor-last-reset";
     const today = new Date().toDateString();
-    const lastReset = localStorage.getItem(lastResetKey);
 
+    // Daily reset — move incomplete today-tasks back to backlog
+    const lastResetKey = "conductor-last-reset";
+    const lastReset = localStorage.getItem(lastResetKey);
     if (lastReset !== today) {
       fetch("/api/tasks/reset-today", { method: "POST" })
         .then(() => localStorage.setItem(lastResetKey, today))
         .catch(() => {});
     }
+
+    // Calendar sync — trigger if it hasn't run today (covers missed 5am cron)
+    const lastCalSyncKey = "conductor-last-cal-sync";
+    const lastCalSync = localStorage.getItem(lastCalSyncKey);
+    if (lastCalSync !== today) {
+      fetch("/api/calendar/sync", { method: "POST" })
+        .then((res) => {
+          if (res.ok) localStorage.setItem(lastCalSyncKey, today);
+        })
+        .catch(() => {});
+    }
   }, []);
+
+  const toggleShortcuts = useCallback(() => setShowShortcuts((v) => !v), []);
+  const closeShortcuts = useCallback(() => setShowShortcuts(false), []);
+
+  const shortcuts: Shortcut[] = useMemo(() => [
+    // Navigation
+    { key: "1", modifiers: ["cmd"], action: () => router.push("/"), description: "Go to Focus", category: "Navigation" },
+    { key: "2", modifiers: ["cmd"], action: () => router.push("/inbox"), description: "Go to Inbox", category: "Navigation" },
+    { key: "3", modifiers: ["cmd"], action: () => router.push("/tracker"), description: "Go to Tracker", category: "Navigation" },
+    { key: "4", modifiers: ["cmd"], action: () => router.push("/board"), description: "Go to Board", category: "Navigation" },
+    { key: "5", modifiers: ["cmd"], action: () => router.push("/ai"), description: "Go to AI", category: "Navigation" },
+    { key: "6", modifiers: ["cmd"], action: () => router.push("/documents"), description: "Go to Documents", category: "Navigation" },
+    { key: "7", modifiers: ["cmd"], action: () => router.push("/drafts"), description: "Go to Drafts", category: "Navigation" },
+    { key: ",", modifiers: ["cmd"], action: () => router.push("/settings"), description: "Go to Settings", category: "Navigation" },
+
+    // Note: Cmd+K is handled by GlobalSearch component directly
+
+    // General
+    { key: "?", action: toggleShortcuts, description: "Show keyboard shortcuts", category: "General" },
+    { key: "Escape", action: closeShortcuts, description: "Close dialog", category: "General", allowInInput: true },
+  ], [router, toggleShortcuts, closeShortcuts]);
+
+  useHotkeys(shortcuts);
 
   return (
     <div className="min-h-screen bg-[var(--surface)] text-[var(--text-primary)]">
@@ -54,6 +93,8 @@ export function AppShell({ children, currentBlock, nextBlocks }: AppShellProps) 
           </AnimatePresence>
         </div>
       </main>
+
+      <KeyboardShortcuts open={showShortcuts} onClose={closeShortcuts} />
     </div>
   );
 }

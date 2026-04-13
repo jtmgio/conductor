@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskItem } from "./TaskItem";
 import { MorningPick } from "./MorningPick";
@@ -9,6 +9,9 @@ import { STATUS_CONFIG, STATUS_ORDER } from "./TaskItem";
 import { Plus, Sparkles, Moon, Inbox, Users, MessageSquare, ChevronLeft, ChevronRight, List, Columns3, Check, X, Trash2, Clock, Mic, Key, Link2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
+import { MorningBriefing } from "./MorningBriefing";
+import { RoleHandoff } from "./RoleHandoff";
 import Link from "next/link";
 
 interface Task {
@@ -82,6 +85,14 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     if (canGoNext) setBlockOverrideIdx(activeIdx + 1);
   };
   const resetToCurrentBlock = () => setBlockOverrideIdx(null);
+
+  // Focus-specific keyboard shortcuts
+  const focusShortcuts: Shortcut[] = useMemo(() => [
+    { key: "[", action: goToPrevBlock, description: "Previous time block", category: "Focus" },
+    { key: "]", action: goToNextBlock, description: "Next time block", category: "Focus" },
+    { key: "l", modifiers: ["cmd"], action: () => setViewMode((v) => v === "list" ? "board" : "list"), description: "Toggle list/board", category: "Focus" },
+  ], [activeIdx, allBlocks.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useHotkeys(focusShortcuts);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -343,6 +354,12 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+      {/* Morning briefing — shows once per day */}
+      <MorningBriefing />
+
+      {/* Role switch handoff — shows when block changes */}
+      <RoleHandoff roleId={activeBlock?.roleId || null} />
+
       {activeBlock && (
         <section className="mb-8">
           <div className="flex items-center gap-2 mb-1.5">

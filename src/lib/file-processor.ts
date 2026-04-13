@@ -15,6 +15,15 @@ export async function processFile(
   filePath: string,
   mimeType: string
 ): Promise<{ text: string | null; base64: string | null }> {
+  // Fallback: detect type from extension when MIME is generic
+  const ext = path.extname(filePath).toLowerCase();
+  if (mimeType === "application/octet-stream") {
+    if ([".docx", ".doc"].includes(ext)) mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    else if (ext === ".pdf") mimeType = "application/pdf";
+    else if ([".txt", ".md", ".csv", ".json"].includes(ext)) mimeType = "text/plain";
+    else if ([".png", ".jpg", ".jpeg", ".gif", ".webp"].includes(ext)) mimeType = `image/${ext.slice(1)}`;
+  }
+
   if (mimeType.startsWith("image/")) {
     const buffer = await fs.readFile(filePath);
     return { text: null, base64: buffer.toString("base64") };

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import Anthropic from "@anthropic-ai/sdk";
+import { createCompletion } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
-import { getAnthropicApiKey } from "@/lib/api-keys";
+import { logSync } from "@/lib/sync-logger";
 
 const GRANOLA_API = "https://public-api.granola.ai/v1";
 
@@ -83,9 +83,9 @@ function matchRole(folderName: string | null | undefined, roleMapping: Record<st
   return null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function POST(_req: NextRequest) {
-  const anthropicApiKey = await getAnthropicApiKey();
-  const anthropic = new Anthropic({ apiKey: anthropicApiKey });
+  const syncStart = new Date();
 
   const apiKey = process.env.GRANOLA_API_KEY;
   if (!apiKey) {
@@ -188,8 +188,8 @@ export async function POST(_req: NextRequest) {
     const staffContext = roleStaffMap[roleId] || "none";
 
     try {
-      const extractRes = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+      const extractRes = await createCompletion({
+        model: "claude-sonnet-4-6",
         max_tokens: 2048,
         system: `You are extracting action items from meeting notes for the ${role?.name || roleId} role (${role?.title || ""}).
 
@@ -220,10 +220,7 @@ Return ONLY valid JSON, no markdown backticks:
 
       trackUsage("granola-sync", extractRes.model, extractRes.usage, roleId);
 
-      const text = extractRes.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
-        .map((b) => b.text)
-        .join("");
+      const text = extractRes.text;
 
       const extracted = JSON.parse(text.replace(/```json|```/g, "").trim());
 
@@ -324,6 +321,19 @@ Return ONLY valid JSON, no markdown backticks:
       lastSyncResult: `success: ${resultSummary}`,
     },
   });
+
+  const totalCreated = results.reduce((sum, r) => sum + r.tasks + r.followUps, 0);
+  await logSync({
+    type: "granola",
+    trigger: "manual",
+    status: processed > 0 ? "success" : skipped > 0 ? "partial" : "success",
+    summary: resultSummary,
+    itemsFound: notes.length,
+    itemsCreated: totalCreated,
+    itemsSkipped: skipped + noFolder,
+    startedAt: syncStart,
+    meta: results.length > 0 ? { results } : undefined,
+  }).catch(() => {});
 
   return NextResponse.json({
     success: true,
