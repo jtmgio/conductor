@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Trash2, Plus, X, Pencil, ExternalLink, Sparkles, ListChecks } from "lucide-react";
+import { Check, Trash2, Plus, X, Pencil, ExternalLink, Sparkles, ListChecks, Paperclip, FileText, Image, File, Download, Loader2 } from "lucide-react";
 import { STATUS_CONFIG, STATUS_ORDER } from "./TaskItem";
 import { ChatThread } from "./ChatThread";
 import { FontSizeControl } from "./FontSizeControl";
 import { useTaskChat } from "@/hooks/useTaskChat";
 import { useFontSize } from "@/hooks/useFontSize";
+import { useToast } from "@/components/ui/toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -18,6 +19,14 @@ interface TagRelation {
 interface ChecklistItem {
   text: string;
   done: boolean;
+}
+
+interface TaskAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
 }
 
 export interface DrawerTask {
@@ -42,6 +51,19 @@ interface TaskDetailDrawerProps {
   onDelete: (id: string) => void;
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function FileIcon({ mimeType }: { mimeType: string }) {
+  if (mimeType.startsWith("image/")) return <Image className="h-4 w-4 text-purple-400" />;
+  if (mimeType.includes("pdf")) return <FileText className="h-4 w-4 text-red-400" />;
+  if (mimeType.includes("word") || mimeType.includes("document")) return <FileText className="h-4 w-4 text-blue-400" />;
+  return <File className="h-4 w-4 text-[var(--text-tertiary)]" />;
+}
+
 export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onComplete, onDelete }: TaskDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<"details" | "chat">("details");
   const [editTitle, setEditTitle] = useState("");
@@ -54,6 +76,13 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
   const [editingNotes, setEditingNotes] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  // Attachments state
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   const font = useFontSize("task-drawer");
 
@@ -62,6 +91,14 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
     task?.roleId || "",
     task?.title || ""
   );
+
+  // Load attachments
+  const loadAttachments = useCallback(async (taskId: string) => {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/files`);
+      if (res.ok) setAttachments(await res.json());
+    } catch {}
+  }, []);
 
   // Sync local state when task changes
   useEffect(() => {
@@ -75,10 +112,12 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
       setEditingNotes(false);
       setNewTag("");
       setActiveTab("details");
+      setAttachments([]);
+      loadAttachments(task.id);
     }
-  }, [task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [task?.id, loadAttachments]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Close on Escape — use capture phase so it fires before inputs consume the event
+  // Close on Escape
   useEffect(() => {
     if (!task) return;
     const handler = (e: KeyboardEvent) => {
@@ -95,6 +134,53 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
   const save = (data: Record<string, unknown>) => {
     if (task) onUpdate(task.id, data);
   };
+
+  // File upload handler
+  const uploadFile = useCallback(async (file: globalThis.File) => {
+    if (!task) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast("File exceeds 10MB limit", "error");
+      return;
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/tasks/${task.id}/files`, {
+        method: "POST",
+        body: formData,
+      });
+      if (res.ok) {
+        const uploaded = await res.json();
+        setAttachments((prev) => [uploaded, ...prev]);
+        toast("File attached", "success");
+      } else {
+        toast("Failed to upload file", "error");
+      }
+    } catch {
+      toast("Failed to upload file", "error");
+    }
+    setUploading(false);
+  }, [task, toast]);
+
+  const removeFile = useCallback(async (fileId: string) => {
+    if (!task) return;
+    try {
+      await fetch(`/api/tasks/${task.id}/files`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileId }),
+      });
+      setAttachments((prev) => prev.filter((f) => f.id !== fileId));
+    } catch {}
+  }, [task]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) uploadFile(file);
+  }, [uploadFile]);
 
   if (!task) return null;
 
@@ -262,6 +348,75 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                       </ReactMarkdown>
                     </div>
                   )}
+                </div>
+
+                {/* Attachments */}
+                <div>
+                  <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-2">
+                    Attachments {attachments.length > 0 && `(${attachments.length})`}
+                  </p>
+
+                  {/* File list */}
+                  {attachments.length > 0 && (
+                    <div className="space-y-1.5 mb-3">
+                      {attachments.map((file) => (
+                        <div key={file.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[var(--surface-raised)] group">
+                          <FileIcon mimeType={file.mimeType} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[14px] text-[var(--text-primary)] truncate">{file.filename}</p>
+                            <p className="text-[11px] text-[var(--text-tertiary)]">{formatFileSize(file.size)}</p>
+                          </div>
+                          <a
+                            href={`/api/documents/download?fileId=${file.id}`}
+                            className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent-blue)] hover:bg-[var(--sidebar-hover)] transition-colors opacity-0 group-hover:opacity-100"
+                            title="Download"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </a>
+                          <button
+                            onClick={() => removeFile(file.id)}
+                            className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-red-400 hover:bg-[var(--sidebar-hover)] transition-colors opacity-0 group-hover:opacity-100"
+                            title="Remove"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Drop zone / upload button */}
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
+                      dragOver
+                        ? "border-[var(--accent-blue)] bg-[var(--accent-blue)]/5"
+                        : "border-[var(--border-subtle)] hover:border-[var(--border-default)] hover:bg-[var(--surface-raised)]"
+                    }`}
+                  >
+                    {uploading ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-[var(--text-tertiary)]" />
+                    ) : (
+                      <Paperclip className="h-4 w-4 text-[var(--text-tertiary)]" />
+                    )}
+                    <span className="text-[13px] text-[var(--text-tertiary)]">
+                      {uploading ? "Uploading..." : "Drop file or click to attach"}
+                    </span>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      accept="image/*,.pdf,.docx,.doc,.txt,.md,.csv,.xlsx,.xls,.pptx,.ppt,.zip"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadFile(file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </div>
                 </div>
 
                 {/* Due date */}

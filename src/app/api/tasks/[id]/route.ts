@@ -54,6 +54,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     include: {
       role: { select: { id: true, name: true, color: true, priority: true } },
       tags: { include: { tag: true } },
+      files: { include: { file: { select: { id: true, filename: true, mimeType: true, size: true, createdAt: true } } } },
     },
   });
   return NextResponse.json(updated);
