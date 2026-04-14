@@ -9,13 +9,8 @@
         <string>/bin/bash</string>
         <string>/Users/joshuagonzalez/projects/jtmg/conductor/cron/calendar-sync.sh</string>
     </array>
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>5</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
+    <key>StartInterval</key>
+    <integer>1800</integer>
     <key>StandardOutPath</key>
     <string>/Users/joshuagonzalez/projects/jtmg/conductor/logs/calendar-sync.log</string>
     <key>StandardErrorPath</key>
@@ -23,7 +18,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>CONDUCTOR_URL</key>
-        <string>http://localhost:3000</string>
+        <string>http://localhost:5402</string>
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin</string>
     </dict>

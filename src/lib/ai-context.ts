@@ -1,6 +1,42 @@
 import { prisma } from "./prisma";
 import { getCurrentBlock, getTimeLabel, getScheduleBlocks } from "./schedule";
 
+// Configurable context settings with three-tier resolution:
+// role override → system default (UserProfile) → hardcoded fallback
+interface AiContextSettings {
+  recentNotesCount: number;
+  recentTranscriptsCount: number;
+  conversationHistoryLimit: number;
+  noteChunkSize: number;
+  transcriptChunkSize: number;
+  pinnedNoteChunkSize: number;
+}
+
+const DEFAULTS: AiContextSettings = {
+  recentNotesCount: 5,
+  recentTranscriptsCount: 3,
+  conversationHistoryLimit: 10,
+  noteChunkSize: 3000,
+  transcriptChunkSize: 2000,
+  pinnedNoteChunkSize: 2000,
+};
+
+async function resolveAiSettings(roleId?: string): Promise<AiContextSettings> {
+  const [profile, role] = await Promise.all([
+    prisma.userProfile.findUnique({ where: { id: "default" } }),
+    roleId ? prisma.role.findUnique({ where: { id: roleId } }) : null,
+  ]);
+
+  return {
+    recentNotesCount: role?.aiRecentNotesCount ?? profile?.aiRecentNotesCount ?? DEFAULTS.recentNotesCount,
+    recentTranscriptsCount: role?.aiRecentTranscriptsCount ?? profile?.aiRecentTranscriptsCount ?? DEFAULTS.recentTranscriptsCount,
+    conversationHistoryLimit: role?.aiConversationHistoryLimit ?? profile?.aiConversationHistoryLimit ?? DEFAULTS.conversationHistoryLimit,
+    noteChunkSize: role?.aiNoteChunkSize ?? profile?.aiNoteChunkSize ?? DEFAULTS.noteChunkSize,
+    transcriptChunkSize: role?.aiTranscriptChunkSize ?? profile?.aiTranscriptChunkSize ?? DEFAULTS.transcriptChunkSize,
+    pinnedNoteChunkSize: role?.aiPinnedNoteChunkSize ?? profile?.aiPinnedNoteChunkSize ?? DEFAULTS.pinnedNoteChunkSize,
+  };
+}
+
 // Layer 1: System prompt (built dynamically from DB)
 async function buildSystemPrompt(): Promise<string> {
   const roles = await prisma.role.findMany({
@@ -27,10 +63,11 @@ Priority waterfall: When a time block has no work, pull from the highest-priorit
 Schedule: ${scheduleDesc}
 
 Rules:
-- Be concise and actionable
-- When drafting messages, match the user's personal voice EXACTLY. Do not add formality, filler, or corporate language. The user's sample messages are your primary tone reference.
+- Be concise and actionable. Match the user's communication style in ALL responses, not just drafts.
+- When drafting messages, match the user's personal voice EXACTLY. Do not add formality, filler, or corporate language. The user's communication style and sample messages are your PRIMARY behavioral guides — read them carefully and internalize the patterns before every response.
+- Apply the role-specific communication tone when responding in a role context. This tone overrides general patterns for that role.
 - Never start drafts with "Hi [name]," or "Hey [name]," unless the user's samples show that pattern.
-- Never use "I hope this finds you well", "just wanted to follow up", "per our conversation", "please don't hesitate to reach out" or similar filler.
+- Never use "I hope this finds you well", "just wanted to follow up", "per our conversation", "please don't hesitate to reach out", "lmk if you have questions" or similar filler.
 - Never suggest time tracking or hour logging
 - Follow-ups are separate from tasks
 - Refer to staff by name when relevant
@@ -51,7 +88,7 @@ async function buildVoiceProfile(): Promise<string> {
 
   const parts: string[] = [];
   if (profile.communicationStyle) {
-    parts.push(`CRITICAL — User's communication style (match this EXACTLY in all drafts and responses):\n${profile.communicationStyle}`);
+    parts.push(`CRITICAL — User's communication style. You MUST match this in ALL drafts and responses. This is non-negotiable:\n${profile.communicationStyle}`);
   }
   if (profile.sampleMessages) {
     parts.push(`Real messages from the user (use these as your primary reference for tone, cadence, and vocabulary):\n${profile.sampleMessages}`);
@@ -64,8 +101,7 @@ async function buildVoiceProfile(): Promise<string> {
 
 // Layer 2: State snapshot
 async function buildStateSnapshot(): Promise<string> {
-  const now = new Date();
-  const current = await getCurrentBlock(now);
+  const current = await getCurrentBlock();
   const todayTasks = await prisma.task.findMany({
     where: { isToday: true, done: false },
     include: { role: { select: { name: true } } },
@@ -83,7 +119,7 @@ async function buildStateSnapshot(): Promise<string> {
     `- [${t.role.name}] ${t.title}${t.priority === "urgent" ? " (URGENT)" : ""}${t.status !== "backlog" ? ` [${t.status}]` : ""}`
   ).join("\n");
 
-  return `Date: ${now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+  return `Date: ${new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: process.env.TIMEZONE || "America/New_York" })}
 Current block: ${current ? `${current.block.label} (${getTimeLabel(current.block)})` : "Off the clock"}
 Active role: ${current?.roleId || "none"}
 
@@ -94,21 +130,20 @@ Follow-ups: ${activeFollowUps} active, ${staleFollowUps} stale`;
 }
 
 // Layer 3: Role context (includes responsibilities, goals, pinned notes, recent notes)
-async function buildRoleContext(roleId: string): Promise<string> {
+async function buildRoleContext(roleId: string, settings: AiContextSettings): Promise<string> {
   const [role, recentTranscripts, pinnedNotes] = await Promise.all([
     prisma.role.findUnique({
       where: { id: roleId },
       include: {
         staff: true,
-        notes: { take: 5, orderBy: { createdAt: "desc" }, where: { pinned: false } },
+        notes: { take: settings.recentNotesCount, orderBy: { createdAt: "desc" }, where: { pinned: false } },
       },
     }),
     prisma.transcript.findMany({
       where: { roleId },
-      take: 3,
+      take: settings.recentTranscriptsCount,
       orderBy: { createdAt: "desc" },
     }),
-    // Pinned notes always included (improvement #3)
     prisma.note.findMany({
       where: { roleId, pinned: true },
       orderBy: { createdAt: "desc" },
@@ -126,9 +161,8 @@ async function buildRoleContext(roleId: string): Promise<string> {
     return `- [${n.createdAt.toLocaleDateString()}] ${text}`;
   }).join("\n");
 
-  // Pinned notes get more space since user explicitly marked them important
   const pinnedLines = pinnedNotes.map((n) => {
-    const text = n.summary || n.content.slice(0, 2000);
+    const text = n.summary || n.content.slice(0, settings.pinnedNoteChunkSize);
     return `- [PINNED] ${text}`;
   }).join("\n\n");
 
@@ -141,8 +175,8 @@ async function buildRoleContext(roleId: string): Promise<string> {
 Platform: ${role.platform}
 ${role.responsibilities ? `\nResponsibilities:\n${role.responsibilities}` : ""}
 ${role.quarterlyGoals ? `\nQuarterly goals:\n${role.quarterlyGoals}` : ""}
-Tone: ${role.tone || "Professional"}
-Context: ${role.context || ""}
+Communication tone for this role (apply this to ALL drafts and responses in this role's context): ${role.tone || "Professional"}
+Role context: ${role.context || ""}
 
 Staff directory:
 ${staffLines || "(no staff)"}
@@ -202,7 +236,7 @@ function findBestChunk(content: string, keywords: string[], chunkSize: number = 
   return chunks[0]?.text || content.slice(0, chunkSize);
 }
 
-async function buildRetrievedContext(roleId: string, query: string): Promise<string> {
+async function buildRetrievedContext(roleId: string, query: string, settings: AiContextSettings): Promise<string> {
   const keywords = extractKeywords(query);
   if (keywords.length === 0) return "";
 
@@ -232,29 +266,55 @@ async function buildRetrievedContext(roleId: string, query: string): Promise<str
     parts.push("Related notes:\n" + notes.map((n) => {
       // Use summary if available (improvement #4)
       if (n.summary) return `- ${n.summary}`;
-      // Otherwise find the best chunk matching the keywords (improvement #5)
-      return `- ${findBestChunk(n.content, keywords, 3000)}`;
+      return `- ${findBestChunk(n.content, keywords, settings.noteChunkSize)}`;
     }).join("\n\n"));
   }
   if (transcripts.length > 0) {
     parts.push("Related transcripts:\n" + transcripts.map((t) => {
       if (t.summary) return `- ${t.summary}`;
-      return `- ${findBestChunk(t.rawText, keywords, 2000)}`;
+      return `- ${findBestChunk(t.rawText, keywords, settings.transcriptChunkSize)}`;
     }).join("\n\n"));
   }
   return parts.join("\n\n");
+}
+
+async function buildTaskContext(taskId: string): Promise<string | null> {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    include: { tags: { include: { tag: true } }, role: { select: { name: true } } },
+  });
+  if (!task) return null;
+
+  const checklist = (task.checklist as Array<{ text: string; done: boolean }>) || [];
+  const lines = [
+    "TASK CONTEXT (you are discussing this specific task):",
+    `Title: ${task.title}`,
+    `Role: ${task.role.name}`,
+    `Status: ${task.status}`,
+    `Priority: ${task.priority}`,
+  ];
+  if (task.dueDate) lines.push(`Due: ${task.dueDate.toLocaleDateString()}`);
+  if (task.tags.length) lines.push(`Tags: ${task.tags.map((t) => t.tag.name).join(", ")}`);
+  if (task.notes) lines.push(`\nNotes:\n${task.notes}`);
+  if (checklist.length) {
+    lines.push(`\nChecklist:`);
+    for (const c of checklist) lines.push(`  - [${c.done ? "x" : " "}] ${c.text}`);
+  }
+  return lines.join("\n");
 }
 
 export interface ContextOptions {
   roleId?: string;
   query?: string;
   includeRetrieved?: boolean;
+  taskId?: string;
 }
 
 export async function assembleContext(options: ContextOptions = {}): Promise<{
   systemPrompt: string;
   contextMessages: string;
 }> {
+  const settings = await resolveAiSettings(options.roleId);
   const parts: string[] = [];
 
   // Layer 1.5: Voice profile
@@ -266,12 +326,18 @@ export async function assembleContext(options: ContextOptions = {}): Promise<{
 
   // Layer 3: Role context (now includes responsibilities + goals)
   if (options.roleId) {
-    parts.push(await buildRoleContext(options.roleId));
+    parts.push(await buildRoleContext(options.roleId, settings));
+  }
+
+  // Layer 3.5: Task context (when chatting about a specific task)
+  if (options.taskId) {
+    const taskContext = await buildTaskContext(options.taskId);
+    if (taskContext) parts.push(taskContext);
   }
 
   // Layer 4: Retrieved context
   if (options.includeRetrieved && options.roleId && options.query) {
-    const retrieved = await buildRetrievedContext(options.roleId, options.query);
+    const retrieved = await buildRetrievedContext(options.roleId, options.query, settings);
     if (retrieved) parts.push(retrieved);
   }
 
@@ -281,11 +347,12 @@ export async function assembleContext(options: ContextOptions = {}): Promise<{
   };
 }
 
-export async function getConversationMessages(roleId: string, limit: number = 10, threadId?: string): Promise<Array<{ role: string; content: string }>> {
+export async function getConversationMessages(roleId: string, limit?: number, threadId?: string): Promise<Array<{ role: string; content: string }>> {
   const conv = threadId
     ? await prisma.conversation.findUnique({ where: { id: threadId } })
     : await prisma.conversation.findFirst({ where: { roleId, isDefault: true } });
   if (!conv) return [];
   const messages = conv.messages as Array<{ role: string; content: string }>;
-  return messages.slice(-limit);
+  const effectiveLimit = limit ?? (await resolveAiSettings(roleId)).conversationHistoryLimit;
+  return messages.slice(-effectiveLimit);
 }

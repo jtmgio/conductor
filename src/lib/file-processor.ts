@@ -31,10 +31,13 @@ export async function processFile(
 
   if (mimeType === "application/pdf") {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require("pdf-parse");
+    const { PDFParse } = require("pdf-parse");
     const buffer = await fs.readFile(filePath);
-    const data = await pdfParse(buffer);
-    return { text: data.text, base64: null };
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    const result = await parser.getText();
+    const text = result.text;
+    await parser.destroy();
+    return { text, base64: null };
   }
 
   if (

@@ -16,6 +16,8 @@ export async function GET(_req: NextRequest, { params }: { params: { roleId: str
       isDefault: true,
       messages: true,
       updatedAt: true,
+      taskId: true,
+      meetingId: true,
     },
   });
 
@@ -28,6 +30,8 @@ export async function GET(_req: NextRequest, { params }: { params: { roleId: str
       isDefault: t.isDefault,
       messageCount: Array.isArray(t.messages) ? (t.messages as unknown[]).length : 0,
       updatedAt: t.updatedAt,
+      taskId: t.taskId || null,
+      meetingId: t.meetingId || null,
     })),
     defaultThreadId: defaultThread?.id || null,
   });

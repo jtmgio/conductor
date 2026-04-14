@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Trash2, Plus, X } from "lucide-react";
+import { Check } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { STATUS_CONFIG, STATUS_ORDER } from "@/components/TaskItem";
+import { TaskDetailDrawer } from "@/components/TaskDetailDrawer";
+import { STATUS_CONFIG, STATUS_ORDER, BOARD_COLUMNS } from "@/components/TaskItem";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
@@ -46,13 +48,16 @@ interface Role {
 type BoardData = Record<string, BoardTask[]>;
 
 export function BoardPage() {
+  const searchParams = useSearchParams();
+  const initialRoleId = searchParams.get("roleId") || "";
   const [roles, setRoles] = useState<Role[]>([]);
-  const [activeRoleId, setActiveRoleId] = useState("");
+  const [activeRoleId, setActiveRoleId] = useState(initialRoleId);
   const [board, setBoard] = useState<BoardData>({});
   const [loading, setLoading] = useState(true);
   const [mobileFilter, setMobileFilter] = useState<string>("all");
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  const [drawerTaskId, setDrawerTaskId] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -61,7 +66,7 @@ export function BoardPage() {
       .then((data) => {
         const arr = Array.isArray(data) ? data : [];
         setRoles(arr);
-        if (arr.length > 0) setActiveRoleId(arr[0].id);
+        if (!activeRoleId && arr.length > 0) setActiveRoleId(arr[0].id);
       })
       .catch(() => {});
   }, []);
@@ -120,13 +125,13 @@ export function BoardPage() {
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error();
-      // Update local state instead of reloading
+      const result = await res.json();
       setBoard((prev) => {
         const updated = { ...prev };
         for (const key of STATUS_ORDER) {
           if (updated[key]) {
             updated[key] = updated[key].map((t) =>
-              t.id === taskId ? { ...t, ...data } as BoardTask : t
+              t.id === taskId ? { ...t, ...result } as BoardTask : t
             );
           }
         }
@@ -181,15 +186,17 @@ export function BoardPage() {
   };
 
   const activeRole = roles.find((r) => r.id === activeRoleId);
+  const drawerTask = drawerTaskId ? STATUS_ORDER.flatMap((s) => board[s] || []).find((t) => t.id === drawerTaskId) || null : null;
 
   // Get all tasks for mobile filtered view
-  const allTasks = STATUS_ORDER.flatMap((s) => board[s] || []);
+  const allTasks = BOARD_COLUMNS.flatMap((s) => board[s] || []);
   const filteredTasks = mobileFilter === "all" ? allTasks : allTasks.filter((t) => t.status === mobileFilter);
 
   return (
     <AppShell>
       <div className="py-6">
-        <h1 className="text-[32px] font-semibold text-[var(--text-primary)] mb-6">Board</h1>
+        <h1 className="text-[32px] font-semibold text-[var(--text-primary)] mb-1">Board</h1>
+        <p className="text-[15px] text-[var(--text-tertiary)] mb-6">Kanban view of all tasks by status. Drag to reorder, filter by role.</p>
 
         {/* Role tabs */}
         <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 mb-8">
@@ -220,9 +227,9 @@ export function BoardPage() {
           </div>
         ) : (
           <>
-            {/* Desktop: 5-column board (4 status + done) */}
-            <div className="hidden md:grid grid-cols-5 gap-4">
-              {STATUS_ORDER.map((status) => (
+            {/* Desktop: horizontal scrolling kanban lanes */}
+            <div className="hidden md:flex gap-4 overflow-x-auto hide-scrollbar pb-4" style={{ minHeight: "calc(100vh - 260px)" }}>
+              {BOARD_COLUMNS.map((status) => (
                 <div
                   key={status}
                   onDragOver={(e) => {
@@ -249,12 +256,13 @@ export function BoardPage() {
                     setDragTaskId(null);
                   }}
                   className={cn(
-                    "rounded-xl transition-colors min-h-[200px] p-2 -m-2",
+                    "rounded-xl transition-colors flex-shrink-0 w-[280px] p-3 flex flex-col",
+                    "bg-[var(--surface-sunken)]/30 border border-[var(--border-subtle)]",
                     dragOverCol === status && dragTaskId && "bg-[var(--surface-raised)]/50 ring-2 ring-inset ring-[var(--accent-blue)]/30"
                   )}
                 >
                   <div
-                    className="text-[13px] font-medium uppercase tracking-wider mb-3 pb-2 border-b border-[var(--border-subtle)]"
+                    className="text-[13px] font-medium uppercase tracking-wider mb-3 pb-2 border-b border-[var(--border-subtle)] shrink-0"
                     style={{ color: STATUS_CONFIG[status].text }}
                   >
                     {STATUS_CONFIG[status].label}
@@ -262,17 +270,15 @@ export function BoardPage() {
                       ({board[status]?.length || 0})
                     </span>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2 flex-1 overflow-y-auto hide-scrollbar">
                     <AnimatePresence mode="popLayout">
                       {board[status]?.map((task) => (
                         <BoardCard
                           key={task.id}
                           task={task}
                           status={status}
-                          onStatusChange={changeStatus}
+                          onClick={() => setDrawerTaskId(task.id)}
                           onComplete={completeTask}
-                          onUpdate={updateTask}
-                          onDelete={deleteTask}
                           isDragging={dragTaskId === task.id}
                           onDragStart={() => setDragTaskId(task.id)}
                           onDragEnd={() => { setDragTaskId(null); setDragOverCol(null); }}
@@ -280,7 +286,7 @@ export function BoardPage() {
                       ))}
                     </AnimatePresence>
                     {(!board[status] || board[status].length === 0) && (
-                      <p className="text-[13px] text-[var(--text-tertiary)] py-4 text-center">
+                      <p className="text-[13px] text-[var(--text-tertiary)] py-8 text-center">
                         {dragTaskId ? "Drop here" : "No tasks"}
                       </p>
                     )}
@@ -309,18 +315,19 @@ export function BoardPage() {
                   setDragTaskId(null);
                 }}
                 className={cn(
-                  "rounded-xl transition-colors min-h-[200px] p-2 -m-2",
+                  "rounded-xl transition-colors flex-shrink-0 w-[280px] p-3 flex flex-col",
+                  "bg-[var(--surface-sunken)]/30 border border-[var(--border-subtle)]",
                   dragOverCol === "done" && dragTaskId && "ring-2 ring-inset ring-[#22c55e]/40"
                 )}
                 style={dragOverCol === "done" && dragTaskId ? { background: "rgba(34,197,94,0.06)" } : undefined}
               >
                 <div
-                  className="text-[13px] font-medium uppercase tracking-wider mb-3 pb-2 border-b border-[var(--border-subtle)]"
+                  className="text-[13px] font-medium uppercase tracking-wider mb-3 pb-2 border-b border-[var(--border-subtle)] shrink-0"
                   style={{ color: DONE_COL.text }}
                 >
                   {DONE_COL.label}
                 </div>
-                <div className="flex flex-col items-center justify-center py-8 text-center">
+                <div className="flex flex-col items-center justify-center py-8 text-center flex-1">
                   <div
                     className={cn(
                       "w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-colors",
@@ -351,7 +358,7 @@ export function BoardPage() {
                 >
                   All ({allTasks.length})
                 </button>
-                {STATUS_ORDER.map((s) => (
+                {BOARD_COLUMNS.map((s) => (
                   <button
                     key={s}
                     onClick={() => setMobileFilter(s)}
@@ -374,10 +381,8 @@ export function BoardPage() {
                       key={task.id}
                       task={task}
                       status={task.status}
-                      onStatusChange={changeStatus}
+                      onClick={() => setDrawerTaskId(task.id)}
                       onComplete={completeTask}
-                      onUpdate={updateTask}
-                      onDelete={deleteTask}
                     />
                   ))}
                 </AnimatePresence>
@@ -391,6 +396,14 @@ export function BoardPage() {
           </>
         )}
       </div>
+      <TaskDetailDrawer
+        task={drawerTask}
+        onClose={() => setDrawerTaskId(null)}
+        onUpdate={updateTask}
+        onStatusChange={changeStatus}
+        onComplete={completeTask}
+        onDelete={deleteTask}
+      />
     </AppShell>
   );
 }
@@ -398,39 +411,22 @@ export function BoardPage() {
 function BoardCard({
   task,
   status,
-  onStatusChange,
+  onClick,
   onComplete,
-  onUpdate,
-  onDelete,
   isDragging,
   onDragStart,
   onDragEnd,
 }: {
   task: BoardTask;
   status: string;
-  onStatusChange: (id: string, status: string) => void;
+  onClick: () => void;
   onComplete?: (id: string) => void;
-  onUpdate?: (id: string, data: Record<string, unknown>) => void;
-  onDelete?: (id: string) => void;
   isDragging?: boolean;
   onDragStart?: () => void;
   onDragEnd?: () => void;
 }) {
   const [completing, setCompleting] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const [editTitle, setEditTitle] = useState(task.title);
-  const [editNotes, setEditNotes] = useState(task.notes || "");
-  const [editDueDate, setEditDueDate] = useState(task.dueDate ? task.dueDate.slice(0, 10) : "");
-  const [editChecklist, setEditChecklist] = useState<ChecklistItem[]>(
-    Array.isArray(task.checklist) ? task.checklist : []
-  );
-  const [newCheckItem, setNewCheckItem] = useState("");
-  const [editTags, setEditTags] = useState<string[]>(task.tags?.map((t) => t.tag.name) || []);
-  const [newTag, setNewTag] = useState("");
-  const titleRef = useRef<HTMLInputElement>(null);
   const borderColor = STATUS_CONFIG[status]?.text || "var(--border-subtle)";
-
-  const save = (data: Record<string, unknown>) => onUpdate?.(task.id, data);
 
   const handleComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -448,22 +444,20 @@ function BoardCard({
           animate={{ opacity: isDragging ? 0.4 : 1, y: 0 }}
           exit={{ opacity: 0, x: 60, scale: 0.95 }}
           transition={{ duration: 0.35, ease: "easeOut" }}
-          draggable={!expanded}
+          draggable
           onDragStart={(e) => {
-            if (expanded) return;
             const evt = e as unknown as React.DragEvent;
             evt.dataTransfer.effectAllowed = "move";
             onDragStart?.();
           }}
           onDragEnd={() => onDragEnd?.()}
+          onClick={onClick}
           className={cn(
-            "bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-xl",
-            !expanded && "cursor-grab active:cursor-grabbing",
+            "bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-xl cursor-pointer hover:bg-[var(--sidebar-hover)] transition-colors",
             isDragging && "ring-2 ring-[var(--accent-blue)]/40"
           )}
           style={{ borderLeftWidth: 3, borderLeftColor: borderColor }}
         >
-          {/* Collapsed card */}
           <div className="p-3.5">
             <div className="flex items-start gap-2.5">
               <button
@@ -476,198 +470,37 @@ function BoardCard({
                   style={{ borderColor: `color-mix(in srgb, ${borderColor} 40%, transparent)` }}
                 />
               </button>
-
-              <button
-                onClick={() => setExpanded(!expanded)}
-                className="flex-1 min-w-0 text-left"
-              >
+              <div className="flex-1 min-w-0">
                 {task.priority === "urgent" && (
                   <span className="text-[11px] font-bold tracking-wide text-red-400 uppercase">URGENT</span>
                 )}
                 <p className="text-[15px] font-medium text-[var(--text-primary)] leading-snug">{task.title}</p>
-
-                {!expanded && (
-                  <div className="flex gap-1.5 flex-wrap mt-2">
+                <div className="flex gap-1.5 flex-wrap mt-2">
+                  <span
+                    className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+                    style={{
+                      background: STATUS_CONFIG[status]?.bg,
+                      color: STATUS_CONFIG[status]?.text,
+                    }}
+                  >
+                    {STATUS_CONFIG[status]?.label}
+                  </span>
+                  {task.tags?.map((t) => (
                     <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const nextIdx = (STATUS_ORDER.indexOf(status) + 1) % STATUS_ORDER.length;
-                        onStatusChange(task.id, STATUS_ORDER[nextIdx]);
-                      }}
-                      className="text-[11px] font-medium px-2 py-0.5 rounded-full transition-colors cursor-pointer"
+                      key={t.tag.id}
+                      className="text-[11px] px-2 py-0.5 rounded-full"
                       style={{
-                        background: STATUS_CONFIG[status]?.bg,
-                        color: STATUS_CONFIG[status]?.text,
+                        background: `${t.tag.color}20`,
+                        color: t.tag.color,
                       }}
                     >
-                      {STATUS_CONFIG[status]?.label}
+                      #{t.tag.name}
                     </span>
-                    {task.tags?.map((t) => (
-                      <span
-                        key={t.tag.id}
-                        className="text-[11px] px-2 py-0.5 rounded-full"
-                        style={{
-                          background: `${t.tag.color}20`,
-                          color: t.tag.color,
-                        }}
-                      >
-                        #{t.tag.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
-
-          {/* Expanded detail panel */}
-          <AnimatePresence>
-            {expanded && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden"
-              >
-                <div className="px-3.5 pb-3.5 space-y-3 border-t border-[var(--border-subtle)] pt-3">
-                  {/* Title */}
-                  <input
-                    ref={titleRef}
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    onBlur={() => { if (editTitle.trim() && editTitle !== task.title) save({ title: editTitle.trim() }); }}
-                    onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                    className="w-full bg-transparent text-[14px] font-medium text-[var(--text-primary)] outline-none"
-                  />
-
-                  {/* Notes */}
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-1">Notes</p>
-                    <textarea
-                      value={editNotes}
-                      onChange={(e) => setEditNotes(e.target.value)}
-                      onBlur={() => { if (editNotes !== (task.notes || "")) save({ notes: editNotes || null }); }}
-                      placeholder="Add notes..."
-                      className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 resize-none min-h-[50px] placeholder:text-[var(--text-tertiary)]"
-                    />
-                  </div>
-
-                  {/* Due date */}
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-1">Due date</p>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="date"
-                        value={editDueDate}
-                        onChange={(e) => { setEditDueDate(e.target.value); save({ dueDate: e.target.value || null }); }}
-                        className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20"
-                      />
-                      {editDueDate && (
-                        <button onClick={() => { setEditDueDate(""); save({ dueDate: null }); }} className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">Clear</button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Status */}
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-1">Status</p>
-                    <div className="flex gap-1.5 flex-wrap">
-                      {STATUS_ORDER.map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => onStatusChange(task.id, s)}
-                          className="text-[12px] font-medium px-2.5 py-0.5 rounded-full transition-all"
-                          style={{
-                            background: s === status ? (STATUS_CONFIG[s]?.bg) : "transparent",
-                            color: s === status ? (STATUS_CONFIG[s]?.text) : "var(--text-tertiary)",
-                            border: s === status ? "none" : "1px solid var(--border-subtle)",
-                          }}
-                        >
-                          {STATUS_CONFIG[s]?.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Tags */}
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-1">Tags</p>
-                    <div className="flex gap-1.5 flex-wrap mb-1.5">
-                      {editTags.map((tagName) => {
-                        const tagData = task.tags?.find((t) => t.tag.name === tagName);
-                        const color = tagData?.tag.color || "#888780";
-                        return (
-                          <span key={tagName} className="inline-flex items-center gap-1 text-[12px] px-2 py-0.5 rounded-full" style={{ background: `${color}20`, color }}>
-                            #{tagName}
-                            <button onClick={() => { const updated = editTags.filter((t) => t !== tagName); setEditTags(updated); save({ tags: updated }); }}>
-                              <X className="h-2.5 w-2.5" />
-                            </button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                    <input
-                      value={newTag}
-                      onChange={(e) => setNewTag(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && newTag.trim()) {
-                          const name = newTag.toLowerCase().trim();
-                          if (!editTags.includes(name)) {
-                            const updated = [...editTags, name];
-                            setEditTags(updated);
-                            save({ tags: updated });
-                          }
-                          setNewTag("");
-                        }
-                      }}
-                      placeholder="Add tag..."
-                      className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 placeholder:text-[var(--text-tertiary)]"
-                    />
-                  </div>
-
-                  {/* Checklist */}
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-1">
-                      Checklist {editChecklist.length > 0 && `(${editChecklist.filter((c) => c.done).length}/${editChecklist.length})`}
-                    </p>
-                    <div className="space-y-1">
-                      {editChecklist.map((item, i) => (
-                        <div key={i} className="flex items-center gap-2 group">
-                          <button onClick={() => { const updated = editChecklist.map((c, j) => j === i ? { ...c, done: !c.done } : c); setEditChecklist(updated); save({ checklist: updated }); }} className="w-4 h-4 rounded border border-[var(--border-default)] flex items-center justify-center shrink-0">
-                            {item.done && <Check className="w-2.5 h-2.5 text-[var(--text-secondary)]" />}
-                          </button>
-                          <span className={`flex-1 text-[13px] ${item.done ? "line-through text-[var(--text-tertiary)]" : "text-[var(--text-primary)]"}`}>{item.text}</span>
-                          <button onClick={() => { const updated = editChecklist.filter((_, j) => j !== i); setEditChecklist(updated); save({ checklist: updated }); }} className="opacity-0 group-hover:opacity-100 transition-opacity">
-                            <X className="h-3 w-3 text-[var(--text-tertiary)]" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <Plus className="h-3.5 w-3.5 text-[var(--text-tertiary)] shrink-0" />
-                      <input
-                        value={newCheckItem}
-                        onChange={(e) => setNewCheckItem(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter" && newCheckItem.trim()) { const updated = [...editChecklist, { text: newCheckItem.trim(), done: false }]; setEditChecklist(updated); setNewCheckItem(""); save({ checklist: updated }); } }}
-                        placeholder="Add item..."
-                        className="flex-1 bg-transparent text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Delete */}
-                  <div className="pt-2 border-t border-[var(--border-subtle)]">
-                    <button onClick={() => onDelete?.(task.id)} className="flex items-center gap-1 text-[12px] text-[var(--text-tertiary)] hover:text-red-400 transition-colors min-h-[44px]">
-                      <Trash2 className="h-3.5 w-3.5" /> Delete task
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>

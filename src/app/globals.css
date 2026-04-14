@@ -3,50 +3,50 @@
 @tailwind utilities;
 
 @layer base {
-  /* ===== WARM DARK (default — current theme) ===== */
+  /* ===== WARM DARK (default — Claude Desktop inspired) ===== */
   :root,
   [data-theme="warm-dark"] {
-    --background: 30 5% 18%;
-    --foreground: 35 8% 90%;
-    --card: 30 5% 22%;
-    --card-foreground: 35 8% 90%;
-    --popover: 30 5% 22%;
-    --popover-foreground: 35 8% 90%;
-    --primary: 219 91% 63%;
+    --background: 50 5% 11%;
+    --foreground: 35 12% 89%;
+    --card: 50 4% 15%;
+    --card-foreground: 35 12% 89%;
+    --popover: 50 4% 15%;
+    --popover-foreground: 35 12% 89%;
+    --primary: 16 56% 59%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 30 3% 28%;
-    --secondary-foreground: 35 8% 90%;
-    --muted: 30 3% 28%;
-    --muted-foreground: 30 5% 50%;
-    --accent: 30 3% 28%;
-    --accent-foreground: 35 8% 90%;
+    --secondary: 50 4% 15%;
+    --secondary-foreground: 35 12% 89%;
+    --muted: 50 4% 15%;
+    --muted-foreground: 40 6% 43%;
+    --accent: 50 4% 15%;
+    --accent-foreground: 35 12% 89%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 100% / 0.06;
-    --input: 0 0% 100% / 0.06;
-    --ring: 219 91% 63%;
+    --border: 50 3% 18%;
+    --input: 50 3% 18%;
+    --ring: 16 56% 59%;
     --radius: 0.75rem;
 
-    --surface: #2f2f2a;
-    --surface-raised: #3a3a34;
-    --surface-sunken: #262622;
-    --surface-overlay: #45453e;
+    --surface: #1E1E1B;
+    --surface-raised: #2A2A26;
+    --surface-sunken: #18181A;
+    --surface-overlay: #333330;
 
-    --text-primary: #f0f0ec;
-    --text-secondary: #c8c4bd;
-    --text-tertiary: #9a9590;
+    --text-primary: #E8E4DD;
+    --text-secondary: #9A9689;
+    --text-tertiary: #6B675F;
 
-    --border-subtle: rgba(255, 255, 255, 0.08);
-    --border-default: rgba(255, 255, 255, 0.14);
+    --border-subtle: rgba(255, 255, 245, 0.08);
+    --border-default: rgba(255, 255, 245, 0.15);
 
-    --sidebar-bg: #1a1a17;
-    --sidebar-text: #b0b0b0;
-    --sidebar-text-muted: #787878;
-    --sidebar-hover: rgba(255, 255, 255, 0.04);
-    --sidebar-active: rgba(255, 255, 255, 0.08);
+    --sidebar-bg: #18181A;
+    --sidebar-text: #9A9689;
+    --sidebar-text-muted: #6B675F;
+    --sidebar-hover: rgba(255, 255, 245, 0.04);
+    --sidebar-active: rgba(255, 255, 245, 0.08);
 
-    --role-blue: #4d8ef7;
-    --accent-blue: #4d8ef7;
+    --role-blue: #D4785A;
+    --accent-blue: #D4785A;
   }
 
   /* ===== LIGHT ===== */
@@ -149,6 +149,7 @@
     color: var(--text-primary);
     font-size: 16px;
     line-height: 1.65;
+    overflow-wrap: break-word;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -173,4 +174,200 @@
   .tap-highlight-transparent {
     -webkit-tap-highlight-color: transparent;
   }
+  .ai-fullscreen {
+    position: fixed;
+    top: 64px;   /* mobile top bar */
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0 20px 8px;
+    z-index: 10;
+    background: hsl(var(--background));
+  }
+  @media (min-width: 1024px) {
+    .ai-fullscreen {
+      top: 12px;
+      left: 280px;   /* sidebar width */
+      padding: 0 32px 8px;
+    }
+    [data-sidebar-collapsed="true"] .ai-fullscreen {
+      left: 68px;    /* collapsed sidebar width */
+    }
+  }
+}
+
+/* ===== TipTap Note Editor ===== */
+.note-editor-content {
+  min-height: 100%;
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--text-primary);
+}
+
+.note-editor-content h1 {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 0.3em;
+  color: var(--text-primary);
+}
+
+.note-editor-content h2 {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.35;
+  margin-top: 1em;
+  margin-bottom: 0.25em;
+  color: var(--text-primary);
+}
+
+.note-editor-content h3 {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 0.8em;
+  margin-bottom: 0.2em;
+  color: var(--text-primary);
+}
+
+.note-editor-content p {
+  margin-bottom: 0.4em;
+}
+
+.note-editor-content ul,
+.note-editor-content ol {
+  padding-left: 1.5em;
+  margin-bottom: 0.4em;
+}
+
+.note-editor-content ul {
+  list-style-type: disc;
+}
+
+.note-editor-content ol {
+  list-style-type: decimal;
+}
+
+.note-editor-content li {
+  margin-bottom: 0.15em;
+}
+
+.note-editor-content li p {
+  margin-bottom: 0;
+}
+
+.note-editor-content strong {
+  font-weight: 600;
+}
+
+.note-editor-content em {
+  font-style: italic;
+}
+
+.note-editor-content u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.note-editor-content hr {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 1em 0;
+}
+
+.note-editor-content blockquote {
+  border-left: 3px solid var(--border-default);
+  padding-left: 1em;
+  margin-left: 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.note-editor-content code {
+  background: var(--surface-sunken);
+  border-radius: 4px;
+  padding: 0.15em 0.4em;
+  font-size: 0.9em;
+  font-family: ui-monospace, monospace;
+}
+
+.note-editor-content pre {
+  background: var(--surface-sunken);
+  border-radius: 8px;
+  padding: 0.8em 1em;
+  margin: 0.5em 0;
+  overflow-x: auto;
+}
+
+.note-editor-content pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* Task list (checklists) */
+.note-editor-content ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.note-editor-content ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+  margin-bottom: 0.25em;
+}
+
+.note-editor-content ul[data-type="taskList"] li > label {
+  flex-shrink: 0;
+  margin-top: 0.25em;
+}
+
+.note-editor-content ul[data-type="taskList"] li > label input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-default);
+  border-radius: 50%;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.note-editor-content ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+
+.note-editor-content ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 6px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.note-editor-content ul[data-type="taskList"] li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.note-editor-content ul[data-type="taskList"] li[data-checked="true"] > div {
+  text-decoration: line-through;
+  color: var(--text-tertiary);
+}
+
+/* Placeholder */
+.note-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-tertiary);
+  opacity: 0.4;
+  pointer-events: none;
+  height: 0;
 }

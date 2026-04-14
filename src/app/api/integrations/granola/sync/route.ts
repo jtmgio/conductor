@@ -1,107 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createCompletion } from "@/lib/ai-provider";
-import { trackUsage } from "@/lib/ai-usage";
 import { logSync } from "@/lib/sync-logger";
+import {
+  GranolaNote,
+  GranolaNoteWithTranscript,
+  getApiKey,
+  fetchRecentNotes,
+  fetchNoteWithTranscript,
+  resolveRole,
+  buildTranscriptContent,
+} from "@/lib/granola";
 
-const GRANOLA_API = "https://public-api.granola.ai/v1";
-
-// Folder-to-role mapping built dynamically from active roles
-
-interface GranolaNote {
-  id: string;
-  title: string;
-  summary: string | null;
-  created_at: string;
-  updated_at: string;
-  owner: { name: string; email: string };
-  folder?: { id: string; name: string } | null;
-}
-
-interface GranolaNoteWithTranscript extends GranolaNote {
-  transcript: Array<{ speaker: { source: string; name?: string }; text: string }>;
-}
-
-async function fetchRecentNotes(apiKey: string, since: Date): Promise<GranolaNote[]> {
-  const allNotes: GranolaNote[] = [];
-  let cursor: string | null = null;
-  let hasMore = true;
-
-  while (hasMore) {
-    const params = new URLSearchParams({ created_after: since.toISOString() });
-    if (cursor) params.set("cursor", cursor);
-
-    const res = await fetch(`${GRANOLA_API}/notes?${params}`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-
-    if (!res.ok) {
-      throw new Error(`Granola API error: ${res.status} ${res.statusText}`);
-    }
-
-    const data = await res.json();
-    allNotes.push(...(data.notes || []));
-    hasMore = data.hasMore || false;
-    cursor = data.cursor || null;
-
-    if (allNotes.length > 200) break;
-  }
-
-  return allNotes;
-}
-
-async function fetchNoteWithTranscript(apiKey: string, noteId: string): Promise<GranolaNoteWithTranscript> {
-  const res = await fetch(`${GRANOLA_API}/notes/${noteId}?include=transcript`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
-
-  if (!res.ok) {
-    throw new Error(`Granola API error fetching note ${noteId}: ${res.status}`);
-  }
-
-  return res.json();
-}
-
-function matchRole(folderName: string | null | undefined, roleMapping: Record<string, string>, folderMap: Record<string, string>): string | null {
-  if (!folderName) return null;
-
-  // Configured folder mappings first (exact)
-  if (folderMap[folderName]) return folderMap[folderName];
-
-  // Case-insensitive folder map
-  const lower = folderName.toLowerCase();
-  for (const [name, roleId] of Object.entries(folderMap)) {
-    if (name.toLowerCase() === lower) return roleId;
-  }
-
-  // Fallback: match folder name against role names
-  if (roleMapping[folderName]) return roleMapping[folderName];
-  for (const [name, roleId] of Object.entries(roleMapping)) {
-    if (name.toLowerCase() === lower) return roleId;
-  }
-
-  return null;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
   const syncStart = new Date();
 
-  const apiKey = process.env.GRANOLA_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "GRANOLA_API_KEY not configured" }, { status: 500 });
+  let apiKey: string;
+  try {
+    apiKey = await getApiKey();
+  } catch {
+    return NextResponse.json({ error: "Granola API key not configured" }, { status: 500 });
   }
 
   const integration = await prisma.integration.findUnique({ where: { type: "granola" } });
   const folderMap: Record<string, string> = (integration?.config as { folderMap?: Record<string, string> })?.folderMap || {};
-  const since = integration?.lastSyncAt || new Date(Date.now() - 2 * 60 * 60 * 1000);
 
-  // Build role name → role ID mapping from active roles (fallback for unmapped folders)
-  const activeRoles = await prisma.role.findMany({ where: { active: true } });
-  const roleMapping: Record<string, string> = {};
+  // Allow date range override via query params
+  const sinceParam = req.nextUrl.searchParams.get("since");
+  const since = sinceParam
+    ? new Date(sinceParam)
+    : integration?.lastSyncAt || new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  // Build role lookups
+  const activeRoles = await prisma.role.findMany({ where: { active: true }, orderBy: { priority: "asc" } });
+  const roleNameMap: Record<string, string> = {};
   for (const role of activeRoles) {
-    roleMapping[role.name] = role.id;
+    roleNameMap[role.name] = role.id;
   }
+  const fallbackRoleId = activeRoles[0]?.id || null;
 
   let notes: GranolaNote[];
   try {
@@ -113,234 +48,113 @@ export async function POST(_req: NextRequest) {
 
   let processed = 0;
   let skipped = 0;
-  let noFolder = 0;
-  const results: Array<{ note: string; role: string; tasks: number; followUps: number }> = [];
+  let unmapped = 0;
+  const results: Array<{ note: string; role: string }> = [];
 
-  const roles = await prisma.role.findMany({
-    include: { staff: { select: { name: true, title: true } } },
-  });
-  const roleStaffMap = Object.fromEntries(
-    roles.map((r) => [r.id, r.staff.map((s) => `${s.name} (${s.title})`).join(", ")])
-  );
+  const debugNotes: Array<Record<string, unknown>> = [];
 
   for (const note of notes) {
-    const roleId = matchRole(note.folder?.name, roleMapping, folderMap);
+    // Log full note structure for debugging
+    const { transcript, ...noteWithoutTranscript } = note as unknown as Record<string, unknown>;
+    debugNotes.push(noteWithoutTranscript);
+    console.log(`[granola-sync] Note: "${note.title}" | Raw data:`, JSON.stringify(noteWithoutTranscript, null, 2));
 
-    if (!roleId) {
-      noFolder++;
-      continue;
-    }
-
-    // Dedup via task sourceId
-    const existingTask = await prisma.task.findFirst({
-      where: { sourceType: "granola", sourceId: `granola-${note.id}` },
-    });
-    if (existingTask) {
+    // Dedup: check if we already have this note (old task-based or new transcript-based)
+    const [existingTask, existingTranscript] = await Promise.all([
+      prisma.task.findFirst({ where: { sourceType: "granola", sourceId: `granola-${note.id}` } }),
+      prisma.transcript.findFirst({ where: { sourceId: `granola-${note.id}` } }),
+    ]);
+    if (existingTask || existingTranscript) {
       skipped++;
       continue;
     }
 
-    // Dedup via transcript marker
-    const existingTranscript = await prisma.transcript.findFirst({
-      where: { rawText: { startsWith: `[granola:${note.id}]` } },
-    });
-    if (existingTranscript) {
-      skipped++;
-      continue;
-    }
-
+    // Fetch full note with transcript — this has folder_membership data
     let fullNote: GranolaNoteWithTranscript;
     try {
       fullNote = await fetchNoteWithTranscript(apiKey, note.id);
     } catch (err) {
-      console.error(`Failed to fetch Granola note ${note.id}:`, err);
+      console.error(`[granola-sync] Failed to fetch note ${note.id}:`, err);
       skipped++;
       continue;
     }
 
-    const transcriptText =
-      fullNote.transcript
-        ?.map((t) => {
-          const speaker = t.speaker?.name || t.speaker?.source || "Unknown";
-          return `${speaker}: ${t.text}`;
-        })
-        .join("\n") || "";
+    // Resolve role from full note's folder_membership (list endpoint doesn't include it)
+    const folderName = fullNote.folder_membership?.[0]?.name || note.folder?.name || null;
+    const roleId = resolveRole(folderName, folderMap, roleNameMap, fallbackRoleId);
 
-    const contentForExtraction = fullNote.summary
-      ? `AI Summary:\n${fullNote.summary}\n\nFull Transcript:\n${transcriptText.slice(0, 6000)}`
-      : transcriptText.slice(0, 8000);
+    if (!roleId) {
+      unmapped++;
+      continue;
+    }
 
-    if (contentForExtraction.trim().length < 50) {
+    const content = buildTranscriptContent(fullNote);
+    if (content.trim().length < 50) {
       skipped++;
       continue;
     }
 
-    // Store raw content as transcript
+    // Save as pending transcript — user reviews in Inbox
+    // Use the Granola meeting date, not now()
     await prisma.transcript.create({
       data: {
         roleId,
-        rawText: `[granola:${note.id}] ${contentForExtraction}`,
+        title: note.title || `Granola meeting (${new Date(note.created_at).toLocaleDateString()})`,
+        rawText: content,
         summary: fullNote.summary || null,
+        sourceType: "granola",
+        sourceId: `granola-${note.id}`,
+        createdAt: new Date(note.created_at),
       },
     });
 
-    const role = roles.find((r) => r.id === roleId);
-    const staffContext = roleStaffMap[roleId] || "none";
-
-    try {
-      const extractRes = await createCompletion({
-        model: "claude-sonnet-4-6",
-        max_tokens: 2048,
-        system: `You are extracting action items from meeting notes for the ${role?.name || roleId} role (${role?.title || ""}).
-
-Known team members for this role:
-${staffContext}
-
-Rules:
-- When someone is assigned an action item or owes a deliverable, create a follow-up with their exact name in "waitingOn"
-- When JG (the user) has an action item, create a task
-- When a decision is made, capture it as a decision
-- Use specific, actionable titles — not vague descriptions
-- Mark genuinely time-sensitive items as "urgent", everything else as "normal"
-
-Return ONLY valid JSON, no markdown backticks:
-{
-  "summary": "2-3 sentence summary",
-  "tasks": [{"title": "specific action item for JG", "priority": "normal|urgent"}],
-  "followUps": [{"title": "what is owed", "waitingOn": "person name"}],
-  "decisions": [{"summary": "decision that was made"}]
-}`,
-        messages: [
-          {
-            role: "user",
-            content: `Meeting: ${note.title}\nDate: ${note.created_at}\nRole: ${role?.name || roleId}\n\n${contentForExtraction}`,
-          },
-        ],
-      });
-
-      trackUsage("granola-sync", extractRes.model, extractRes.usage, roleId);
-
-      const text = extractRes.text;
-
-      const extracted = JSON.parse(text.replace(/```json|```/g, "").trim());
-
-      // Create tasks
-      let taskCount = 0;
-      for (const task of extracted.tasks || []) {
-        const created = await prisma.task.create({
-          data: {
-            roleId,
-            title: task.title,
-            priority: task.priority || "normal",
-            status: "backlog",
-            sourceType: "granola",
-            sourceId: `granola-${note.id}`,
-            notes: `Meeting: ${note.title}\nDate: ${new Date(note.created_at).toLocaleDateString()}\n\n${extracted.summary || ""}`,
-          },
-        });
-
-        const meetingTag = await prisma.tag.upsert({
-          where: { name: "meeting" },
-          update: {},
-          create: { name: "meeting", color: "#a78bfa" },
-        });
-        await prisma.taskTag.create({ data: { taskId: created.id, tagId: meetingTag.id } }).catch(() => {});
-        taskCount++;
-      }
-
-      // Create follow-ups
-      let fuCount = 0;
-      for (const fu of extracted.followUps || []) {
-        await prisma.followUp.create({
-          data: {
-            roleId,
-            title: fu.title,
-            waitingOn: fu.waitingOn,
-            sourceType: "granola",
-            sourceId: `granola-${note.id}`,
-          },
-        });
-        fuCount++;
-      }
-
-      // Store decisions + summary as notes
-      if (extracted.decisions?.length > 0 || extracted.summary) {
-        await prisma.note.create({
-          data: {
-            roleId,
-            content: [
-              `Meeting: ${note.title}`,
-              `Date: ${new Date(note.created_at).toLocaleDateString()}`,
-              `Folder: ${note.folder?.name || "none"}`,
-              "",
-              extracted.summary || "",
-              "",
-              ...(extracted.decisions || []).map((d: { summary: string }) => `Decision: ${d.summary}`),
-            ]
-              .filter(Boolean)
-              .join("\n"),
-            tags: ["meeting", "granola", roleId],
-          },
-        });
-      }
-
-      // Update transcript with summary
-      await prisma.transcript.updateMany({
-        where: { rawText: { startsWith: `[granola:${note.id}]` } },
-        data: { summary: extracted.summary || `${taskCount} tasks, ${fuCount} follow-ups` },
-      });
-
-      results.push({ note: note.title, role: role?.name || roleId, tasks: taskCount, followUps: fuCount });
-      processed++;
-    } catch (err) {
-      console.error(`Failed to extract from Granola note "${note.title}":`, err);
-      skipped++;
-    }
+    const roleName = activeRoles.find((r) => r.id === roleId)?.name || roleId;
+    results.push({ note: note.title, role: roleName });
+    processed++;
   }
 
-  const resultSummary = [
-    `${processed} processed`,
+  const summaryParts = [
+    `${processed} new`,
     skipped > 0 ? `${skipped} skipped` : null,
-    noFolder > 0 ? `${noFolder} no folder` : null,
-    results.length > 0
-      ? results.map((r) => `${r.note} [${r.role}]: ${r.tasks}T/${r.followUps}F`).join(", ")
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" | ");
+    unmapped > 0 ? `${unmapped} unmapped` : null,
+  ].filter(Boolean).join(", ");
+
+  const detailParts = results.map((r) => `${r.note} [${r.role}]`).join(", ");
+  const resultSummary = detailParts ? `${summaryParts} — ${detailParts}` : summaryParts;
 
   await prisma.integration.upsert({
     where: { type: "granola" },
-    update: { lastSyncAt: new Date(), lastSyncResult: `success: ${resultSummary}` },
+    update: { lastSyncAt: new Date(), lastSyncResult: resultSummary },
     create: {
       type: "granola",
-      roleId: activeRoles[0]?.id || "",
+      roleId: fallbackRoleId || "",
       config: { folderMap },
       enabled: true,
       lastSyncAt: new Date(),
-      lastSyncResult: `success: ${resultSummary}`,
+      lastSyncResult: resultSummary,
     },
   });
 
-  const totalCreated = results.reduce((sum, r) => sum + r.tasks + r.followUps, 0);
   await logSync({
     type: "granola",
     trigger: "manual",
-    status: processed > 0 ? "success" : skipped > 0 ? "partial" : "success",
+    status: processed > 0 ? "success" : "partial",
     summary: resultSummary,
     itemsFound: notes.length,
-    itemsCreated: totalCreated,
-    itemsSkipped: skipped + noFolder,
+    itemsCreated: processed,
+    itemsSkipped: skipped + unmapped,
     startedAt: syncStart,
     meta: results.length > 0 ? { results } : undefined,
   }).catch(() => {});
 
   return NextResponse.json({
     success: true,
+    summary: resultSummary,
     found: notes.length,
     processed,
     skipped,
-    noFolder,
+    unmapped,
     results,
+    debug: debugNotes,
   });
 }

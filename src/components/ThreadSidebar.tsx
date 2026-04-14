@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Plus, MessageSquare, MoreVertical, Pencil, Trash2, Eraser, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Plus, MessageSquare, CheckSquare, MoreVertical, Pencil, Trash2, Eraser, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
@@ -11,6 +11,7 @@ export interface Thread {
   isDefault: boolean;
   messageCount: number;
   updatedAt: string;
+  taskId?: string | null;
 }
 
 interface ThreadSidebarProps {
@@ -178,7 +179,11 @@ export function ThreadSidebar({
                   : "text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)]"
               )}
             >
-              <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-50" />
+              {thread.taskId ? (
+                <CheckSquare className="h-3.5 w-3.5 shrink-0 opacity-50" />
+              ) : (
+                <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-50" />
+              )}
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] font-medium truncate">{thread.name}</div>
                 <div className="text-[11px] text-[var(--text-tertiary)]">

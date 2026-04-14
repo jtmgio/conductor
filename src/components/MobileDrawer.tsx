@@ -4,17 +4,18 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Crosshair, Inbox, ListChecks, Columns3, Sparkles, Settings, LogOut, FileText, Send } from "lucide-react";
+import { Menu, X, Crosshair, Inbox, ListChecks, Columns3, Sparkles, Settings, LogOut, FileText, Send, CalendarDays, Search } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
   { href: "/", label: "Focus", icon: Crosshair },
+  { href: "/meetings", label: "Meetings", icon: CalendarDays },
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/tracker", label: "Tracker", icon: ListChecks },
   { href: "/board", label: "Board", icon: Columns3 },
   { href: "/ai", label: "AI", icon: Sparkles },
-  { href: "/documents", label: "Documents", icon: FileText },
+  { href: "/documents", label: "Notes", icon: FileText },
   { href: "/drafts", label: "Drafts", icon: Send },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -40,7 +41,7 @@ export function MobileDrawer({ currentBlock }: MobileDrawerProps) {
       {/* Hamburger button */}
       <button
         onClick={() => setOpen(true)}
-        className="fixed top-4 left-4 z-50 w-10 h-10 rounded-xl bg-[var(--surface-raised)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors shadow-sm"
+        className="fixed top-[max(1rem,env(safe-area-inset-top))] left-4 z-50 w-10 h-10 rounded-xl bg-[var(--surface-raised)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors shadow-sm"
       >
         <Menu className="h-[18px] w-[18px]" />
       </button>
@@ -95,6 +96,19 @@ export function MobileDrawer({ currentBlock }: MobileDrawerProps) {
                   </p>
                 </div>
               )}
+
+              {/* Search button */}
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  setTimeout(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true })), 200);
+                }}
+                className="mx-3 mt-3 flex items-center gap-3 py-3 px-4 rounded-xl w-[calc(100%-24px)] text-[var(--sidebar-text)] hover:bg-[var(--sidebar-hover)] transition-colors min-h-[48px] border border-[var(--border-subtle)]"
+              >
+                <Search className="h-5 w-5 opacity-60" />
+                <span className="text-[16px]">Search</span>
+                <span className="ml-auto text-[12px] text-[var(--text-tertiary)]">Tasks, notes, follow-ups</span>
+              </button>
 
               {/* Nav links */}
               <nav className="px-3 py-4 space-y-0.5">

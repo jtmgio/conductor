@@ -23,7 +23,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const updateData: Record<string, unknown> = {};
 
   // Allow updating all role fields
-  const fields = ["name", "title", "platform", "color", "priority", "tone", "context", "responsibilities", "quarterlyGoals", "active"];
+  const fields = ["name", "title", "platform", "color", "priority", "tone", "context", "responsibilities", "quarterlyGoals", "active", "aiRecentNotesCount", "aiRecentTranscriptsCount", "aiConversationHistoryLimit", "aiNoteChunkSize", "aiTranscriptChunkSize", "aiPinnedNoteChunkSize"];
   for (const field of fields) {
     if (body[field] !== undefined) updateData[field] = body[field];
   }

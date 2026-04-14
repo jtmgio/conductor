@@ -27,17 +27,270 @@ Conductor is a personal productivity operating system for an engineer managing m
 - ScheduleBlock stores time blocks; ScheduleOverride stores per-day deviations
 - End-of-day reset triggers via AppShell on first request of each new day (localStorage check, no cron)
 
-## Getting started
+## New machine setup (complete guide)
+
+This is the full end-to-end guide for setting up Conductor on a fresh macOS machine. Follow every step in order.
+
+### Prerequisites
+
+- **macOS** (required for Calendar sync via EventKit)
+- **Docker Desktop** (for running the app + Postgres in containers)
+- **Node.js 18+** (for local development, running Prisma commands)
+- **Git** (to clone the repo)
+- **Anthropic API key** from https://console.anthropic.com
+
+### Step 1: Clone and configure environment
 
 ```bash
-docker compose up -d              # Start Postgres
-npm install                        # Dependencies
-npx prisma migrate dev --name init # Schema + seed
-mkdir -p uploads                   # File upload dir
-npm run dev                        # http://localhost:3000
+git clone <repo-url> conductor
+cd conductor
+cp .env.template .env
 ```
 
-The setup wizard walks through password creation, adding companies/roles, configuring schedule blocks, and setting up a voice profile. No seed data includes company-specific information — all roles and staff are created through the app.
+Edit `.env` and set these required values:
+
+```bash
+# Database — points to local Postgres (not Docker Postgres)
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/conductor"
+
+# Auth — generate a unique secret
+NEXTAUTH_SECRET="$(openssl rand -base64 32)"
+NEXTAUTH_URL="http://localhost:5402"
+
+# AI — your Anthropic API key (can also be set in-app later)
+ANTHROPIC_API_KEY="sk-ant-..."
+
+# Timezone for schedule matching
+TIMEZONE="America/New_York"
+```
+
+Optional variables (set later if needed):
+```bash
+GRANOLA_API_KEY=""            # For meeting transcript sync (Granola Business plan)
+LINEAR_SYNC_SECRET=""         # For Linear task sync authentication
+APP_PASSWORD_HASH=""          # Auto-set during onboarding wizard
+UPLOAD_DIR="./uploads"        # File upload directory
+```
+
+### Step 2: Set up local PostgreSQL
+
+Conductor uses a local PostgreSQL instance (not the Docker Postgres). This is important — the Docker Postgres in `docker-compose.yml` is a secondary option.
+
+If you don't have Postgres installed:
+```bash
+brew install postgresql@16
+brew services start postgresql@16
+```
+
+Create the database:
+```bash
+createdb conductor
+```
+
+The `DATABASE_URL` in `.env` should point to your local Postgres:
+```
+postgresql://postgres:postgres@localhost:5432/conductor
+```
+
+If your local Postgres uses a different user/password, adjust accordingly.
+
+### Step 3: Start Docker
+
+```bash
+docker compose up -d --build
+```
+
+This starts:
+- **conductor** app on port **5402** (Next.js production build)
+- **conductor-cron** sidecar for hourly Linear/Granola syncs
+- **postgres** container on port **5433** (backup, not primary — see Step 2)
+
+The `docker-entrypoint.sh` automatically runs `prisma migrate deploy` on startup, so the database schema is created/updated.
+
+Verify it's running:
+```bash
+docker compose logs conductor | tail -5
+# Should show: ✓ Ready in ...ms
+```
+
+### Step 4: Run the setup wizard
+
+Open **http://localhost:5402** in your browser. The setup wizard will launch automatically:
+
+1. **Welcome** — Click "Get Started" (or import a config JSON from a previous machine)
+2. **Password** — Set your app password (min 4 characters). This auto-signs you in.
+3. **Companies** — Add each role/company you work for:
+   - Name (e.g., "vQuip"), Title (e.g., "VP Engineering"), Platform (Slack/Teams), Color
+   - Add as many as needed. Priority is set by order (first = highest).
+4. **Schedule** — Create time blocks mapping roles to hours:
+   - e.g., "Morning" 7:30-10:00 → vQuip, "Midday" 10:30-3:00 → Zeta Global
+   - These can be refined later in Settings > System > Schedule
+5. **Profile** (optional) — Communication style and global context for AI
+6. **Done** — Click "Open Conductor" to start using the app
+
+### Step 5: Set up Calendar sync (macOS EventKit)
+
+This reads events directly from macOS Calendar.app via Swift/EventKit — no screenshots needed. Events are mapped to roles by calendar account email.
+
+#### 5a. Grant Calendar access
+
+Run this once — macOS will prompt for Calendar permission:
+```bash
+swift cron/calendar-events.swift
+```
+Grant access in the macOS dialog that appears.
+
+#### 5b. Discover your calendar accounts
+
+```bash
+swift cron/calendar-events.swift | python3 -c "import sys,json; [print(a) for a in set(e['calendarAccount'] for e in json.load(sys.stdin)['events'])]"
+```
+
+This prints your calendar account emails, e.g.:
+```
+josh@vquip.com
+jogonzalez@zetaglobal.com
+jgonzalez@healthmapoffice.com
+jgonzalez@healthmedocs.com
+```
+
+#### 5c. Configure account-to-role mappings
+
+In **Settings > Integrations > Calendar**, or directly in the database:
+
+```sql
+psql -U postgres -h localhost -p 5432 -d conductor -c "
+UPDATE \"UserProfile\" SET \"calendarRoleMappings\" = 'josh@vquip.com = vQuip
+jogonzalez@zetaglobal.com = Zeta Global
+jgonzalez@healthmapoffice.com = Healthmap Solutions
+jgonzalez@healthmedocs.com = HealthMe' WHERE id='default';"
+```
+
+Format is one mapping per line: `calendar-account-email = Role Name`
+
+#### 5d. Configure ignore patterns
+
+In Settings > Integrations > Calendar, set patterns for events to ignore (one per line):
+```
+OOO
+Out of Office
+Busy
+Deep Work
+Focus Time
+Block
+Hold
+No meetings
+Lunch
+Personal
+```
+
+#### 5e. Install the LaunchAgent
+
+The LaunchAgent runs every 30 minutes on your Mac, reads Calendar events via EventKit, and POSTs to the Docker container.
+
+```bash
+# Create logs directory
+mkdir -p logs
+
+# Update the plist with your repo path and port
+# (check cron/com.conductor.calendar-sync.plist — ProgramArguments path and CONDUCTOR_URL)
+
+# Install and load
+cp cron/com.conductor.calendar-sync.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.conductor.calendar-sync.plist
+```
+
+**Important**: Edit the plist if your paths differ:
+- `ProgramArguments` → must point to your `cron/calendar-sync.sh` absolute path
+- `CONDUCTOR_URL` → must match your Docker port (default: `http://localhost:5402`)
+- `StandardOutPath` / `StandardErrorPath` → must point to your `logs/` directory
+
+#### 5f. Verify calendar sync
+
+```bash
+bash cron/calendar-sync.sh
+```
+
+Should output something like:
+```
+Starting calendar sync for 2026-04-14...
+Read 13 events from Calendar
+Calendar sync success — {"meetingsFound":13,"meetingsCreated":13,...}
+```
+
+The sync:
+- Runs every 30 minutes during working hours (7 AM - 10 PM, weekdays)
+- Hashes event data — skips API call if nothing changed (saves cost)
+- Uses Claude Haiku for prep task generation (~$0.001/call)
+- AgendaStrip on the Focus page auto-refreshes within 15 seconds
+
+### Step 6: Set up Linear sync (optional)
+
+If you use Linear for task management:
+
+1. Get a Linear API key from Linear > Settings > API
+2. In **Settings > Integrations**, add a Linear integration:
+   - API key, Team ID, Role mapping
+3. The Docker `conductor-cron` sidecar syncs hourly automatically
+4. Or trigger manually from Settings
+
+### Step 7: Set up Granola sync (optional)
+
+If you use Granola for meeting transcripts:
+
+1. Get a Granola API key (requires Business plan)
+2. Set `GRANOLA_API_KEY` in `.env` or in Settings > System > API Keys
+3. In **Settings > Integrations**, configure Granola folder→role mappings
+4. The Docker `conductor-cron` sidecar syncs every 30 minutes automatically
+
+### Step 8: Set up database backups (optional)
+
+```bash
+# The backup script dumps Postgres to the backups/ directory
+mkdir -p backups
+
+# Create a LaunchAgent for daily backups (or use cron)
+# The backup script is at cron/backup.sh
+# It keeps the last 7 days of backups and cleans older ones
+bash cron/backup.sh  # Test it
+```
+
+### Step 9: Migrating from an old machine
+
+Two options:
+
+**Option A: Full app export/import (recommended)**
+1. On old machine: Settings > System > Actions > Export full backup (downloads JSON)
+2. On new machine: During setup wizard, click "Import" on the Welcome screen
+3. Select the backup JSON — restores roles, staff, schedule, skills, integrations, tags, profile
+4. Set a new password and you're done
+
+**Option B: Database-level migration**
+```bash
+# Old machine: dump
+pg_dump -U postgres conductor | gzip > conductor-backup.sql.gz
+
+# New machine: restore
+gunzip -c conductor-backup.sql.gz | psql -U postgres conductor
+
+# Copy uploaded files separately
+rsync -avz old-machine:/path/to/uploads/ ./uploads/
+```
+
+### Quick reference — daily operations
+
+| Action | How |
+|--------|-----|
+| Start the app | `docker compose up -d` |
+| Rebuild after code changes | `docker compose up -d --build` |
+| View logs | `docker compose logs -f conductor` |
+| Stop everything | `docker compose down` |
+| Run database migrations | `docker compose restart conductor` (entrypoint runs migrate) |
+| Manual calendar sync | `bash cron/calendar-sync.sh` |
+| Check LaunchAgent status | `launchctl list \| grep conductor` |
+| Reload LaunchAgent | `launchctl unload ~/Library/LaunchAgents/com.conductor.calendar-sync.plist && launchctl load ~/Library/LaunchAgents/com.conductor.calendar-sync.plist` |
+| Reset stuck tasks | Settings > System > Actions > Reset today's tasks |
+| Export config | Settings > System > Actions > Export full backup |
 
 ## Project structure
 
@@ -84,9 +337,12 @@ conductor/
 │   ├── auth.ts                 # NextAuth config
 │   └── utils.ts                # Shared utilities
 ├── .env.template               # Environment variable template
-├── cron/                       # Docker cron sync scripts
-│   ├── sync.sh                 # Unified sync runner
-│   └── sync-crontab            # Cron schedule
+├── cron/                       # Sync scripts (run on macOS host, not inside Docker)
+│   ├── calendar-events.swift   # EventKit reader — outputs today's events as JSON
+│   ├── calendar-sync.sh        # Calendar sync runner (EventKit → API)
+│   ├── com.conductor.calendar-sync.plist  # LaunchAgent (30-min calendar sync)
+│   ├── sync.sh                 # Unified sync runner (Linear, Granola)
+│   └── sync-crontab            # Cron schedule (Linear, Granola)
 ├── infra/                      # AWS CDK stack
 ├── uploads/                    # Local dev file uploads
 └── docker-compose.yml
@@ -177,6 +433,56 @@ Sonnet 4.6 (default), Haiku 4.5, Opus 4.6. Dropdown in AI page header.
 - Fetches AI summary + speaker-labeled transcript → Claude extracts tasks, follow-ups, decisions
 - Dedup: `sourceType="granola"`, `sourceId="granola-{noteId}"`
 
+### Calendar (macOS EventKit)
+- **30-minute sync** via macOS LaunchAgent (`cron/com.conductor.calendar-sync.plist`)
+- Reads events directly from macOS Calendar via **EventKit** (`cron/calendar-events.swift`) — no screenshots needed
+- Maps calendar accounts to roles (e.g., `josh@vquip.com → vQuip`) configured in Settings > Integrations > Calendar
+- Generates prep tasks for each non-ignored meeting via Claude Haiku (text, not vision — cheap)
+- 3-phase reconciliation: upsert new/changed meetings, remove deleted meetings, preserve completed prep tasks
+- Dedup: `sourceType="calendar"`, `sourceId="cal-{date}-{normalizedTitle}"`
+- Hash-based change detection: hashes event data, skips API call if calendar unchanged
+- AgendaStrip polls `/api/calendar/last-sync` every 15 seconds, auto-refreshes when new sync lands
+- AppShell triggers sync on app open if last sync was >35 minutes ago
+- **Fallback**: screenshot upload via Settings > Integrations > Calendar drop zone (uses Sonnet vision)
+
+#### Calendar sync setup on a new machine
+
+1. **Grant Calendar access**: Run `swift cron/calendar-events.swift` once — macOS will prompt for Calendar permission. Grant it.
+
+2. **Discover calendar accounts**:
+   ```bash
+   swift cron/calendar-events.swift | python3 -c "import sys,json; [print(a) for a in set(e['calendarAccount'] for e in json.load(sys.stdin)['events'])]"
+   ```
+
+3. **Configure mappings** in Settings > Integrations > Calendar, or directly in DB:
+   ```sql
+   UPDATE "UserProfile" SET "calendarRoleMappings" = 'josh@vquip.com = vQuip
+   jogonzalez@zetaglobal.com = Zeta Global
+   jgonzalez@healthmapoffice.com = Healthmap Solutions
+   jgonzalez@healthmedocs.com = HealthMe' WHERE id='default';
+   ```
+
+4. **Configure ignore patterns** in Settings > Integrations > Calendar (OOO, Busy, Deep Work, etc.)
+
+5. **Install the LaunchAgent** (runs every 30 min, guards for weekday working hours 7AM-10PM):
+   ```bash
+   cp cron/com.conductor.calendar-sync.plist ~/Library/LaunchAgents/
+   launchctl load ~/Library/LaunchAgents/com.conductor.calendar-sync.plist
+   ```
+
+6. **Verify**: `bash cron/calendar-sync.sh` — should output event count and sync result
+
+7. **Update `CONDUCTOR_URL`** in the plist if the app runs on a different port (default: `http://localhost:5402`)
+
+#### Key files
+- `cron/calendar-events.swift` — Swift script that reads events via EventKit, outputs JSON
+- `cron/calendar-sync.sh` — Bash wrapper: runs Swift, hashes events, POSTs to API
+- `cron/com.conductor.calendar-sync.plist` — macOS LaunchAgent (30-min interval)
+- `src/app/api/calendar/process/route.ts` — Accepts structured events or screenshot, reconciles with DB
+- `src/app/api/calendar/last-sync/route.ts` — Returns last sync timestamp (polled by AgendaStrip)
+- `src/app/api/calendar/accounts/route.ts` — Discovers calendar accounts (macOS only, not in Docker)
+- `src/components/AgendaStrip.tsx` — Displays today's meetings, polls for sync updates
+
 ## Conversations
 
 One persistent conversation per role. Stored in the `Conversation` table as a JSON array of messages. When sending to Claude API, include Layers 1-3 + **last 10 messages** from history + new message.
@@ -213,6 +519,16 @@ See `.env.template` for all available variables with descriptions. Key ones:
 
 ## Deployment
 
+### Docker (primary — local macOS)
+
+```bash
+docker compose up -d --build   # Postgres on :5433, app on :5402
+```
+
+The app runs in Docker but calendar sync runs on the macOS host via LaunchAgent (EventKit requires native macOS access). See "New machine setup" above for full details.
+
+### EC2 (remote — optional)
+
 - EC2 t3.small via CDK (see /infra)
 - PostgreSQL 16 installed on the same instance
 - Nginx reverse proxy + Let's Encrypt SSL
@@ -226,10 +542,7 @@ rsync -avz --exclude=node_modules --exclude=.next --exclude=uploads \
 ssh ubuntu@IP "cd /opt/conductor && npm install && npx prisma migrate deploy && npm run build && pm2 restart conductor"
 ```
 
-Docker (alternative):
-```bash
-docker compose up -d   # Postgres on :5433, app on :3100
-```
+Note: Calendar sync via EventKit does not work on EC2 (no macOS). Use the screenshot upload in Settings > Integrations > Calendar as a manual fallback.
 
 ## Conventions
 

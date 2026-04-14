@@ -13,17 +13,20 @@ export async function GET() {
   }
   // Mask API keys in response
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { anthropicApiKey, openaiApiKey, passwordHash, ...safe } = profile;
+  const { anthropicApiKey, openaiApiKey, granolaApiKey, passwordHash, ...safe } = profile;
   const hasAnthropicKey = !!(anthropicApiKey || process.env.ANTHROPIC_API_KEY);
   const hasOpenAIKey = !!(openaiApiKey || process.env.OPENAI_API_KEY);
+  const hasGranolaKey = !!(granolaApiKey || process.env.GRANOLA_API_KEY);
   return NextResponse.json({
     ...safe,
     hasAnthropicKey: hasAnthropicKey,
     hasOpenAIKey: hasOpenAIKey,
+    hasGranolaKey: hasGranolaKey,
     anthropicApiKeySource: anthropicApiKey ? "database" : process.env.ANTHROPIC_API_KEY ? "environment" : null,
     anthropicApiKeyMasked: anthropicApiKey ? `${anthropicApiKey.slice(0, 10)}...${anthropicApiKey.slice(-4)}` : null,
     openaiApiKeySource: openaiApiKey ? "database" : process.env.OPENAI_API_KEY ? "environment" : null,
     openaiApiKeyMasked: openaiApiKey ? `${openaiApiKey.slice(0, 10)}...${openaiApiKey.slice(-4)}` : null,
+    granolaApiKeyMasked: granolaApiKey ? `${granolaApiKey.slice(0, 10)}...${granolaApiKey.slice(-4)}` : null,
   });
 }
 
@@ -36,12 +39,13 @@ export async function PUT(req: NextRequest) {
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { communicationStyle, sampleMessages, globalContext, calendarIgnorePatterns, anthropicApiKey, openaiApiKey } = await req.json();
+  const { communicationStyle, sampleMessages, globalContext, calendarIgnorePatterns, calendarRoleMappings, anthropicApiKey, openaiApiKey, granolaApiKey, aiRecentNotesCount, aiRecentTranscriptsCount, aiConversationHistoryLimit, aiNoteChunkSize, aiTranscriptChunkSize, aiPinnedNoteChunkSize } = await req.json();
 
   // Only allow API key writes when authenticated (not during setup bypass)
   const safeApiKeys = isSetupComplete ? {
     ...(anthropicApiKey !== undefined ? { anthropicApiKey } : {}),
     ...(openaiApiKey !== undefined ? { openaiApiKey } : {}),
+    ...(granolaApiKey !== undefined ? { granolaApiKey } : {}),
   } : {};
 
   const profile = await prisma.userProfile.upsert({
@@ -51,6 +55,13 @@ export async function PUT(req: NextRequest) {
       ...(sampleMessages !== undefined && { sampleMessages }),
       ...(globalContext !== undefined && { globalContext }),
       ...(calendarIgnorePatterns !== undefined && { calendarIgnorePatterns }),
+      ...(calendarRoleMappings !== undefined && { calendarRoleMappings }),
+      ...(aiRecentNotesCount !== undefined && { aiRecentNotesCount }),
+      ...(aiRecentTranscriptsCount !== undefined && { aiRecentTranscriptsCount }),
+      ...(aiConversationHistoryLimit !== undefined && { aiConversationHistoryLimit }),
+      ...(aiNoteChunkSize !== undefined && { aiNoteChunkSize }),
+      ...(aiTranscriptChunkSize !== undefined && { aiTranscriptChunkSize }),
+      ...(aiPinnedNoteChunkSize !== undefined && { aiPinnedNoteChunkSize }),
       ...safeApiKeys,
     },
     create: {
@@ -59,11 +70,18 @@ export async function PUT(req: NextRequest) {
       sampleMessages,
       globalContext,
       calendarIgnorePatterns,
+      calendarRoleMappings,
+      aiRecentNotesCount,
+      aiRecentTranscriptsCount,
+      aiConversationHistoryLimit,
+      aiNoteChunkSize,
+      aiTranscriptChunkSize,
+      aiPinnedNoteChunkSize,
       ...(isSetupComplete ? { anthropicApiKey, openaiApiKey } : {}),
     },
   });
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { anthropicApiKey: _key, openaiApiKey: _oKey, passwordHash: _pw, ...safeProfile } = profile;
+  const { anthropicApiKey: _key, openaiApiKey: _oKey, granolaApiKey: _gKey, passwordHash: _pw, ...safeProfile } = profile;
   return NextResponse.json(safeProfile);
 }

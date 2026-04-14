@@ -35,6 +35,8 @@ export function FocusPage() {
       setLoaded(true);
     }
     loadSchedule();
+    const interval = setInterval(loadSchedule, 60_000);
+    return () => clearInterval(interval);
   }, []);
 
   if (!loaded) return null;

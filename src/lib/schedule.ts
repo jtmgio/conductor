@@ -1,5 +1,14 @@
 import { prisma } from "./prisma";
 
+const TIMEZONE = process.env.TIMEZONE || "America/New_York";
+
+/** Get current time in the configured timezone */
+function localNow(): Date {
+  const now = new Date();
+  const localStr = now.toLocaleString("en-US", { timeZone: TIMEZONE });
+  return new Date(localStr);
+}
+
 export interface TimeBlock {
   id: string;
   label: string;
@@ -23,7 +32,7 @@ export async function getScheduleBlocks(): Promise<TimeBlock[]> {
   }
 
   const blocks = await prisma.scheduleBlock.findMany({
-    orderBy: { sortOrder: "asc" },
+    orderBy: [{ startHour: "asc" }, { startMinute: "asc" }],
   });
 
   cachedBlocks = blocks.map((b) => ({
@@ -56,7 +65,7 @@ export async function getCurrentBlock(now?: Date): Promise<{
   const blocks = await getScheduleBlocks();
   if (blocks.length === 0) return null;
 
-  const d = now || new Date();
+  const d = now || localNow();
   const dayOfWeek = d.getDay(); // 0=Sun, 1=Mon, etc.
   const currentMinutes = timeToMinutes(d.getHours(), d.getMinutes());
 
@@ -88,7 +97,7 @@ export async function getNextBlocks(count: number = 3, now?: Date): Promise<
   const blocks = await getScheduleBlocks();
   if (blocks.length === 0) return [];
 
-  const d = now || new Date();
+  const d = now || localNow();
   const dayOfWeek = d.getDay();
   const currentMinutes = timeToMinutes(d.getHours(), d.getMinutes());
 
@@ -120,7 +129,7 @@ export function getTimeLabel(block: TimeBlock): string {
 }
 
 export function getOffClockMessage(now?: Date): string | null {
-  const d = now || new Date();
+  const d = now || localNow();
   const day = d.getDay();
   const hour = d.getHours();
 

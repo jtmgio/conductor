@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { ScheduleGrid } from "@/components/ScheduleGrid";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Settings, ChevronDown, Pencil, Save, LogOut, User, Briefcase, Wrench, Calendar, Zap, Trash2, Plus, Mic, Send, AlertCircle, Target, Users, RefreshCw, XCircle, Link2, DollarSign, Download, Upload, Database, Clock, CheckCircle, AlertTriangle } from "lucide-react";
+import { Settings, ChevronDown, Pencil, Save, LogOut, User, Briefcase, Wrench, Calendar, Zap, Trash2, Plus, X, Mic, Send, AlertCircle, Target, Users, RefreshCw, XCircle, Link2, DollarSign, Download, Upload, Database, Clock, CheckCircle, AlertTriangle } from "lucide-react";
 import { CostsContent } from "@/app/costs/CostsPage";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -13,8 +13,9 @@ import { useToast } from "@/components/ui/toast";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 
 interface Staff { id: string; name: string; title: string; relationship?: string; commNotes?: string; email?: string; slackHandle?: string; }
-interface Role { id: string; name: string; title: string; platform: string; priority: number; color: string; tone?: string; context?: string; responsibilities?: string; quarterlyGoals?: string; }
-interface UserProfile { communicationStyle?: string; sampleMessages?: string; globalContext?: string; calendarIgnorePatterns?: string; }
+interface AiContextFields { aiRecentNotesCount?: number | null; aiRecentTranscriptsCount?: number | null; aiConversationHistoryLimit?: number | null; aiNoteChunkSize?: number | null; aiTranscriptChunkSize?: number | null; aiPinnedNoteChunkSize?: number | null; }
+interface Role extends AiContextFields { id: string; name: string; title: string; platform: string; priority: number; color: string; tone?: string; context?: string; responsibilities?: string; quarterlyGoals?: string; }
+interface UserProfile extends AiContextFields { communicationStyle?: string; sampleMessages?: string; globalContext?: string; calendarIgnorePatterns?: string; calendarRoleMappings?: string; }
 interface Skill { id: string; name: string; label: string; description: string; icon?: string; prompt: string; category: string; isBuiltIn: boolean; enabled: boolean; }
 interface Integration { id: string; type: string; roleId: string; config: Record<string, string>; enabled: boolean; lastSyncAt: string | null; lastSyncResult: string | null; }
 interface SyncLog { id: string; type: string; status: string; trigger: string; startedAt: string; completedAt: string | null; durationMs: number | null; summary: string | null; errorMessage: string | null; itemsFound: number | null; itemsCreated: number | null; itemsUpdated: number | null; itemsSkipped: number | null; meta: Record<string, unknown> | null; }
@@ -31,8 +32,150 @@ const TABS = [
 
 type TabId = typeof TABS[number]["id"];
 
+function CalendarAccountMappings({ value, roles, onChange }: { value: string; roles: { id: string; name: string }[]; onChange: (val: string) => void }) {
+  const [rows, setRows] = useState<{ account: string; roleName: string }[]>(() => {
+    const lines = value.split("\n").filter(Boolean);
+    const parsed = lines.map((line) => {
+      const [account, roleName] = line.split("=").map((s) => s.trim());
+      return { account: account || "", roleName: roleName || "" };
+    });
+    return parsed.length > 0 ? parsed : [{ account: "", roleName: "" }];
+  });
+  const [discoveredAccounts, setDiscoveredAccounts] = useState<{ account: string; calendarName: string }[]>([]);
+  const [discovering, setDiscovering] = useState(false);
+
+  useEffect(() => {
+    const lines = value.split("\n").filter(Boolean);
+    const parsed = lines.map((line) => {
+      const [account, roleName] = line.split("=").map((s) => s.trim());
+      return { account: account || "", roleName: roleName || "" };
+    });
+    if (parsed.length > 0) setRows(parsed);
+  }, [value]);
+
+  const updateRow = (index: number, field: "account" | "roleName", val: string) => {
+    const updated = [...rows];
+    updated[index] = { ...updated[index], [field]: val };
+    setRows(updated);
+    onChange(updated.filter((m) => m.account || m.roleName).map((m) => `${m.account} = ${m.roleName}`).join("\n"));
+  };
+
+  const removeRow = (index: number) => {
+    const updated = rows.filter((_, j) => j !== index);
+    const next = updated.length > 0 ? updated : [{ account: "", roleName: "" }];
+    setRows(next);
+    onChange(next.filter((m) => m.account || m.roleName).map((m) => `${m.account} = ${m.roleName}`).join("\n"));
+  };
+
+  const addRow = (account?: string) => {
+    setRows((prev) => [...prev, { account: account || "", roleName: "" }]);
+  };
+
+  const discoverAccounts = async () => {
+    setDiscovering(true);
+    try {
+      const res = await fetch("/api/calendar/accounts");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.accounts?.length > 0) {
+          setDiscoveredAccounts(data.accounts);
+        } else {
+          // Fallback: run swift locally via the sync endpoint isn't possible in Docker
+          // Show helper text instead
+          setDiscoveredAccounts([{ account: "__unavailable__", calendarName: "" }]);
+        }
+      }
+    } catch {
+      setDiscoveredAccounts([{ account: "__unavailable__", calendarName: "" }]);
+    }
+    setDiscovering(false);
+  };
+
+  const existingAccounts = new Set(rows.map((r) => r.account.toLowerCase()));
+
+  return (
+    <div className="flex flex-col gap-2">
+      {rows.map((m, i) => (
+        <div key={i} className="flex gap-2 items-center">
+          <input
+            value={m.account}
+            onChange={(e) => updateRow(i, "account", e.target.value)}
+            placeholder="e.g. josh@company.com"
+            className={`${inputCls} flex-1`}
+          />
+          <select
+            value={m.roleName}
+            onChange={(e) => updateRow(i, "roleName", e.target.value)}
+            className={`${inputCls} flex-1`}
+          >
+            <option value="">Select role...</option>
+            {roles.map((r) => (
+              <option key={r.id} value={r.name}>{r.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => removeRow(i)}
+            className="text-[var(--text-tertiary)] hover:text-red-400 transition-colors p-1"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center gap-3 mt-1">
+        <button
+          onClick={() => addRow()}
+          className="text-[13px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1"
+        >
+          <Plus className="h-3.5 w-3.5" /> Add mapping
+        </button>
+        <button
+          onClick={discoverAccounts}
+          disabled={discovering}
+          className="text-[13px] text-[var(--accent-blue)] hover:underline flex items-center gap-1 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${discovering ? "animate-spin" : ""}`} />
+          {discovering ? "Discovering..." : "Discover calendars"}
+        </button>
+      </div>
+      {discoveredAccounts.length > 0 && (
+        <div className="mt-2 p-3 rounded-lg bg-[var(--surface-elevated)] border border-[var(--border-subtle)]">
+          {discoveredAccounts[0]?.account === "__unavailable__" ? (
+            <div>
+              <p className="text-[12px] text-[var(--text-tertiary)] mb-2">Auto-discovery requires running natively on macOS. Run this in your terminal to find your calendar accounts:</p>
+              <code className="text-[11px] bg-[var(--surface)] px-2 py-1 rounded block mt-1 text-[var(--text-secondary)]">
+                swift cron/calendar-events.swift | python3 -c &quot;import sys,json; [print(a) for a in set(e[&apos;calendarAccount&apos;] for e in json.load(sys.stdin)[&apos;events&apos;])]&quot;
+              </code>
+            </div>
+          ) : (
+            <>
+              <p className="text-[12px] text-[var(--text-tertiary)] mb-2">Found calendars — click to add:</p>
+              <div className="flex flex-wrap gap-2">
+                {discoveredAccounts
+                  .filter((a) => !existingAccounts.has(a.account.toLowerCase()))
+                  .map((a) => (
+                    <button
+                      key={a.account}
+                      onClick={() => addRow(a.account)}
+                      className="text-[12px] bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg px-2 py-1 hover:border-[var(--accent-blue)] transition-colors"
+                    >
+                      {a.account}
+                    </button>
+                  ))}
+                {discoveredAccounts.filter((a) => !existingAccounts.has(a.account.toLowerCase())).length === 0 && (
+                  <p className="text-[12px] text-[var(--text-quaternary)]">All discovered calendars are already mapped.</p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>((searchParams.get("tab") as TabId) || "roles");
   const [roles, setRoles] = useState<Role[]>([]);
   const [staffByRole, setStaffByRole] = useState<Record<string, Staff[]>>({});
@@ -80,8 +223,23 @@ Based on the above, provide:`;
   const [showAnthropicKey, setShowAnthropicKey] = useState(false);
   const [openaiKey, setOpenaiKey] = useState("");
   const [openaiKeySaved, setOpenaiKeySaved] = useState(false);
+  const [granolaKey, setGranolaKey] = useState("");
+  const [granolaKeySaved, setGranolaKeySaved] = useState(false);
+  const [granolaSyncSince, setGranolaSyncSince] = useState("");
+  const [granolaSyncUntil, setGranolaSyncUntil] = useState("");
   const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [editSkillForm, setEditSkillForm] = useState({ label: "", description: "", prompt: "", category: "general" });
+  const AI_CONTEXT_FIELDS = [
+    { key: "aiRecentNotesCount" as const, label: "Recent notes per role", default: 5, min: 1, max: 50 },
+    { key: "aiRecentTranscriptsCount" as const, label: "Recent transcripts per role", default: 3, min: 1, max: 20 },
+    { key: "aiConversationHistoryLimit" as const, label: "Conversation history (messages)", default: 10, min: 1, max: 100 },
+    { key: "aiNoteChunkSize" as const, label: "Note chunk size (chars)", default: 3000, min: 500, max: 10000 },
+    { key: "aiTranscriptChunkSize" as const, label: "Transcript chunk size (chars)", default: 2000, min: 500, max: 10000 },
+    { key: "aiPinnedNoteChunkSize" as const, label: "Pinned note chunk size (chars)", default: 2000, min: 500, max: 10000 },
+  ];
+  const [systemAiContext, setSystemAiContext] = useState<Record<string, string>>({});
+  const [roleAiContext, setRoleAiContext] = useState<Record<string, Record<string, string>>>({});
+  const [savingAiContext, setSavingAiContext] = useState(false);
   const { toast } = useToast();
 
   const SKILL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -123,9 +281,10 @@ Based on the above, provide:`;
       setRoles(arr);
       const tones: Record<string, string> = {}; const contexts: Record<string, string> = {};
       const resps: Record<string, string> = {}; const goals: Record<string, string> = {};
-      for (const r of arr) { tones[r.id] = r.tone || ""; contexts[r.id] = r.context || ""; resps[r.id] = r.responsibilities || ""; goals[r.id] = r.quarterlyGoals || ""; }
-      setEditTone(tones); setEditContext(contexts); setEditResponsibilities(resps); setEditGoals(goals);
-      if (profileRes.ok) { const p = await profileRes.json(); setProfile({ communicationStyle: p.communicationStyle || "", sampleMessages: p.sampleMessages || "", globalContext: p.globalContext || "", calendarIgnorePatterns: p.calendarIgnorePatterns || "" }); if (p.anthropicApiKeyMasked) setAnthropicKey(p.anthropicApiKeyMasked); if (p.hasAnthropicKey) setAnthropicKeySaved(true); if (p.openaiApiKeyMasked) setOpenaiKey(p.openaiApiKeyMasked); if (p.hasOpenAIKey) setOpenaiKeySaved(true); }
+      const roleAiCtx: Record<string, Record<string, string>> = {};
+      for (const r of arr) { tones[r.id] = r.tone || ""; contexts[r.id] = r.context || ""; resps[r.id] = r.responsibilities || ""; goals[r.id] = r.quarterlyGoals || ""; roleAiCtx[r.id] = { aiRecentNotesCount: r.aiRecentNotesCount != null ? String(r.aiRecentNotesCount) : "", aiRecentTranscriptsCount: r.aiRecentTranscriptsCount != null ? String(r.aiRecentTranscriptsCount) : "", aiConversationHistoryLimit: r.aiConversationHistoryLimit != null ? String(r.aiConversationHistoryLimit) : "", aiNoteChunkSize: r.aiNoteChunkSize != null ? String(r.aiNoteChunkSize) : "", aiTranscriptChunkSize: r.aiTranscriptChunkSize != null ? String(r.aiTranscriptChunkSize) : "", aiPinnedNoteChunkSize: r.aiPinnedNoteChunkSize != null ? String(r.aiPinnedNoteChunkSize) : "" }; }
+      setEditTone(tones); setEditContext(contexts); setEditResponsibilities(resps); setEditGoals(goals); setRoleAiContext(roleAiCtx);
+      if (profileRes.ok) { const p = await profileRes.json(); setProfile({ communicationStyle: p.communicationStyle || "", sampleMessages: p.sampleMessages || "", globalContext: p.globalContext || "", calendarIgnorePatterns: p.calendarIgnorePatterns || "", calendarRoleMappings: p.calendarRoleMappings || "" }); const sysCtx: Record<string, string> = {}; for (const k of ["aiRecentNotesCount", "aiRecentTranscriptsCount", "aiConversationHistoryLimit", "aiNoteChunkSize", "aiTranscriptChunkSize", "aiPinnedNoteChunkSize"]) { sysCtx[k] = p[k] != null ? String(p[k]) : ""; } setSystemAiContext(sysCtx); if (p.anthropicApiKeyMasked) setAnthropicKey(p.anthropicApiKeyMasked); if (p.hasAnthropicKey) setAnthropicKeySaved(true); if (p.openaiApiKeyMasked) setOpenaiKey(p.openaiApiKeyMasked); if (p.hasOpenAIKey) setOpenaiKeySaved(true); if (p.granolaApiKeyMasked) setGranolaKey(p.granolaApiKeyMasked); if (p.hasGranolaKey) setGranolaKeySaved(true); }
       const staffResults: Record<string, Staff[]> = {};
       await Promise.all(arr.map(async (role) => { staffResults[role.id] = await fetch(`/api/roles/${role.id}/staff`).then(r => r.json()); }));
       setStaffByRole(staffResults);
@@ -135,16 +294,48 @@ Based on the above, provide:`;
   useEffect(() => { fetchData(); fetchSkills(); fetchIntegrations(); fetchSyncLogs(); }, [fetchData, fetchSkills, fetchIntegrations, fetchSyncLogs]);
 
   const toggleRole = (roleId: string) => setExpandedRoleId((prev) => (prev === roleId ? null : roleId));
-  const saveRole = async (roleId: string) => { setSaving(true); try { const res = await fetch(`/api/roles/${roleId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tone: editTone[roleId], context: editContext[roleId], responsibilities: editResponsibilities[roleId], quarterlyGoals: editGoals[roleId] }) }); if (!res.ok) throw new Error(); toast("Role settings saved", "success"); } catch { toast("Failed to save", "error"); } setSaving(false); };
+  const saveRole = async (roleId: string) => { setSaving(true); try { const aiFields: Record<string, number | null> = {}; const rc = roleAiContext[roleId] || {}; for (const k of ["aiRecentNotesCount", "aiRecentTranscriptsCount", "aiConversationHistoryLimit", "aiNoteChunkSize", "aiTranscriptChunkSize", "aiPinnedNoteChunkSize"]) { aiFields[k] = rc[k] ? parseInt(rc[k], 10) : null; } const res = await fetch(`/api/roles/${roleId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tone: editTone[roleId], context: editContext[roleId], responsibilities: editResponsibilities[roleId], quarterlyGoals: editGoals[roleId], ...aiFields }) }); if (!res.ok) throw new Error(); toast("Role settings saved", "success"); } catch { toast("Failed to save", "error"); } setSaving(false); };
   const saveProfile = async () => { setSavingProfile(true); try { const res = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(profile) }); if (!res.ok) throw new Error(); toast("Voice profile saved", "success"); } catch { toast("Failed to save", "error"); } setSavingProfile(false); };
   const openEditStaff = (roleId: string, staff: Staff) => { setEditingStaff(staff); setEditingRoleId(roleId); setStaffForm({ ...staff }); };
   const saveStaffEdit = async () => { if (!editingStaff || !editingRoleId) return; try { const res = await fetch(`/api/roles/${editingRoleId}/staff/${editingStaff.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(staffForm) }); if (!res.ok) throw new Error(); toast("Staff updated", "success"); } catch { toast("Failed to save", "error"); } setEditingStaff(null); setEditingRoleId(null); setStaffForm({}); fetchData(); };
   const openAddStaff = (roleId: string) => { setAddingRoleId(roleId); setNewStaffForm({}); };
   const saveNewStaff = async () => { if (!addingRoleId || !newStaffForm.name || !newStaffForm.title) return; try { const res = await fetch(`/api/roles/${addingRoleId}/staff`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newStaffForm) }); if (!res.ok) throw new Error(); toast("Staff added", "success"); } catch { toast("Failed to add staff", "error"); } setAddingRoleId(null); setNewStaffForm({}); fetchData(); };
+  const processCalendarScreenshot = async (file: File) => {
+    setSyncing(true);
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1]); // strip data:image/...;base64, prefix
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const today = new Date().toISOString().split("T")[0];
+      const res = await fetch("/api/calendar/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: base64, date: today, trigger: "manual" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const parts = [];
+        if (data.meetingsCreated) parts.push(`${data.meetingsCreated} new`);
+        if (data.meetingsUpdated) parts.push(`${data.meetingsUpdated} updated`);
+        if (data.meetingsRemoved) parts.push(`${data.meetingsRemoved} removed`);
+        toast(parts.length ? `${data.meetingsFound} meetings — ${parts.join(", ")}` : `${data.meetingsFound} meetings synced`, "success");
+        fetchSyncLogs();
+      } else {
+        toast(data.error || "Calendar sync failed", "error");
+      }
+    } catch { toast("Failed to process screenshot", "error"); }
+    setSyncing(false);
+  };
   const saveCalendarPatterns = async () => {
     setSavingCalendar(true);
     try {
-      const res = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ calendarIgnorePatterns: profile.calendarIgnorePatterns }) });
+      const res = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ calendarIgnorePatterns: profile.calendarIgnorePatterns, calendarRoleMappings: profile.calendarRoleMappings }) });
       if (!res.ok) throw new Error();
       toast("Calendar settings saved", "success");
     } catch { toast("Failed to save", "error"); }
@@ -244,14 +435,29 @@ Based on the above, provide:`;
       fetchIntegrations();
     } catch { toast("Failed to delete", "error"); }
   };
-  const syncNow = async (type: string) => {
+  const syncNow = async (type: string, params?: { since?: string; until?: string }) => {
     setSyncing(true);
     try {
-      const res = await fetch(`/api/integrations/${type}/sync`, { method: "POST" });
+      const url = new URL(`/api/integrations/${type}/sync`, window.location.origin);
+      if (params?.since) url.searchParams.set("since", params.since);
+      if (params?.until) url.searchParams.set("until", params.until);
+      const res = await fetch(url.toString(), { method: "POST" });
       const data = await res.json();
-      if (data.success) { toast(`Synced: ${data.summary}`, "success"); } else { toast(data.error || "Sync failed", "error"); }
-      fetchIntegrations();
-      fetchSyncLogs();
+      if (data.success) {
+        toast(data.summary ? `Synced: ${data.summary}` : `Synced: ${data.processed || 0} new, ${data.skipped || 0} skipped`, "success");
+        fetchIntegrations();
+        fetchSyncLogs();
+        const hasNew = (data.created || data.processed || 0) > 0;
+        if (hasNew) {
+          if (type === "granola") {
+            setTimeout(() => router.push("/inbox"), 1000);
+          } else if (type === "linear") {
+            const integration = integrations.find((i) => i.type === type);
+            const roleParam = integration?.roleId ? `?roleId=${integration.roleId}` : "";
+            setTimeout(() => router.push(`/board${roleParam}`), 1000);
+          }
+        }
+      } else { toast(data.error || "Sync failed", "error"); }
     } catch { toast("Sync failed", "error"); }
     setSyncing(false);
   };
@@ -300,13 +506,13 @@ Based on the above, provide:`;
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-8 border-b border-[var(--border-subtle)]">
+        <div className="flex gap-1 mb-8 border-b border-[var(--border-subtle)] overflow-x-auto hide-scrollbar">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "flex items-center gap-2 px-4 py-3 text-[15px] font-medium transition-colors relative",
+                "flex items-center gap-2 px-4 py-3 text-[15px] font-medium transition-colors relative whitespace-nowrap shrink-0",
                 activeTab === tab.id
                   ? "text-[var(--accent-blue)]"
                   : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
@@ -393,6 +599,28 @@ Based on the above, provide:`;
                         </div>
                         <button onClick={() => openAddStaff(role.id)} className="mt-2 w-full border border-dashed border-[var(--border-default)] rounded-xl py-3 text-[15px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:border-[var(--text-tertiary)] transition-colors">+ Add person</button>
                       </div>
+                      <details className="group">
+                        <summary className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium cursor-pointer hover:text-[var(--text-secondary)] transition-colors select-none flex items-center gap-1.5">
+                          <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                          AI Context Overrides
+                        </summary>
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          {AI_CONTEXT_FIELDS.map((f) => (
+                            <div key={f.key}>
+                              <label className="text-[13px] text-[var(--text-secondary)] mb-1 block">{f.label}</label>
+                              <input
+                                type="number"
+                                min={f.min}
+                                max={f.max}
+                                value={roleAiContext[role.id]?.[f.key] ?? ""}
+                                onChange={(e) => setRoleAiContext((prev) => ({ ...prev, [role.id]: { ...(prev[role.id] || {}), [f.key]: e.target.value } }))}
+                                placeholder={systemAiContext[f.key] || String(f.default)}
+                                className={inputCls}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </details>
                       <button onClick={() => saveRole(role.id)} disabled={saving} className="bg-[var(--accent-blue)] text-white px-5 py-3 rounded-xl text-[15px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2">
                         <Save className="h-4 w-4" /> Save
                       </button>
@@ -435,9 +663,9 @@ Based on the above, provide:`;
 
         {/* TAB: Integrations */}
         {activeTab === "integrations" && (
-          <div className="flex gap-6 min-h-[500px]">
-            {/* Vertical sub-tabs */}
-            <div className="w-[160px] shrink-0 space-y-1">
+          <div className="flex flex-col md:flex-row gap-4 md:gap-6 md:min-h-[500px]">
+            {/* Sub-tabs — horizontal pills on mobile, vertical sidebar on desktop */}
+            <div className="flex md:flex-col md:w-[160px] md:shrink-0 gap-1 overflow-x-auto hide-scrollbar pb-2 md:pb-0 md:space-y-1">
               {([
                 { id: "calendar" as const, label: "Calendar", icon: Calendar },
                 { id: "linear" as const, label: "Linear", icon: Link2 },
@@ -448,7 +676,7 @@ Based on the above, provide:`;
                   key={sub.id}
                   onClick={() => setIntegrationsSubTab(sub.id)}
                   className={cn(
-                    "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[14px] font-medium transition-colors text-left",
+                    "flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[14px] font-medium transition-colors text-left whitespace-nowrap shrink-0 md:w-full",
                     integrationsSubTab === sub.id
                       ? "bg-[var(--sidebar-active)] text-[var(--text-primary)]"
                       : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)]"
@@ -473,27 +701,67 @@ Based on the above, provide:`;
                     placeholder="One pattern per line..."
                     className={`${textareaCls} min-h-[200px]`}
                   />
+                  <div className="mt-6">
+                    <p className="text-[14px] text-[var(--text-secondary)] font-medium mb-1">Calendar account → Role mappings</p>
+                    <p className="text-[13px] text-[var(--text-tertiary)] mb-3">Map calendar accounts to roles. Click "Discover calendars" to find accounts from your Mac.</p>
+                    <CalendarAccountMappings
+                      value={profile.calendarRoleMappings || ""}
+                      roles={roles}
+                      onChange={(val) => setProfile((p) => ({ ...p, calendarRoleMappings: val }))}
+                    />
+                  </div>
                   <button onClick={saveCalendarPatterns} disabled={savingCalendar} className="mt-3 bg-[var(--accent-blue)] text-white px-5 py-3 rounded-xl text-[15px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2">
                     <Save className="h-4 w-4" /> {savingCalendar ? "Saving..." : "Save calendar settings"}
                   </button>
                   <div className="mt-6 border-t border-[var(--border-subtle)] pt-4">
-                    <p className="text-[13px] text-[var(--text-tertiary)] mb-2">Calendar sync runs daily at 5:00 AM via LaunchAgent, or on first app open each day.</p>
-                    <button
-                      onClick={async () => {
-                        setSyncing(true);
-                        try {
-                          const res = await fetch("/api/calendar/sync", { method: "POST" });
-                          const data = await res.json();
-                          if (data.ok) { toast("Calendar synced", "success"); } else { toast(data.error || "Sync failed", "error"); }
-                          fetchSyncLogs();
-                        } catch { toast("Sync failed", "error"); }
-                        setSyncing(false);
+                    <p className="text-[14px] text-[var(--text-secondary)] font-medium mb-1">Sync Calendar Now</p>
+                    <p className="text-[13px] text-[var(--text-tertiary)] mb-3">Drop a calendar screenshot to sync meetings. <span className="text-[var(--text-quaternary)]">Cmd+Shift+4</span> your Calendar app, then drop it here.</p>
+                    <label
+                      className={`relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed transition-colors cursor-pointer py-6 px-4 ${
+                        syncing
+                          ? "border-[var(--accent-blue)] bg-[var(--accent-blue)]/5"
+                          : "border-[var(--border-subtle)] hover:border-[var(--accent-blue)] hover:bg-[var(--surface-elevated)]"
+                      }`}
+                      onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("border-[var(--accent-blue)]", "bg-[var(--accent-blue)]/5"); }}
+                      onDragLeave={(e) => { e.currentTarget.classList.remove("border-[var(--accent-blue)]", "bg-[var(--accent-blue)]/5"); }}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.remove("border-[var(--accent-blue)]", "bg-[var(--accent-blue)]/5");
+                        const file = e.dataTransfer.files[0];
+                        if (!file?.type.startsWith("image/")) { toast("Drop an image file", "error"); return; }
+                        await processCalendarScreenshot(file);
                       }}
-                      disabled={syncing}
-                      className="bg-[var(--accent-blue)] text-white px-4 py-2 rounded-xl text-[14px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
                     >
-                      {syncing ? "Syncing..." : "Sync now"}
-                    </button>
+                      {syncing ? (
+                        <RefreshCw className="h-6 w-6 text-[var(--accent-blue)] animate-spin" />
+                      ) : (
+                        <Upload className="h-6 w-6 text-[var(--text-tertiary)]" />
+                      )}
+                      <span className="text-[14px] text-[var(--text-secondary)]">
+                        {syncing ? "Processing calendar..." : "Drop screenshot or click to upload"}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        disabled={syncing}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          await processCalendarScreenshot(file);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                    <div className="flex items-center justify-between mt-3">
+                      <button
+                        onClick={() => router.push("/meetings")}
+                        className="text-[13px] text-[var(--accent-blue)] hover:underline inline-flex items-center gap-1"
+                      >
+                        <Calendar className="h-3.5 w-3.5" /> Meetings
+                      </button>
+                      <p className="text-[12px] text-[var(--text-tertiary)]">Auto-syncs every 30 min via LaunchAgent</p>
+                    </div>
                   </div>
                 </div>
               )}
@@ -615,50 +883,75 @@ Based on the above, provide:`;
                           </button>
                         </div>
 
+                        {/* Granola API Key */}
+                        <div>
+                          <p className="text-[13px] text-[var(--text-tertiary)] mb-2">API Key</p>
+                          <div className="flex gap-2">
+                            <input
+                              type="password"
+                              value={granolaKey}
+                              onChange={(e) => { setGranolaKey(e.target.value); setGranolaKeySaved(false); }}
+                              placeholder="Granola API key"
+                              className={`${inputCls} flex-1`}
+                            />
+                            <button
+                              onClick={async () => {
+                                await fetch("/api/profile", {
+                                  method: "PUT",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ granolaApiKey: granolaKey || null }),
+                                });
+                                setGranolaKeySaved(true);
+                                toast("Granola API key saved", "success");
+                              }}
+                              disabled={granolaKeySaved}
+                              className="px-4 py-2 rounded-xl bg-[var(--accent-blue)] text-white text-[14px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50 shrink-0"
+                            >
+                              {granolaKeySaved ? "Saved" : "Save"}
+                            </button>
+                            {granolaKeySaved && (
+                              <button
+                                onClick={async () => {
+                                  await fetch("/api/profile", {
+                                    method: "PUT",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ granolaApiKey: null }),
+                                  });
+                                  setGranolaKey("");
+                                  setGranolaKeySaved(false);
+                                  toast("Granola API key removed", "success");
+                                }}
+                                className="text-[13px] text-red-400 hover:text-red-300 shrink-0"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
                         {/* Folder → Role mapper */}
                         <div>
                           <p className="text-[13px] text-[var(--text-tertiary)] mb-2">Map Granola folders to roles</p>
                           <div className="space-y-2">
                             {Object.entries(folderMap).map(([folder, roleId]) => (
-                              <div key={folder} className="flex items-center gap-2">
-                                <input
-                                  value={folder}
-                                  onChange={(e) => {
-                                    const newMap = { ...folderMap };
-                                    const val = newMap[folder];
-                                    delete newMap[folder];
-                                    newMap[e.target.value] = val;
-                                    fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
-                                  }}
-                                  onBlur={() => fetchIntegrations()}
-                                  placeholder="Granola folder name"
-                                  className={`${inputCls} flex-1`}
-                                />
-                                <span className="text-[var(--text-tertiary)] text-[13px] shrink-0">&rarr;</span>
-                                <select
-                                  value={roleId}
-                                  onChange={(e) => {
-                                    const newMap = { ...folderMap, [folder]: e.target.value };
-                                    fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
-                                  }}
-                                  className={`${inputCls} flex-1`}
-                                >
-                                  <option value="">Select role...</option>
-                                  {roles.map((r) => (
-                                    <option key={r.id} value={r.id}>{r.name}</option>
-                                  ))}
-                                </select>
-                                <button
-                                  onClick={() => {
-                                    const newMap = { ...folderMap };
-                                    delete newMap[folder];
-                                    fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config, folderMap: newMap } }) }).then(() => fetchIntegrations());
-                                  }}
-                                  className="text-[var(--text-tertiary)] hover:text-red-400 shrink-0"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </div>
+                              <FolderMapRow
+                                key={folder}
+                                folder={folder}
+                                roleId={roleId}
+                                roles={roles}
+                                inputCls={inputCls}
+                                onSave={(oldName, newName, newRoleId) => {
+                                  const newMap = { ...folderMap };
+                                  if (oldName !== newName) { delete newMap[oldName]; }
+                                  newMap[newName] = newRoleId;
+                                  fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config as Record<string, unknown>, folderMap: newMap } }) }).then(() => fetchIntegrations());
+                                }}
+                                onDelete={() => {
+                                  const newMap = { ...folderMap };
+                                  delete newMap[folder];
+                                  fetch(`/api/integrations/${integration.type}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: { ...integration.config as Record<string, unknown>, folderMap: newMap } }) }).then(() => fetchIntegrations());
+                                }}
+                              />
                             ))}
                             <div className="flex items-center gap-3">
                               <button
@@ -708,13 +1001,50 @@ Based on the above, provide:`;
                             {integration.lastSyncResult && <span className="text-[var(--text-tertiary)]"> — {integration.lastSyncResult}</span>}
                           </p>
                         </div>
-                        <div className="flex gap-2 pt-1">
-                          <button onClick={() => syncNow("granola")} disabled={syncing} className="bg-[var(--accent-blue)] text-white px-4 py-2 rounded-xl text-[14px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
-                            {syncing ? "Syncing..." : "Sync now"}
-                          </button>
-                          <button onClick={() => deleteIntegration("granola")} className="border border-[var(--border-default)] text-red-400 px-4 py-2 rounded-xl text-[14px] font-medium hover:bg-[var(--sidebar-hover)] transition-colors">
-                            Disconnect
-                          </button>
+                        <div className="space-y-3 pt-1">
+                          <div>
+                            <p className="text-[13px] text-[var(--text-tertiary)] mb-2">Date range (optional — defaults to since last sync)</p>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="date"
+                                value={granolaSyncSince}
+                                onChange={(e) => setGranolaSyncSince(e.target.value)}
+                                className={`${inputCls} flex-1`}
+                                placeholder="From"
+                              />
+                              <span className="text-[var(--text-tertiary)] text-[13px] shrink-0">to</span>
+                              <input
+                                type="date"
+                                value={granolaSyncUntil}
+                                onChange={(e) => setGranolaSyncUntil(e.target.value)}
+                                className={`${inputCls} flex-1`}
+                                placeholder="To"
+                              />
+                              {(granolaSyncSince || granolaSyncUntil) && (
+                                <button
+                                  onClick={() => { setGranolaSyncSince(""); setGranolaSyncUntil(""); }}
+                                  className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] shrink-0"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => syncNow("granola", {
+                                ...(granolaSyncSince ? { since: granolaSyncSince } : {}),
+                                ...(granolaSyncUntil ? { until: granolaSyncUntil } : {}),
+                              })}
+                              disabled={syncing}
+                              className="bg-[var(--accent-blue)] text-white px-4 py-2 rounded-xl text-[14px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                            >
+                              {syncing ? "Syncing..." : "Sync now"}
+                            </button>
+                            <button onClick={() => deleteIntegration("granola")} className="border border-[var(--border-default)] text-red-400 px-4 py-2 rounded-xl text-[14px] font-medium hover:bg-[var(--sidebar-hover)] transition-colors">
+                              Disconnect
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -838,9 +1168,9 @@ Based on the above, provide:`;
 
         {/* TAB: System */}
         {activeTab === "system" && (
-          <div className="flex gap-6 min-h-[500px]">
-            {/* Vertical sub-tabs */}
-            <div className="w-[160px] shrink-0 space-y-1">
+          <div className="flex flex-col md:flex-row gap-4 md:gap-6 md:min-h-[500px]">
+            {/* Sub-tabs — horizontal pills on mobile, vertical sidebar on desktop */}
+            <div className="flex md:flex-col md:w-[160px] md:shrink-0 gap-1 overflow-x-auto hide-scrollbar pb-2 md:pb-0 md:space-y-1">
               {([
                 { id: "general" as const, label: "General", icon: Settings },
                 { id: "apikeys" as const, label: "API Keys", icon: Link2 },
@@ -851,7 +1181,7 @@ Based on the above, provide:`;
                   key={sub.id}
                   onClick={() => setSystemSubTab(sub.id)}
                   className={cn(
-                    "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[14px] font-medium transition-colors text-left",
+                    "flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[14px] font-medium transition-colors text-left whitespace-nowrap shrink-0 md:w-full",
                     systemSubTab === sub.id
                       ? "bg-[var(--sidebar-active)] text-[var(--text-primary)]"
                       : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)]"
@@ -868,7 +1198,7 @@ Based on the above, provide:`;
 
               {/* General */}
               {systemSubTab === "general" && (
-                <div className="space-y-8">
+                <div className="space-y-10">
                   {/* About */}
                   <div className="border border-[var(--border-subtle)] rounded-xl p-5 bg-[var(--surface-raised)]">
                     <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-3">About Conductor</p>
@@ -906,11 +1236,108 @@ Based on the above, provide:`;
                     </div>
                   </div>
 
+                  {/* Notifications */}
+                  <div>
+                    <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-3">Notifications</p>
+                    <div className="border border-[var(--border-subtle)] rounded-xl p-5 bg-[var(--surface-raised)] space-y-3">
+                      <p className="text-[14px] text-[var(--text-secondary)]">
+                        Meeting reminders via browser notifications.
+                        {typeof window !== "undefined" && "Notification" in window && (
+                          <span className="ml-2 text-[13px] text-[var(--text-tertiary)]">
+                            Status: {Notification.permission === "granted" ? "Enabled" : Notification.permission === "denied" ? "Blocked" : "Not set"}
+                          </span>
+                        )}
+                      </p>
+                      <div className="flex gap-2">
+                        {typeof window !== "undefined" && "Notification" in window && Notification.permission !== "granted" && (
+                          <button
+                            onClick={() => Notification.requestPermission().then(() => window.location.reload())}
+                            className="bg-[var(--accent-blue)] text-white px-4 py-2 rounded-xl text-[13px] font-medium hover:opacity-90 transition-opacity"
+                          >
+                            Enable notifications
+                          </button>
+                        )}
+                        <button
+                          onClick={async () => {
+                            if (typeof window === "undefined" || !("Notification" in window)) {
+                              toast("Notifications not supported in this browser", "error");
+                              return;
+                            }
+                            let perm = Notification.permission;
+                            if (perm === "default") {
+                              perm = await Notification.requestPermission();
+                            }
+                            if (perm !== "granted") {
+                              toast(`Notifications ${perm} — check browser and macOS settings`, "error");
+                              return;
+                            }
+                            try {
+                              const n = new Notification("Meeting in 5 min", {
+                                body: "HealthMe Dev Stand-Up · 11:00 AM",
+                                requireInteraction: true,
+                              });
+                              n.onclick = () => { window.focus(); n.close(); };
+                              n.onerror = (e) => { console.error("Notification error:", e); toast("Notification error — check console", "error"); };
+                              toast("Notification fired — check macOS notification center", "success");
+                            } catch (err) {
+                              console.error("Notification creation failed:", err);
+                              toast(`Failed: ${err}`, "error");
+                            }
+                          }}
+                          className="border border-[var(--border-default)] text-[var(--text-secondary)] px-4 py-2 rounded-xl text-[13px] font-medium hover:bg-[var(--sidebar-hover)] transition-colors"
+                        >
+                          Send test notification
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Schedule */}
                   <div>
                     <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-3">Schedule</p>
                     <div className="border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)]">
                       <ScheduleGrid roles={roles} />
+                    </div>
+                  </div>
+
+                  {/* AI Context Limits */}
+                  <div>
+                    <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-3">AI Context Limits</p>
+                    <div className="border border-[var(--border-subtle)] rounded-xl p-5 bg-[var(--surface-raised)] space-y-4">
+                      <p className="text-[13px] text-[var(--text-tertiary)]">Controls how much context is sent to the AI. Per-role overrides can be set in each role&apos;s settings.</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        {AI_CONTEXT_FIELDS.map((f) => (
+                          <div key={f.key}>
+                            <label className="text-[13px] text-[var(--text-secondary)] mb-1 block">{f.label}</label>
+                            <input
+                              type="number"
+                              min={f.min}
+                              max={f.max}
+                              value={systemAiContext[f.key] ?? ""}
+                              onChange={(e) => setSystemAiContext((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                              placeholder={String(f.default)}
+                              className={inputCls}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        disabled={savingAiContext}
+                        onClick={async () => {
+                          setSavingAiContext(true);
+                          try {
+                            const body: Record<string, number | null> = {};
+                            for (const f of AI_CONTEXT_FIELDS) { body[f.key] = systemAiContext[f.key] ? parseInt(systemAiContext[f.key], 10) : null; }
+                            const res = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+                            if (!res.ok) throw new Error();
+                            toast("AI context settings saved", "success");
+                          } catch { toast("Failed to save", "error"); }
+                          setSavingAiContext(false);
+                        }}
+                        className="bg-[var(--accent-blue)] text-white px-4 py-2.5 rounded-xl text-[14px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+                      >
+                        <Save className="h-4 w-4" /> {savingAiContext ? "Saving..." : "Save"}
+                      </button>
                     </div>
                   </div>
 
@@ -1332,5 +1759,44 @@ Based on the above, provide:`;
         </DialogContent>
       </Dialog>
     </AppShell>
+  );
+}
+
+function FolderMapRow({ folder, roleId, roles, inputCls, onSave, onDelete }: {
+  folder: string;
+  roleId: string;
+  roles: Array<{ id: string; name: string }>;
+  inputCls: string;
+  onSave: (oldName: string, newName: string, roleId: string) => void;
+  onDelete: () => void;
+}) {
+  const [localName, setLocalName] = useState(folder);
+  const [localRoleId, setLocalRoleId] = useState(roleId);
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        value={localName}
+        onChange={(e) => setLocalName(e.target.value)}
+        onBlur={() => { if (localName !== folder) onSave(folder, localName, localRoleId); }}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        placeholder="Granola folder name"
+        className={`${inputCls} flex-1`}
+      />
+      <span className="text-[var(--text-tertiary)] text-[13px] shrink-0">&rarr;</span>
+      <select
+        value={localRoleId}
+        onChange={(e) => { setLocalRoleId(e.target.value); onSave(folder, localName, e.target.value); }}
+        className={`${inputCls} flex-1`}
+      >
+        <option value="">Select role...</option>
+        {roles.map((r) => (
+          <option key={r.id} value={r.id}>{r.name}</option>
+        ))}
+      </select>
+      <button onClick={onDelete} className="text-[var(--text-tertiary)] hover:text-red-400 shrink-0">
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </div>
   );
 }

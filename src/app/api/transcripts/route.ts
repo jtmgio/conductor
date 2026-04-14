@@ -28,6 +28,22 @@ async function generateAndSaveSummary(transcriptId: string, rawText: string, rol
   }
 }
 
+export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const pending = req.nextUrl.searchParams.get("pending") === "true";
+
+  const transcripts = await prisma.transcript.findMany({
+    where: pending ? { processedAt: null } : {},
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: { role: { select: { id: true, name: true, color: true } } },
+  });
+
+  return NextResponse.json(transcripts);
+}
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -41,11 +57,28 @@ export async function POST(req: NextRequest) {
     data: { roleId, rawText, summary },
   });
 
+  // Create a Note for the transcript so it can be discussed in AI chat
+  let noteId: string | undefined;
+  if (rawText.length > 50) {
+    try {
+      const note = await prisma.note.create({
+        data: {
+          roleId,
+          content: `[Transcript: ${new Date().toLocaleDateString()}][TranscriptID: ${transcript.id}]\n\n${rawText.slice(0, 50000)}`,
+          tags: ["transcript"],
+        },
+      });
+      noteId = note.id;
+    } catch {
+      // Non-critical
+    }
+  }
+
   // Generate summary in the background if not provided
   if (!summary && rawText.length > 500) {
     const role = await prisma.role.findUnique({ where: { id: roleId }, select: { name: true } });
     generateAndSaveSummary(transcript.id, rawText, role?.name || "unknown", roleId);
   }
 
-  return NextResponse.json(transcript);
+  return NextResponse.json({ ...transcript, noteId });
 }

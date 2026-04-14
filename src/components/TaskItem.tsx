@@ -18,10 +18,11 @@ export const STATUS_CONFIG: Record<string, { label: string; bg: string; text: st
   backlog: { label: "backlog", bg: "rgba(255,255,255,0.06)", text: "var(--text-tertiary)" },
   in_progress: { label: "in progress", bg: "rgba(77,142,247,0.15)", text: "#4d8ef7" },
   in_review: { label: "in review", bg: "rgba(167,139,250,0.15)", text: "#a78bfa" },
-  blocked: { label: "blocked", bg: "rgba(251,113,133,0.15)", text: "#fb7185" },
+  blocked: { label: "blocked", bg: "rgba(239,68,68,0.15)", text: "#EF4444" },
 };
 
 export const STATUS_ORDER = ["backlog", "in_progress", "in_review", "blocked"];
+export const BOARD_COLUMNS = ["backlog", "in_progress"];
 
 interface TaskItemProps {
   id: string;

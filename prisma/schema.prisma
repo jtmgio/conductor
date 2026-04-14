@@ -15,9 +15,17 @@ model UserProfile {
   sampleMessages         String?
   globalContext           String?
   calendarIgnorePatterns String?
+  calendarRoleMappings   String?
   passwordHash           String?
   anthropicApiKey        String?
   openaiApiKey           String?
+  granolaApiKey          String?
+  aiRecentNotesCount         Int?
+  aiRecentTranscriptsCount   Int?
+  aiConversationHistoryLimit Int?
+  aiNoteChunkSize            Int?
+  aiTranscriptChunkSize      Int?
+  aiPinnedNoteChunkSize      Int?
   updatedAt              DateTime @updatedAt
 }
 
@@ -33,8 +41,15 @@ model Role {
   context          String?
   responsibilities String?
   quarterlyGoals   String?
+  aiRecentNotesCount         Int?
+  aiRecentTranscriptsCount   Int?
+  aiConversationHistoryLimit Int?
+  aiNoteChunkSize            Int?
+  aiTranscriptChunkSize      Int?
+  aiPinnedNoteChunkSize      Int?
   staff         Staff[]
   tasks         Task[]
+  meetings      Meeting[]
   followUps     FollowUp[]
   notes         Note[]
   transcripts   Transcript[]
@@ -70,8 +85,10 @@ model Task {
   notes      String?
   dueDate    DateTime?
   checklist  Json?
-  tags       TaskTag[]
-  sortOrder  Int       @default(0)
+  tags          TaskTag[]
+  meeting       Meeting?
+  conversations Conversation[]
+  sortOrder     Int       @default(0)
   sourceType String?
   sourceId   String?
   createdAt  DateTime  @default(now())
@@ -127,18 +144,24 @@ model Note {
   tags      String[]
   pinned    Boolean  @default(false)
   createdAt DateTime @default(now())
+  meeting   Meeting?
 
   @@index([roleId, createdAt])
   @@index([roleId, pinned])
 }
 
 model Transcript {
-  id        String   @id @default(cuid())
-  roleId    String
-  role      Role     @relation(fields: [roleId], references: [id])
-  rawText   String
-  summary   String?
-  createdAt DateTime @default(now())
+  id          String    @id @default(cuid())
+  roleId      String
+  role        Role      @relation(fields: [roleId], references: [id])
+  title       String?
+  rawText     String
+  summary     String?
+  sourceType  String?   // "granola", "manual", etc.
+  sourceId    String?   // e.g. "granola-{noteId}" for dedup
+  processedAt DateTime?
+  meeting     Meeting?
+  createdAt   DateTime  @default(now())
 }
 
 model FileUpload {
@@ -160,6 +183,10 @@ model Conversation {
   id        String   @id @default(cuid())
   roleId    String
   role      Role     @relation(fields: [roleId], references: [id])
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  meetingId String?
+  meeting   Meeting? @relation(fields: [meetingId], references: [id], onDelete: SetNull)
   name      String   @default("General")
   isDefault Boolean  @default(false)
   messages  Json
@@ -168,6 +195,8 @@ model Conversation {
 
   @@unique([roleId, name])
   @@index([roleId, updatedAt])
+  @@index([taskId])
+  @@index([meetingId])
 }
 
 model ScheduleBlock {
@@ -250,6 +279,31 @@ model SyncLog {
 
   @@index([type, createdAt])
   @@index([createdAt])
+}
+
+model Meeting {
+  id            String   @id @default(cuid())
+  roleId        String
+  role          Role     @relation(fields: [roleId], references: [id])
+  title         String
+  date          String
+  startTime     String
+  endTime       String
+  attendees     String[]
+  isIgnored     Boolean  @default(false)
+  prepTaskId    String?  @unique
+  prepTask      Task?    @relation(fields: [prepTaskId], references: [id])
+  meetingNoteId  String?  @unique
+  meetingNote    Note?    @relation(fields: [meetingNoteId], references: [id])
+  transcriptId   String?  @unique
+  transcript     Transcript? @relation(fields: [transcriptId], references: [id])
+  aiPrepContent  String?
+  followUpNotes  String?
+  sourceId       String   @unique
+  conversations  Conversation[]
+  createdAt      DateTime @default(now())
+
+  @@index([date, isIgnored])
 }
 
 model AiUsage {

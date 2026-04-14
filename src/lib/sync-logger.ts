@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 
 export type SyncType = "linear" | "granola" | "calendar";
-export type SyncTrigger = "manual" | "cron" | "app-open";
+export type SyncTrigger = "manual" | "cron" | "cron-refresh" | "app-open";
 
 interface SyncLogEntry {
   type: SyncType;

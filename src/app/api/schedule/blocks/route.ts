@@ -15,7 +15,7 @@ export async function GET() {
   }
 
   const blocks = await prisma.scheduleBlock.findMany({
-    orderBy: { sortOrder: "asc" },
+    orderBy: [{ startHour: "asc" }, { startMinute: "asc" }],
   });
   return NextResponse.json(blocks);
 }

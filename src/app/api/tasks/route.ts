@@ -11,9 +11,16 @@ export async function GET(req: NextRequest) {
   const roleId = searchParams.get("roleId");
   const today = searchParams.get("today");
 
-  const where: Record<string, unknown> = { done: false };
+  const sourceType = searchParams.get("sourceType");
+  const sourceId = searchParams.get("sourceId");
+  const includeDone = searchParams.get("includeDone");
+
+  const where: Record<string, unknown> = {};
+  if (includeDone !== "true") where.done = false;
   if (roleId) where.roleId = roleId;
   if (today === "true") where.isToday = true;
+  if (sourceType) where.sourceType = sourceType;
+  if (sourceId) where.sourceId = sourceId;
 
   const tasks = await prisma.task.findMany({
     where,

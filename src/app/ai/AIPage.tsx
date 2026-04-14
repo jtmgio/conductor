@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { Key, FileText, MessageSquare } from "lucide-react";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
+import { useFontSize } from "@/hooks/useFontSize";
+import { FontSizeControl } from "@/components/FontSizeControl";
 import Link from "next/link";
 
 interface Role { id: string; name: string; title: string; color: string; }
@@ -49,6 +51,8 @@ export function AIPage() {
   const [loadedDocName, setLoadedDocName] = useState<string | null>(null);
   const docHandledRef = React.useRef(false);
   const { toast } = useToast();
+
+  const font = useFontSize("ai-chat");
 
   // Thread state
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -254,23 +258,58 @@ export function AIPage() {
         const res = await fetch(`/api/notes/${pendingDocId}`);
         if (!res.ok) return;
         const note = await res.json();
-        const filenameMatch = note.content?.match(/^\[Uploaded: (.+?)\]/);
-        const filename = filenameMatch ? filenameMatch[1] : "document";
-        const textContent = note.content?.replace(/^\[Uploaded: .+?\](\[FileID: .+?\])?\n\n/, "") || "";
+        const uploadMatch = note.content?.match(/^\[Uploaded: (.+?)\]/);
+        const transcriptMatch = note.content?.match(/^\[Transcript: (.+?)\]/);
+        const filename = uploadMatch ? uploadMatch[1] : transcriptMatch ? `Transcript (${transcriptMatch[1]})` : "document";
+        const textContent = note.content?.replace(/^\[(Uploaded|Transcript): .+?\](\[(FileID|TranscriptID): .+?\])?\n\n/, "") || "";
         if (!textContent) return;
 
+        // Create a new thread for this document discussion
+        let newThreadId = activeThreadId;
+        const threadRes = await fetch(`/api/conversations/${activeRoleId}/threads`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: filename }),
+        });
+        if (threadRes.ok) {
+          const thread: Thread = await threadRes.json();
+          newThreadId = thread.id;
+          setThreads((prev) => [...prev, thread]);
+          setActiveThreadId(thread.id);
+          setMessages([]);
+          if (threadSidebarCollapsed) setThreadSidebarCollapsed(false);
+        }
+
+        // Send the initial message directly with the new thread ID
         setLoadedDocName(filename);
-        handleSendMessage(
-          `I want to discuss this document: ${filename}`,
-          [{ filename, text: textContent.slice(0, 20000), mimeType: "text/plain" }]
-        );
+        const userMsg = `I want to discuss this document: ${filename}`;
+        const attachments = [{ filename, text: textContent.slice(0, 20000), mimeType: "text/plain" }];
+        setMessages([{ role: "user", content: userMsg }]);
+        setLoading(true);
+        try {
+          const msgRes = await fetch(`/api/conversations/${activeRoleId}/message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: userMsg, attachments, model: selectedModel, threadId: newThreadId }),
+          });
+          if (msgRes.ok) {
+            const data = await msgRes.json();
+            if (data.response) setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
+            setThreads((prev) => prev.map((t) =>
+              t.id === newThreadId ? { ...t, messageCount: t.messageCount + 2, updatedAt: new Date().toISOString() } : t
+            ));
+          }
+        } catch {
+          toast("Failed to send message", "error");
+        }
+        setLoading(false);
       } catch {}
     })();
   }, [pendingDocId, activeRoleId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <AppShell>
-      <div className="py-4 flex flex-col h-[calc(100vh-80px)] lg:h-[calc(100vh-48px)]">
+      <div className="ai-fullscreen flex flex-col">
         {/* No API key notice */}
         {hasApiKey === false && (
           <div className="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/5 px-5 py-4 flex items-center gap-4">
@@ -301,7 +340,7 @@ export function AIPage() {
         )}
 
         {/* Role tabs + thread name + model selector */}
-        <div className="flex items-center gap-3 mb-4 shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-4 shrink-0">
           <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 flex-1">
             {roles.map((role) => {
               const active = role.id === activeRoleId;
@@ -323,34 +362,37 @@ export function AIPage() {
               );
             })}
           </div>
-          {/* Mobile thread toggle */}
-          {threads.length > 1 && (
-            <button
-              onClick={() => setThreadSidebarCollapsed(!threadSidebarCollapsed)}
-              className="lg:hidden w-9 h-9 rounded-lg hover:bg-[var(--sidebar-hover)] flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors shrink-0"
-              title="Toggle threads"
+          <div className="flex items-center gap-2">
+            {/* Mobile thread toggle */}
+            {threads.length > 1 && (
+              <button
+                onClick={() => setThreadSidebarCollapsed(!threadSidebarCollapsed)}
+                className="lg:hidden w-9 h-9 rounded-lg hover:bg-[var(--sidebar-hover)] flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors shrink-0"
+                title="Toggle threads"
+              >
+                <MessageSquare className="h-4 w-4" />
+              </button>
+            )}
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-lg px-3 py-1.5 text-[13px] text-[var(--text-secondary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 shrink-0 cursor-pointer"
             >
-              <MessageSquare className="h-4 w-4" />
-            </button>
-          )}
-          <select
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            className="bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-lg px-3 py-1.5 text-[13px] text-[var(--text-secondary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 shrink-0 cursor-pointer"
-          >
-            <optgroup label="Claude">
-              {ANTHROPIC_MODELS.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
-            </optgroup>
-            {hasOpenAIKey && (
-              <optgroup label="OpenAI">
-                {OPENAI_MODELS.map((m) => (
+              <optgroup label="Claude">
+                {ANTHROPIC_MODELS.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
               </optgroup>
-            )}
-          </select>
+              {hasOpenAIKey && (
+                <optgroup label="OpenAI">
+                  {OPENAI_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            <FontSizeControl size={font.size} onIncrease={font.increase} onDecrease={font.decrease} atMin={font.atMin} atMax={font.atMax} />
+          </div>
         </div>
 
         {draftVariants && (
@@ -361,7 +403,7 @@ export function AIPage() {
         )}
 
         {!draftVariants && activeRole && (
-          <div className="flex flex-1 min-h-0 gap-0">
+          <div className="flex flex-1 min-h-0 gap-0 overflow-hidden">
             {/* Thread sidebar — hidden on mobile unless toggled */}
             <div className={cn(
               "hidden lg:flex",
@@ -381,7 +423,7 @@ export function AIPage() {
             </div>
 
             {/* Chat area */}
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 min-h-0 flex flex-col">
               <ChatThread
                 roleId={activeRoleId}
                 roleName={activeRole.name}
@@ -393,6 +435,7 @@ export function AIPage() {
                 loading={loading}
                 conductorData={conductorData}
                 threadName={activeThread && !activeThread.isDefault ? activeThread.name : undefined}
+                fontSize={font.size}
               />
             </div>
           </div>

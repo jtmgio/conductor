@@ -1,65 +1,68 @@
 #!/bin/bash
-# Calendar sync — takes a screenshot of macOS Calendar and feeds it to Conductor
-# Runs daily at 5:00 AM via LaunchAgent (weekdays only)
+# Calendar sync — reads events via EventKit and feeds them to Conductor
+# Runs every 30 minutes via LaunchAgent; guards for working hours
 
-CONDUCTOR_URL="${CONDUCTOR_URL:-http://localhost:3000}"
-SYNC_TRIGGER="${SYNC_TRIGGER:-cron}"
+CONDUCTOR_URL="${CONDUCTOR_URL:-http://localhost:5402}"
+SYNC_TRIGGER="${SYNC_TRIGGER:-cron-refresh}"
 TODAY=$(date +%Y-%m-%d)
-SCREENSHOT="/tmp/conductor-calendar-$TODAY.png"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Only run during working hours (7 AM - 10 PM, weekdays)
+HOUR=$(date +%H)
+DAY=$(date +%u)  # 1=Mon, 7=Sun
+if [ "$DAY" -gt 5 ] || [ "$HOUR" -lt 7 ] || [ "$HOUR" -ge 22 ]; then
+  echo "$(date): Outside working hours, skipping"
+  exit 0
+fi
 
 echo "$(date): Starting calendar sync for $TODAY..."
 
-# Open Calendar app to today's day view
-open -a "Calendar"
-sleep 3
+# Read events directly from macOS Calendar via EventKit (fast, accurate, no screenshot needed)
+EVENTS_JSON=$(swift "$SCRIPT_DIR/calendar-events.swift" "$TODAY" 2>&1)
+SWIFT_STATUS=$?
 
-# Bring Calendar to front
-osascript -e 'tell application "Calendar" to activate' 2>/dev/null
-sleep 2
-
-# Get Calendar window ID via CoreGraphics (no accessibility permissions needed)
-WINDOW_ID=$(swift -e '
-import CoreGraphics
-let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as! [[String: Any]]
-for w in windows {
-    if let name = w["kCGWindowOwnerName"] as? String, name == "Calendar" {
-        if let num = w["kCGWindowNumber"] as? Int { print(num); break }
-    }
-}
-' 2>/dev/null)
-
-if [ -n "$WINDOW_ID" ]; then
-  screencapture -l "$WINDOW_ID" -o "$SCREENSHOT" 2>/dev/null
-fi
-
-# Fallback: full screen capture if window ID approach failed
-if [ ! -f "$SCREENSHOT" ] || [ ! -s "$SCREENSHOT" ]; then
-  echo "$(date): Window capture failed, falling back to full screen"
-  screencapture -o "$SCREENSHOT" 2>/dev/null
-fi
-
-if [ ! -f "$SCREENSHOT" ] || [ ! -s "$SCREENSHOT" ]; then
-  echo "$(date): ERROR — Failed to capture Calendar screenshot"
+if [ $SWIFT_STATUS -ne 0 ] || echo "$EVENTS_JSON" | grep -q '"error"'; then
+  echo "$(date): ERROR — Failed to read calendar events: $EVENTS_JSON"
   exit 1
 fi
 
-echo "$(date): Screenshot saved to $SCREENSHOT ($(du -h "$SCREENSHOT" | cut -f1))"
+EVENT_COUNT=$(echo "$EVENTS_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('events',[])))" 2>/dev/null)
+echo "$(date): Read $EVENT_COUNT events from Calendar"
 
-# Base64-encode the screenshot
-IMAGE_B64=$(base64 -i "$SCREENSHOT" | tr -d '\n')
+# Extract events array from the Swift output
+EVENTS_ARRAY=$(echo "$EVENTS_JSON" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('events',[])))" 2>/dev/null)
+
+# Skip if events haven't changed (hash comparison)
+HASH_FILE="/tmp/conductor-calendar-last-hash"
+NEW_HASH=$(echo "$EVENTS_ARRAY" | md5 -q 2>/dev/null || echo "$EVENTS_ARRAY" | md5sum | cut -d' ' -f1)
+if [ -f "$HASH_FILE" ] && [ "$(cat "$HASH_FILE")" = "$NEW_HASH" ]; then
+  echo "$(date): Calendar unchanged (hash match), skipping API call"
+  exit 0
+fi
+
+# Build JSON payload
+PAYLOAD="/tmp/conductor-calendar-payload.json"
+python3 -c "
+import json, sys
+events = json.loads(sys.argv[1])
+payload = {'events': events, 'date': sys.argv[2], 'trigger': sys.argv[3]}
+with open(sys.argv[4], 'w') as f:
+    json.dump(payload, f)
+" "$EVENTS_ARRAY" "$TODAY" "$SYNC_TRIGGER" "$PAYLOAD"
 
 # POST to Conductor calendar API
-RESULT=$(curl -sf -X POST "$CONDUCTOR_URL/api/calendar/process" \
+RESULT=$(curl -sS --fail-with-body -X POST "$CONDUCTOR_URL/api/calendar/process" \
   -H "Content-Type: application/json" \
-  -d "{\"image\": \"$IMAGE_B64\", \"date\": \"$TODAY\", \"trigger\": \"$SYNC_TRIGGER\"}" \
-  --max-time 60 2>&1)
+  -d @"$PAYLOAD" \
+  --max-time 120 2>&1)
 
 STATUS=$?
 if [ $STATUS -eq 0 ]; then
   echo "$(date): Calendar sync success — $RESULT"
+  echo "$NEW_HASH" > "$HASH_FILE"
 else
   echo "$(date): Calendar sync failed (exit $STATUS) — $RESULT"
 fi
 
-# Clean up screenshot
-rm -f "$SCREENSHOT"
+# Clean up
+rm -f "$PAYLOAD"

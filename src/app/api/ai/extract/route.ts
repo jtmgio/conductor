@@ -58,7 +58,15 @@ Only include items that are clearly present. Be concise in titles.`;
   trackUsage("extract", response.model, response.usage, roleId);
 
   try {
-    const extracted = JSON.parse(response.text);
+    // Strip markdown fences first
+    let cleaned = response.text.replace(/```json?\n?/g, "").replace(/```\n?/g, "").trim();
+    // If there's extra text around the JSON, extract the outermost { ... }
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+    }
+    const extracted = JSON.parse(cleaned);
     return NextResponse.json(extracted);
   } catch {
     return NextResponse.json({

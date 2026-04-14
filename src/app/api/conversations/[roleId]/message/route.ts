@@ -11,13 +11,27 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { message, attachments, model, threadId } = await req.json();
+  const { message, attachments, model, threadId, taskId, meetingId } = await req.json();
   if (!message) return NextResponse.json({ error: "message required" }, { status: 400 });
 
   // Resolve the conversation thread
   let conv;
   if (threadId) {
     conv = await prisma.conversation.findUnique({ where: { id: threadId } });
+  } else if (meetingId) {
+    // Find or create a meeting-scoped conversation
+    conv = await prisma.conversation.findFirst({ where: { roleId: params.roleId, meetingId } });
+    if (!conv) {
+      conv = await prisma.conversation.create({
+        data: {
+          roleId: params.roleId,
+          meetingId,
+          name: `Meeting-${meetingId}`,
+          isDefault: false,
+          messages: [],
+        },
+      });
+    }
   } else {
     conv = await prisma.conversation.findFirst({ where: { roleId: params.roleId, isDefault: true } });
   }
@@ -29,12 +43,39 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
     roleId: params.roleId,
     query: message,
     includeRetrieved: true,
+    taskId: taskId || undefined,
   });
+
+  // Inject meeting context if available
+  let meetingContext = "";
+  if (meetingId) {
+    const meeting = await prisma.meeting.findUnique({
+      where: { id: meetingId },
+      include: {
+        meetingNote: { select: { content: true } },
+        role: { select: { name: true, title: true } },
+      },
+    });
+    if (meeting) {
+      const parts = [
+        `\n[MEETING CONTEXT]`,
+        `Title: ${meeting.title}`,
+        `Date: ${meeting.date}, ${meeting.startTime} - ${meeting.endTime}`,
+      ];
+      if (meeting.attendees.length > 0) parts.push(`Attendees: ${meeting.attendees.join(", ")}`);
+      if (meeting.aiPrepContent) parts.push(`AI Prep:\n${meeting.aiPrepContent}`);
+      if (meeting.meetingNote?.content) {
+        const noteText = meeting.meetingNote.content.replace(/<[^>]+>/g, "").slice(0, 2000);
+        if (noteText.trim()) parts.push(`Meeting Notes:\n${noteText}`);
+      }
+      meetingContext = parts.join("\n");
+    }
+  }
 
   const history = await getConversationMessages(params.roleId, 20, conv.id);
 
   const messages: AIMessage[] = [
-    { role: "user", content: `[Context]\n${contextMessages}` },
+    { role: "user", content: `[Context]\n${contextMessages}${meetingContext}` },
     { role: "assistant", content: "Understood. I have the current context." },
     ...history.map((m) => ({
       role: m.role as "user" | "assistant",
@@ -61,7 +102,7 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
 
   const response = await createCompletion({
     model: selectedModel,
-    max_tokens: 2048,
+    max_tokens: 8192,
     system: systemPrompt,
     messages,
   });
@@ -91,5 +132,5 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
     data: { messages: updated as unknown as Prisma.InputJsonValue },
   });
 
-  return NextResponse.json({ response: response.text });
+  return NextResponse.json({ response: response.text, threadId: conv.id });
 }

@@ -13,6 +13,19 @@ export async function getAnthropicApiKey(): Promise<string | undefined> {
   return process.env.ANTHROPIC_API_KEY;
 }
 
+export async function getGranolaApiKey(): Promise<string | undefined> {
+  try {
+    const profile = await prisma.userProfile.findUnique({
+      where: { id: "default" },
+      select: { granolaApiKey: true },
+    });
+    if (profile?.granolaApiKey) return profile.granolaApiKey;
+  } catch {
+    // DB not ready — fall back to env
+  }
+  return process.env.GRANOLA_API_KEY;
+}
+
 export async function getOpenAIApiKey(): Promise<string | undefined> {
   try {
     const profile = await prisma.userProfile.findUnique({

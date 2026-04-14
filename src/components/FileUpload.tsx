@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 interface FileUploadProps {
   roleId: string;
-  onFileProcessed: (data: { filename: string; text?: string; base64?: string; mimeType: string; uploadId?: string }) => void;
+  onFileProcessed: (data: { filename: string; text?: string; base64?: string; mimeType: string; uploadId?: string; noteId?: string }) => void;
 }
 
 export function FileUpload({ roleId, onFileProcessed }: FileUploadProps) {
@@ -16,7 +16,7 @@ export function FileUpload({ roleId, onFileProcessed }: FileUploadProps) {
   const handleFile = useCallback(async (file: File) => {
     if (file.size > 10 * 1024 * 1024) { alert("File exceeds 10MB limit"); return; }
     setUploading(true);
-    try { const formData = new FormData(); formData.append("file", file); formData.append("roleId", roleId); const res = await fetch("/api/files/upload", { method: "POST", body: formData }); const data = await res.json(); onFileProcessed({ filename: file.name, text: data.extractedText, base64: data.base64, mimeType: file.type, uploadId: data.id }); } catch {}
+    try { const formData = new FormData(); formData.append("file", file); formData.append("roleId", roleId); const res = await fetch("/api/files/upload", { method: "POST", body: formData }); const data = await res.json(); onFileProcessed({ filename: file.name, text: data.extractedText, base64: data.base64, mimeType: file.type, uploadId: data.id, noteId: data.noteId }); } catch {}
     setUploading(false);
   }, [roleId, onFileProcessed]);
 

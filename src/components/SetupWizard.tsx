@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { signIn } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, Upload, ArrowRight, ArrowLeft, Check, Palette, MessageSquare, Clock } from "lucide-react";
 
@@ -75,6 +76,8 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
         setSaving(false);
         return;
       }
+      // Auto-sign in so subsequent API calls work during setup
+      await signIn("credentials", { password, redirect: false });
       // If roles already exist (from import), skip straight to done
       try {
         const setupCheck = await fetch("/api/setup").then((r) => r.json());
@@ -448,23 +451,27 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
                         </div>
                       </div>
 
-                      <div className="flex gap-2 flex-wrap">
-                        {savedRoles.map((r) => (
-                          <button
-                            key={r.id}
-                            type="button"
-                            onClick={() => updateBlock(i, { roleId: r.id })}
-                            className={`px-3 py-1.5 rounded-lg text-[13px] border transition-all flex items-center gap-1.5 ${
-                              block.roleId === r.id
-                                ? "border-[var(--accent-blue)] bg-[var(--accent-blue)]/10 text-[var(--text-primary)]"
-                                : "border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-                            }`}
-                          >
-                            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
-                            {r.name}
-                          </button>
-                        ))}
-                      </div>
+                      {savedRoles.length > 0 ? (
+                        <div className="flex gap-2 flex-wrap">
+                          {savedRoles.map((r) => (
+                            <button
+                              key={r.id}
+                              type="button"
+                              onClick={() => updateBlock(i, { roleId: r.id })}
+                              className={`px-3 py-2 rounded-lg text-[13px] font-medium border transition-all flex items-center gap-2 ${
+                                block.roleId === r.id
+                                  ? "border-[var(--accent-blue)] bg-[var(--accent-blue)]/10 text-[var(--text-primary)]"
+                                  : "border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)]"
+                              }`}
+                            >
+                              <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
+                              {r.name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[13px] text-[var(--text-tertiary)] italic">No companies added yet — go back and add some first.</p>
+                      )}
                     </div>
                   ))}
                 </div>

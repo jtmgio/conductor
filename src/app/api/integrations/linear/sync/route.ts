@@ -36,12 +36,12 @@ interface LinearIssue {
 
 async function fetchLinearIssues(apiKey: string, teamId: string, userId: string): Promise<LinearIssue[]> {
   const query = `
-    query AssignedIssues($teamId: String!, $userId: String!) {
+    query AssignedIssues($teamId: ID!, $userId: ID!) {
       issues(
         filter: {
           team: { id: { eq: $teamId } }
           assignee: { id: { eq: $userId } }
-          state: { type: { nin: ["completed", "canceled"] } }
+          state: { name: { eq: "Todo" } }
         }
         orderBy: updatedAt
         first: 100
@@ -86,7 +86,7 @@ async function fetchLinearIssues(apiKey: string, teamId: string, userId: string)
 
 async function fetchCompletedIssues(apiKey: string, teamId: string, userId: string, since: Date): Promise<LinearIssue[]> {
   const query = `
-    query CompletedIssues($teamId: String!, $userId: String!, $since: DateTime!) {
+    query CompletedIssues($teamId: ID!, $userId: ID!, $since: DateTime!) {
       issues(
         filter: {
           team: { id: { eq: $teamId } }

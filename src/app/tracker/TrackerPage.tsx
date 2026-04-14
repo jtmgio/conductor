@@ -57,7 +57,8 @@ export function TrackerPage() {
   return (
     <AppShell>
       <div className="py-6">
-        <h1 className="text-[32px] font-semibold text-[var(--text-primary)] mb-6">Tracker</h1>
+        <h1 className="text-[32px] font-semibold text-[var(--text-primary)] mb-1">Tracker</h1>
+        <p className="text-[15px] text-[var(--text-tertiary)] mb-6">Follow-ups you&apos;re waiting on from other people. Stale items surface automatically.</p>
         <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 mb-8">
           {["all", "stale"].map((key) => (
             <button key={key} onClick={() => setFilter(key)}

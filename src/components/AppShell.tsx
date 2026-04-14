@@ -6,7 +6,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar } from "./Sidebar";
 import { MobileDrawer } from "./MobileDrawer";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
+import { GlobalSearch } from "./GlobalSearch";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
+import { cn } from "@/lib/utils";
 
 interface BlockInfo {
   label: string;
@@ -22,10 +24,59 @@ interface AppShellProps {
   nextBlocks?: BlockInfo[];
 }
 
-export function AppShell({ children, currentBlock, nextBlocks }: AppShellProps) {
+export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNextBlocks }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [fetchedBlock, setFetchedBlock] = useState<BlockInfo | null>(null);
+  const [fetchedNextBlocks, setFetchedNextBlocks] = useState<BlockInfo[]>([]);
+  const [scheduleFetched, setScheduleFetched] = useState(false);
+
+  // Self-fetch schedule if not provided via props
+  useEffect(() => {
+    if (propBlock !== undefined) return; // parent provided it
+    function fetchSchedule() {
+      fetch("/api/schedule")
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (data) {
+            setFetchedBlock(data.currentBlock || null);
+            setFetchedNextBlocks(data.nextBlocks || []);
+          }
+          setScheduleFetched(true);
+        })
+        .catch(() => setScheduleFetched(true));
+    }
+    fetchSchedule();
+    const interval = setInterval(fetchSchedule, 60_000);
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const currentBlock = propBlock !== undefined ? propBlock : fetchedBlock;
+  const nextBlocks = propNextBlocks !== undefined ? propNextBlocks : fetchedNextBlocks;
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("conductor-sidebar-collapsed") === "true";
+    }
+    return false;
+  });
+
+  // Auto-collapse sidebar on board page for more space
+  useEffect(() => {
+    if (pathname === "/" || pathname === "/board") {
+      setSidebarCollapsed(true);
+      localStorage.setItem("conductor-sidebar-collapsed", "true");
+    }
+  }, [pathname]);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("conductor-sidebar-collapsed", String(next));
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const today = new Date().toDateString();
@@ -39,13 +90,14 @@ export function AppShell({ children, currentBlock, nextBlocks }: AppShellProps) 
         .catch(() => {});
     }
 
-    // Calendar sync — trigger if it hasn't run today (covers missed 5am cron)
+    // Calendar sync — trigger if last sync was more than 35 minutes ago
     const lastCalSyncKey = "conductor-last-cal-sync";
     const lastCalSync = localStorage.getItem(lastCalSyncKey);
-    if (lastCalSync !== today) {
+    const thirtyFiveMinAgo = Date.now() - 35 * 60 * 1000;
+    if (!lastCalSync || parseInt(lastCalSync) < thirtyFiveMinAgo) {
       fetch("/api/calendar/sync", { method: "POST" })
         .then((res) => {
-          if (res.ok) localStorage.setItem(lastCalSyncKey, today);
+          if (res.ok) localStorage.setItem(lastCalSyncKey, String(Date.now()));
         })
         .catch(() => {});
     }
@@ -68,18 +120,19 @@ export function AppShell({ children, currentBlock, nextBlocks }: AppShellProps) 
     // Note: Cmd+K is handled by GlobalSearch component directly
 
     // General
+    { key: "[", modifiers: ["cmd"], action: toggleSidebar, description: "Toggle sidebar", category: "General" },
     { key: "?", action: toggleShortcuts, description: "Show keyboard shortcuts", category: "General" },
     { key: "Escape", action: closeShortcuts, description: "Close dialog", category: "General", allowInInput: true },
-  ], [router, toggleShortcuts, closeShortcuts]);
+  ], [router, toggleSidebar, toggleShortcuts, closeShortcuts]);
 
   useHotkeys(shortcuts);
 
   return (
-    <div className="min-h-screen bg-[var(--surface)] text-[var(--text-primary)]">
-      <Sidebar currentBlock={currentBlock} nextBlocks={nextBlocks} />
+    <div className="min-h-screen bg-[var(--surface)] text-[var(--text-primary)]" data-sidebar-collapsed={sidebarCollapsed}>
+      <Sidebar currentBlock={currentBlock} nextBlocks={nextBlocks} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
       <MobileDrawer currentBlock={currentBlock} />
 
-      <main className="pt-16 pb-8 lg:pt-4 lg:pb-8 lg:ml-[280px]">
+      <main className={cn("pt-[max(4rem,calc(3rem+env(safe-area-inset-top)))] pb-8 lg:pt-4 lg:pb-8 transition-all duration-200", sidebarCollapsed ? "lg:ml-[60px]" : "lg:ml-[280px]")}>
         <div className="px-5 lg:px-8 lg:pt-8">
           <AnimatePresence mode="wait">
             <motion.div
@@ -95,6 +148,8 @@ export function AppShell({ children, currentBlock, nextBlocks }: AppShellProps) 
       </main>
 
       <KeyboardShortcuts open={showShortcuts} onClose={closeShortcuts} />
+      {/* GlobalSearch always mounted for ⌘K even when sidebar is collapsed */}
+      {sidebarCollapsed && <GlobalSearch hideTrigger />}
     </div>
   );
 }

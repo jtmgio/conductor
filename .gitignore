@@ -39,5 +39,8 @@ next-env.d.ts
 # uploads
 /uploads
 
+# backups
+/backups
+
 # logs
 /logs

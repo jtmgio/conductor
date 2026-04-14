@@ -4,13 +4,15 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskItem } from "./TaskItem";
 import { MorningPick } from "./MorningPick";
-import { STATUS_CONFIG, STATUS_ORDER } from "./TaskItem";
+import { STATUS_CONFIG, STATUS_ORDER, BOARD_COLUMNS } from "./TaskItem";
+import { TaskDetailDrawer } from "./TaskDetailDrawer";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { Plus, Sparkles, Moon, Inbox, Users, MessageSquare, ChevronLeft, ChevronRight, List, Columns3, Check, X, Trash2, Clock, Mic, Key, Link2, CheckCircle2 } from "lucide-react";
+import { Plus, Sparkles, Moon, Inbox, Users, MessageSquare, ChevronLeft, ChevronRight, List, Columns3, Check, X, Trash2, Clock, Mic, Key, Link2, CheckCircle2, Wand2, AlertTriangle, Copy, FileEdit, HelpCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 import { MorningBriefing } from "./MorningBriefing";
+import { AgendaStrip } from "./AgendaStrip";
 import { RoleHandoff } from "./RoleHandoff";
 import Link from "next/link";
 
@@ -21,6 +23,7 @@ interface Task {
   status: string;
   roleId: string;
   isToday: boolean;
+  done: boolean;
   notes?: string | null;
   dueDate?: string | null;
   checklist?: Array<{ text: string; done: boolean }> | null;
@@ -61,14 +64,112 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [backlogTasks, setBacklogTasks] = useState<Task[]>([]);
+  const [backlogLoading, setBacklogLoading] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"list" | "board">("list");
+  const [viewMode, setViewMode] = useState<"list" | "board">("board");
   const [boardDragId, setBoardDragId] = useState<string | null>(null);
   const [boardDragOverCol, setBoardDragOverCol] = useState<string | null>(null);
   const [blockOverrideIdx, setBlockOverrideIdx] = useState<number | null>(null);
   const [onboarding, setOnboarding] = useState<Record<string, boolean> | null>(null);
   const [showChecklist, setShowChecklist] = useState(true);
+  const [suggestion, setSuggestion] = useState<{
+    taskId: string;
+    taskTitle: string;
+    loading: boolean;
+    data: Record<string, unknown> | null;
+  } | null>(null);
+  const [agendaCollapsed, setAgendaCollapsed] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("conductor-agenda-collapsed") === "true";
+    }
+    return false;
+  });
   const { toast } = useToast();
+
+  const toggleAgenda = () => {
+    setAgendaCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("conductor-agenda-collapsed", String(next));
+      return next;
+    });
+  };
+
+  // ── Role transition detection ──
+  const [transitionRole, setTransitionRole] = useState<{
+    roleId: string;
+    roleName: string;
+    roleColor: string;
+    roleTitle: string | null;
+  } | null>(null);
+  const [pauseUntil, setPauseUntil] = useState<number>(0);
+  const prevRoleIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const newRoleId = currentBlock?.roleId || null;
+
+    // Skip initial load
+    if (prevRoleIdRef.current === null) {
+      prevRoleIdRef.current = newRoleId;
+      return;
+    }
+
+    // Skip if role hasn't changed
+    if (newRoleId === prevRoleIdRef.current) return;
+
+    // Skip if going to null (off-clock)
+    if (!newRoleId || !currentBlock) {
+      prevRoleIdRef.current = newRoleId;
+      return;
+    }
+
+    // Skip if user has manually overridden block
+    if (blockOverrideIdx !== null) {
+      prevRoleIdRef.current = newRoleId;
+      return;
+    }
+
+    // Skip if within pause period
+    if (Date.now() < pauseUntil) {
+      prevRoleIdRef.current = newRoleId;
+      return;
+    }
+
+    prevRoleIdRef.current = newRoleId;
+
+    // Show transition dialog
+    setTransitionRole({
+      roleId: newRoleId,
+      roleName: currentBlock.roleName || "Unknown",
+      roleColor: currentBlock.roleColor || "#706c65",
+      roleTitle: currentBlock.roleTitle || null,
+    });
+
+    // Clear any manual block override so we snap to the new block
+    setBlockOverrideIdx(null);
+  }, [currentBlock?.roleId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-trigger after pause expires
+  useEffect(() => {
+    if (pauseUntil <= 0) return;
+    const remaining = pauseUntil - Date.now();
+    if (remaining <= 0) return;
+
+    const timer = setTimeout(() => {
+      // After pause, show dialog for current role if it differs from what was showing before
+      if (currentBlock?.roleId) {
+        setTransitionRole({
+          roleId: currentBlock.roleId,
+          roleName: currentBlock.roleName || "Unknown",
+          roleColor: currentBlock.roleColor || "#706c65",
+          roleTitle: currentBlock.roleTitle || null,
+        });
+      }
+      setPauseUntil(0);
+    }, remaining);
+
+    return () => clearTimeout(timer);
+  }, [pauseUntil, currentBlock]);
 
   // Block navigation: override lets user cycle through all blocks
   const currentBlockIdx = allBlocks.findIndex((b) => b.id === currentBlock?.id);
@@ -147,8 +248,9 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error();
-      setTasks((prev) => prev.map((t) => t.id === id ? { ...t, ...data } as Task : t));
-      setAllTasks((prev) => prev.map((t) => t.id === id ? { ...t, ...data } as Task : t));
+      const updated = await res.json();
+      setTasks((prev) => prev.map((t) => t.id === id ? { ...t, ...updated } as Task : t));
+      setAllTasks((prev) => prev.map((t) => t.id === id ? { ...t, ...updated } as Task : t));
     } catch {
       toast("Failed to update task", "error");
     }
@@ -216,20 +318,67 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
 
   const addTask = async () => {
     if (!newTaskTitle.trim() || !activeBlock?.roleId) return;
+    const taskTitle = newTaskTitle.trim();
+    const roleId = activeBlock.roleId;
     try {
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roleId: activeBlock.roleId, title: newTaskTitle, isToday: true }),
+        body: JSON.stringify({ roleId, title: taskTitle, isToday: true }),
       });
       if (!res.ok) throw new Error();
+      const created = await res.json();
       toast("Task added", "success");
+      setNewTaskTitle("");
+      fetchTasks();
+
+      // Fire AI suggestion in background
+      setSuggestion({ taskId: created.id, taskTitle, loading: true, data: null });
+      fetch("/api/tasks/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: taskTitle, roleId }),
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          const s = d.suggestions || {};
+          if (Object.keys(s).length === 0) {
+            setSuggestion(null);
+          } else {
+            setSuggestion({ taskId: created.id, taskTitle, loading: false, data: s });
+          }
+        })
+        .catch(() => setSuggestion(null));
+    } catch {
+      toast("Failed to add task", "error");
+      setNewTaskTitle("");
+    }
+  };
+
+  const loadBacklog = async (roleId: string) => {
+    setBacklogLoading(true);
+    try {
+      const res = await fetch(`/api/tasks?roleId=${roleId}&backlog=true`);
+      if (res.ok) {
+        const data = await res.json();
+        setBacklogTasks(Array.isArray(data) ? data.filter((t: Task) => !t.isToday && !t.done) : []);
+      }
+    } catch {}
+    setBacklogLoading(false);
+  };
+
+  const pullToToday = async (taskId: string) => {
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isToday: true }),
+      });
+      setBacklogTasks((prev) => prev.filter((t) => t.id !== taskId));
+      fetchTasks();
     } catch {
       toast("Failed to add task", "error");
     }
-    setNewTaskTitle("");
-    setShowAdd(false);
-    fetchTasks();
   };
 
   if (loading) {
@@ -251,8 +400,10 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     return (
       <MorningPick
         tasksByRole={tasksByRole}
+        roles={roles}
         onConfirm={handleMorningConfirm}
         onSkip={() => setShowMorning(false)}
+        onRefresh={fetchTasks}
       />
     );
   }
@@ -352,14 +503,8 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     ? tasks.filter((t) => t.roleId === activeBlock.roleId)
     : tasks;
 
-  return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-      {/* Morning briefing — shows once per day */}
-      <MorningBriefing />
-
-      {/* Role switch handoff — shows when block changes */}
-      <RoleHandoff roleId={activeBlock?.roleId || null} />
-
+  const mainContent = (
+    <>
       {activeBlock && (
         <section className="mb-8">
           <div className="flex items-center gap-2 mb-1.5">
@@ -385,7 +530,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
                   <ChevronLeft className="h-5 w-5" />
                 </button>
               )}
-              <h1 className="text-[44px] font-bold leading-tight" style={{ color: activeBlock.roleColor || "#e8e6e1" }}>
+              <h1 className="text-[32px] md:text-[44px] font-bold leading-tight" style={{ color: activeBlock.roleColor || "#e8e6e1" }}>
                 {activeBlock.roleName || "Triage"}
               </h1>
               {!isOverridden && (
@@ -434,7 +579,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[15px] text-[var(--text-tertiary)] mb-1.5">{offClockMessage}</p>
-              <h1 className="text-[36px] font-bold text-[var(--text-secondary)] leading-tight">
+              <h1 className="text-[28px] md:text-[36px] font-bold text-[var(--text-secondary)] leading-tight">
                 Today&apos;s tasks
               </h1>
             </div>
@@ -485,7 +630,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
               <p className="text-[22px] font-semibold text-[var(--text-primary)]">All clear</p>
               <p className="text-[16px] text-[var(--text-tertiary)] mt-1">Nothing on deck for this block</p>
               <div className="flex items-center justify-center gap-4 mt-4">
-                <button onClick={() => setShowAdd(true)} className="text-[15px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors">
+                <button onClick={() => { setShowAdd(true); if (activeBlock?.roleId) loadBacklog(activeBlock.roleId); }} className="text-[15px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors">
                   Pull from backlog &rarr;
                 </button>
                 {canGoNext && (
@@ -500,24 +645,176 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
             </div>
           )}
 
-          {activeBlock?.roleId && currentRoleTasks.length > 0 && (
+          {activeBlock?.roleId && (currentRoleTasks.length > 0 || showAdd) && (
             <div className="mt-6">
               {showAdd ? (
-                <div className="flex gap-2">
-                  <input
-                    value={newTaskTitle}
-                    onChange={(e) => setNewTaskTitle(e.target.value)}
-                    placeholder="Task title..."
-                    className="flex-1 bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-blue)]/20 outline-none transition-all placeholder:text-[var(--text-tertiary)]"
-                    onKeyDown={(e) => e.key === "Enter" && addTask()}
-                    autoFocus
-                  />
-                  <Button onClick={addTask} size="sm">Add</Button>
-                  <Button onClick={() => setShowAdd(false)} size="sm" variant="ghost">Cancel</Button>
+                <div className="space-y-3">
+                  {/* Backlog tasks */}
+                  {backlogLoading ? (
+                    <div className="py-4 flex justify-center">
+                      <div className="w-4 h-4 border-2 border-[var(--border-default)] border-t-[var(--accent-blue)] rounded-full animate-spin" />
+                    </div>
+                  ) : backlogTasks.length > 0 ? (
+                    <div className="border border-[var(--border-subtle)] rounded-xl overflow-hidden">
+                      <div className="px-3 py-2 bg-[var(--surface-sunken)]/30 border-b border-[var(--border-subtle)]">
+                        <p className="text-[12px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium">Backlog ({backlogTasks.length})</p>
+                      </div>
+                      <div className="max-h-[300px] overflow-y-auto">
+                        {backlogTasks.map((task) => (
+                          <button
+                            key={task.id}
+                            onClick={() => pullToToday(task.id)}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-[var(--sidebar-hover)] transition-colors text-left border-b border-[var(--border-subtle)] last:border-b-0"
+                          >
+                            <Plus className="h-3.5 w-3.5 text-[var(--text-tertiary)] shrink-0" />
+                            <span className="text-[14px] text-[var(--text-primary)] flex-1 truncate">{task.title}</span>
+                            {task.priority === "urgent" && <span className="text-[11px] font-bold text-red-400 uppercase shrink-0">URGENT</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[13px] text-[var(--text-tertiary)] text-center py-3">No backlog tasks for this role</p>
+                  )}
+
+                  {/* New task input */}
+                  <div className="flex gap-2">
+                    <input
+                      value={newTaskTitle}
+                      onChange={(e) => setNewTaskTitle(e.target.value)}
+                      placeholder="Or create a new task..."
+                      className="flex-1 bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-blue)]/20 outline-none transition-all placeholder:text-[var(--text-tertiary)]"
+                      onKeyDown={(e) => e.key === "Enter" && addTask()}
+                    />
+                    <Button onClick={addTask} size="sm">Add</Button>
+                    <Button onClick={() => { setShowAdd(false); setBacklogTasks([]); setSuggestion(null); }} size="sm" variant="ghost">Done</Button>
+                  </div>
+
+                  {/* AI suggestion bar */}
+                  <AnimatePresence>
+                    {suggestion && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="border border-[var(--border-subtle)] rounded-xl bg-[var(--surface-raised)] p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-1.5">
+                              <Wand2 className="h-3.5 w-3.5 text-[var(--accent-blue)]" />
+                              <span className="text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider">AI Review</span>
+                            </div>
+                            <button onClick={() => setSuggestion(null)} className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+
+                          {suggestion.loading ? (
+                            <div className="flex items-center gap-2 py-1">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--text-tertiary)]" />
+                              <span className="text-[13px] text-[var(--text-tertiary)]">Reviewing &ldquo;{suggestion.taskTitle}&rdquo;...</span>
+                            </div>
+                          ) : suggestion.data && (
+                            <div className="space-y-2">
+                              {/* Duplicate warning */}
+                              {!!suggestion.data.duplicate && (
+                                <div className="flex items-start gap-2">
+                                  <Copy className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
+                                  <p className="text-[13px] text-[var(--text-secondary)]">
+                                    Similar to: <span className="text-[var(--text-primary)] font-medium">{String(suggestion.data.duplicate)}</span>
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Rewrite suggestion */}
+                              {!!suggestion.data.rewrite && (
+                                <div className="flex items-start gap-2">
+                                  <FileEdit className="h-3.5 w-3.5 text-[var(--accent-blue)] mt-0.5 shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[13px] text-[var(--text-secondary)]">{String(suggestion.data.rewrite)}</p>
+                                    <button
+                                      onClick={() => {
+                                        updateTask(suggestion.taskId, { title: suggestion.data!.rewrite });
+                                        setSuggestion(null);
+                                        toast("Title updated", "success");
+                                        fetchTasks();
+                                      }}
+                                      className="text-[12px] text-[var(--accent-blue)] hover:underline mt-0.5"
+                                    >
+                                      Apply
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Priority suggestion */}
+                              {suggestion.data.priority === "urgent" && (
+                                <div className="flex items-start gap-2">
+                                  <AlertTriangle className="h-3.5 w-3.5 text-red-400 mt-0.5 shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[13px] text-[var(--text-secondary)]">This sounds time-sensitive</p>
+                                    <button
+                                      onClick={() => {
+                                        updateTask(suggestion.taskId, { priority: "urgent" });
+                                        setSuggestion(null);
+                                        toast("Marked urgent", "success");
+                                      }}
+                                      className="text-[12px] text-[var(--accent-blue)] hover:underline mt-0.5"
+                                    >
+                                      Mark urgent
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Subtasks suggestion */}
+                              {Array.isArray(suggestion.data.subtasks) && (suggestion.data.subtasks as string[]).length > 0 && (
+                                <div className="flex items-start gap-2">
+                                  <Check className="h-3.5 w-3.5 text-green-400 mt-0.5 shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[13px] text-[var(--text-secondary)] mb-1">Break into checklist:</p>
+                                    <ul className="space-y-0.5">
+                                      {(suggestion.data.subtasks as string[]).map((s, i) => (
+                                        <li key={i} className="text-[13px] text-[var(--text-primary)] flex items-center gap-1.5">
+                                          <span className="w-1 h-1 rounded-full bg-[var(--text-tertiary)] shrink-0" />
+                                          {s}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                    <button
+                                      onClick={() => {
+                                        const checklist = (suggestion.data!.subtasks as string[]).map((text) => ({ text, done: false }));
+                                        updateTask(suggestion.taskId, { checklist });
+                                        setSuggestion(null);
+                                        toast("Checklist added", "success");
+                                        fetchTasks();
+                                      }}
+                                      className="text-[12px] text-[var(--accent-blue)] hover:underline mt-1"
+                                    >
+                                      Add checklist
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Clarify question */}
+                              {!!suggestion.data.clarify && (
+                                <div className="flex items-start gap-2">
+                                  <HelpCircle className="h-3.5 w-3.5 text-[var(--text-tertiary)] mt-0.5 shrink-0" />
+                                  <p className="text-[13px] text-[var(--text-secondary)]">{String(suggestion.data.clarify)}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               ) : (
                 <button
-                  onClick={() => setShowAdd(true)}
+                  onClick={() => { setShowAdd(true); if (activeBlock?.roleId) loadBacklog(activeBlock.roleId); }}
                   className="flex items-center justify-center gap-2 py-3 text-[16px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors rounded-2xl border border-dashed border-[var(--border-default)] hover:border-[var(--text-tertiary)] w-full"
                 >
                   <Plus className="h-4 w-4" /> Add task
@@ -543,7 +840,57 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
           setDragOverCol={setBoardDragOverCol}
         />
       )}
+    </>
+  );
 
+  return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+      {/* Role transition dialog */}
+      {transitionRole && (
+        <RoleHandoff
+          roleId={transitionRole.roleId}
+          roleName={transitionRole.roleName}
+          roleColor={transitionRole.roleColor}
+          roleTitle={transitionRole.roleTitle}
+          onDismiss={() => setTransitionRole(null)}
+          onPause={(minutes) => {
+            setTransitionRole(null);
+            setPauseUntil(Date.now() + minutes * 60_000);
+          }}
+          onSkip={() => {
+            setTransitionRole(null);
+            // Stay on previous block
+            const prevIdx = currentBlockIdx > 0 ? currentBlockIdx - 1 : 0;
+            setBlockOverrideIdx(prevIdx);
+          }}
+        />
+      )}
+
+      {/* Morning briefing — shows once per day */}
+      <MorningBriefing />
+
+      {/* Desktop: 2-column layout — agenda sidebar + main content */}
+      <div className="hidden lg:flex gap-6 items-start">
+        <div
+          className="shrink-0 sticky top-4 transition-all duration-300 max-h-[calc(100vh-4rem)]"
+          style={{ width: agendaCollapsed ? 200 : 320 }}
+        >
+          <AgendaStrip
+            mode="sidebar"
+            sidebarCollapsed={agendaCollapsed}
+            onToggleCollapse={toggleAgenda}
+          />
+        </div>
+        <div className="flex-1 min-w-0">
+          {mainContent}
+        </div>
+      </div>
+
+      {/* Mobile: stacked layout */}
+      <div className="lg:hidden">
+        <AgendaStrip />
+        {mainContent}
+      </div>
     </motion.div>
   );
 }
@@ -576,9 +923,13 @@ function FocusBoard({
   setDragOverCol: (col: string | null) => void;
 }) {
   const grouped: Record<string, Task[]> = {};
-  for (const s of STATUS_ORDER) {
+  for (const s of BOARD_COLUMNS) {
     grouped[s] = tasks.filter((t) => t.status === s);
   }
+
+  // Drawer state
+  const [drawerTaskId, setDrawerTaskId] = useState<string | null>(null);
+  const drawerTask = drawerTaskId ? tasks.find((t) => t.id === drawerTaskId) || null : null;
 
   // Mobile: status filter
   const [mobileFilter, setMobileFilter] = useState<string>("all");
@@ -586,9 +937,9 @@ function FocusBoard({
 
   return (
     <>
-      {/* Desktop: 5-column board (4 status + done) */}
-      <div className="hidden md:grid grid-cols-5 gap-4">
-        {STATUS_ORDER.map((status) => (
+      {/* Desktop: board columns + done */}
+      <div className="hidden md:grid gap-4" style={{ gridTemplateColumns: `repeat(${BOARD_COLUMNS.length + 1}, minmax(0, 1fr))` }}>
+        {BOARD_COLUMNS.map((status) => (
           <div
             key={status}
             onDragOver={(e) => {
@@ -637,10 +988,8 @@ function FocusBoard({
                     isDragging={dragId === task.id}
                     onDragStart={() => setDragId(task.id)}
                     onDragEnd={() => { setDragId(null); setDragOverCol(null); }}
-                    onStatusChange={onStatusChange}
+                    onClick={() => setDrawerTaskId(task.id)}
                     onComplete={onComplete}
-                    onUpdate={onUpdate}
-                    onDelete={onDelete}
                   />
                 ))}
               </AnimatePresence>
@@ -713,7 +1062,7 @@ function FocusBoard({
           >
             All ({tasks.length})
           </button>
-          {STATUS_ORDER.map((s) => (
+          {BOARD_COLUMNS.map((s) => (
             <button
               key={s}
               onClick={() => setMobileFilter(s)}
@@ -735,10 +1084,8 @@ function FocusBoard({
               task={task}
               status={task.status}
               roleColor={roleColor}
-              onStatusChange={onStatusChange}
+              onClick={() => setDrawerTaskId(task.id)}
               onComplete={onComplete}
-              onUpdate={onUpdate}
-              onDelete={onDelete}
             />
           ))}
           {filteredTasks.length === 0 && (
@@ -746,6 +1093,14 @@ function FocusBoard({
           )}
         </div>
       </div>
+      <TaskDetailDrawer
+        task={drawerTask}
+        onClose={() => setDrawerTaskId(null)}
+        onUpdate={onUpdate}
+        onStatusChange={onStatusChange}
+        onComplete={onComplete}
+        onDelete={onDelete}
+      />
     </>
   );
 }
@@ -757,10 +1112,8 @@ function FocusBoardCard({
   isDragging,
   onDragStart,
   onDragEnd,
-  onStatusChange,
+  onClick,
   onComplete,
-  onUpdate,
-  onDelete,
 }: {
   task: Task;
   status: string;
@@ -768,26 +1121,11 @@ function FocusBoardCard({
   isDragging?: boolean;
   onDragStart?: () => void;
   onDragEnd?: () => void;
-  onStatusChange: (id: string, status: string) => void;
+  onClick: () => void;
   onComplete: (id: string) => void;
-  onUpdate: (id: string, data: Record<string, unknown>) => void;
-  onDelete: (id: string) => void;
 }) {
   const [completing, setCompleting] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const [editTitle, setEditTitle] = useState(task.title);
-  const [editNotes, setEditNotes] = useState(task.notes || "");
-  const [editDueDate, setEditDueDate] = useState(task.dueDate ? task.dueDate.slice(0, 10) : "");
-  const [editChecklist, setEditChecklist] = useState<Array<{ text: string; done: boolean }>>(
-    Array.isArray(task.checklist) ? task.checklist : []
-  );
-  const [newCheckItem, setNewCheckItem] = useState("");
-  const [editTags, setEditTags] = useState<string[]>(task.tags?.map((t) => t.tag.name) || []);
-  const [newTag, setNewTag] = useState("");
-  const titleRef = useRef<HTMLInputElement>(null);
   const borderColor = STATUS_CONFIG[status]?.text || "var(--border-subtle)";
-
-  const save = (data: Record<string, unknown>) => onUpdate(task.id, data);
 
   const handleComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -805,17 +1143,16 @@ function FocusBoardCard({
           animate={{ opacity: isDragging ? 0.4 : 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ duration: 0.3 }}
-          draggable={!!onDragStart && !expanded}
+          draggable={!!onDragStart}
           onDragStart={(e) => {
-            if (expanded) return;
             const evt = e as unknown as React.DragEvent;
             evt.dataTransfer.effectAllowed = "move";
             onDragStart?.();
           }}
           onDragEnd={() => onDragEnd?.()}
+          onClick={onClick}
           className={cn(
-            "bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-xl",
-            !expanded && "cursor-grab active:cursor-grabbing",
+            "bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-xl cursor-pointer hover:bg-[var(--sidebar-hover)] transition-colors",
             isDragging && "ring-2 ring-[var(--accent-blue)]/40"
           )}
           style={{ borderLeftWidth: 3, borderLeftColor: borderColor }}
@@ -832,188 +1169,34 @@ function FocusBoardCard({
                   style={{ borderColor: `color-mix(in srgb, ${roleColor} 40%, transparent)` }}
                 />
               </button>
-
-              <button
-                onClick={() => setExpanded(!expanded)}
-                className="flex-1 min-w-0 text-left"
-              >
+              <div className="flex-1 min-w-0">
                 {task.priority === "urgent" && (
                   <span className="text-[11px] font-bold tracking-wide text-red-400 uppercase">URGENT</span>
                 )}
                 <p className="text-[15px] font-medium text-[var(--text-primary)] leading-snug">{task.title}</p>
-
-                {!expanded && (
-                  <div className="flex gap-1.5 flex-wrap mt-2">
+                <div className="flex gap-1.5 flex-wrap mt-2">
+                  <span
+                    className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+                    style={{
+                      background: STATUS_CONFIG[status]?.bg,
+                      color: STATUS_CONFIG[status]?.text,
+                    }}
+                  >
+                    {STATUS_CONFIG[status]?.label}
+                  </span>
+                  {task.tags?.map((t) => (
                     <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const nextIdx = (STATUS_ORDER.indexOf(status) + 1) % STATUS_ORDER.length;
-                        onStatusChange(task.id, STATUS_ORDER[nextIdx]);
-                      }}
-                      className="text-[11px] font-medium px-2 py-0.5 rounded-full transition-colors cursor-pointer"
-                      style={{
-                        background: STATUS_CONFIG[status]?.bg,
-                        color: STATUS_CONFIG[status]?.text,
-                      }}
+                      key={t.tag.id}
+                      className="text-[11px] px-2 py-0.5 rounded-full"
+                      style={{ background: `${t.tag.color}20`, color: t.tag.color }}
                     >
-                      {STATUS_CONFIG[status]?.label}
+                      #{t.tag.name}
                     </span>
-                    {task.tags?.map((t) => (
-                      <span
-                        key={t.tag.id}
-                        className="text-[11px] px-2 py-0.5 rounded-full"
-                        style={{ background: `${t.tag.color}20`, color: t.tag.color }}
-                      >
-                        #{t.tag.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
-
-          {/* Expanded detail panel */}
-          <AnimatePresence>
-            {expanded && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden"
-              >
-                <div className="px-3.5 pb-3.5 space-y-3 border-t border-[var(--border-subtle)] pt-3">
-                  <input
-                    ref={titleRef}
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    onBlur={() => { if (editTitle.trim() && editTitle !== task.title) save({ title: editTitle.trim() }); }}
-                    onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                    className="w-full bg-transparent text-[14px] font-medium text-[var(--text-primary)] outline-none"
-                  />
-
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-1">Notes</p>
-                    <textarea
-                      value={editNotes}
-                      onChange={(e) => setEditNotes(e.target.value)}
-                      onBlur={() => { if (editNotes !== (task.notes || "")) save({ notes: editNotes || null }); }}
-                      placeholder="Add notes..."
-                      className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 resize-none min-h-[50px] placeholder:text-[var(--text-tertiary)]"
-                    />
-                  </div>
-
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-1">Due date</p>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="date"
-                        value={editDueDate}
-                        onChange={(e) => { setEditDueDate(e.target.value); save({ dueDate: e.target.value || null }); }}
-                        className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20"
-                      />
-                      {editDueDate && (
-                        <button onClick={() => { setEditDueDate(""); save({ dueDate: null }); }} className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">Clear</button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-1">Status</p>
-                    <div className="flex gap-1.5 flex-wrap">
-                      {STATUS_ORDER.map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => onStatusChange(task.id, s)}
-                          className="text-[12px] font-medium px-2.5 py-0.5 rounded-full transition-all"
-                          style={{
-                            background: s === status ? STATUS_CONFIG[s]?.bg : "transparent",
-                            color: s === status ? STATUS_CONFIG[s]?.text : "var(--text-tertiary)",
-                            border: s === status ? "none" : "1px solid var(--border-subtle)",
-                          }}
-                        >
-                          {STATUS_CONFIG[s]?.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-1">Tags</p>
-                    <div className="flex gap-1.5 flex-wrap mb-1.5">
-                      {editTags.map((tagName) => {
-                        const tagData = task.tags?.find((t) => t.tag.name === tagName);
-                        const color = tagData?.tag.color || "#888780";
-                        return (
-                          <span key={tagName} className="inline-flex items-center gap-1 text-[12px] px-2 py-0.5 rounded-full" style={{ background: `${color}20`, color }}>
-                            #{tagName}
-                            <button onClick={() => { const updated = editTags.filter((t) => t !== tagName); setEditTags(updated); save({ tags: updated }); }}>
-                              <X className="h-2.5 w-2.5" />
-                            </button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                    <input
-                      value={newTag}
-                      onChange={(e) => setNewTag(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && newTag.trim()) {
-                          const name = newTag.toLowerCase().trim();
-                          if (!editTags.includes(name)) {
-                            const updated = [...editTags, name];
-                            setEditTags(updated);
-                            save({ tags: updated });
-                          }
-                          setNewTag("");
-                        }
-                      }}
-                      placeholder="Add tag..."
-                      className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 placeholder:text-[var(--text-tertiary)]"
-                    />
-                  </div>
-
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-1">
-                      Checklist {editChecklist.length > 0 && `(${editChecklist.filter((c) => c.done).length}/${editChecklist.length})`}
-                    </p>
-                    <div className="space-y-1">
-                      {editChecklist.map((item, i) => (
-                        <div key={i} className="flex items-center gap-2 group">
-                          <button onClick={() => { const updated = editChecklist.map((c, j) => j === i ? { ...c, done: !c.done } : c); setEditChecklist(updated); save({ checklist: updated }); }} className="w-4 h-4 rounded border border-[var(--border-default)] flex items-center justify-center shrink-0">
-                            {item.done && <Check className="w-2.5 h-2.5 text-[var(--text-secondary)]" />}
-                          </button>
-                          <span className={`flex-1 text-[13px] ${item.done ? "line-through text-[var(--text-tertiary)]" : "text-[var(--text-primary)]"}`}>{item.text}</span>
-                          <button onClick={() => { const updated = editChecklist.filter((_, j) => j !== i); setEditChecklist(updated); save({ checklist: updated }); }} className="opacity-0 group-hover:opacity-100 transition-opacity">
-                            <X className="h-3 w-3 text-[var(--text-tertiary)]" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <Plus className="h-3.5 w-3.5 text-[var(--text-tertiary)] shrink-0" />
-                      <input
-                        value={newCheckItem}
-                        onChange={(e) => setNewCheckItem(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter" && newCheckItem.trim()) { const updated = [...editChecklist, { text: newCheckItem.trim(), done: false }]; setEditChecklist(updated); setNewCheckItem(""); save({ checklist: updated }); } }}
-                        placeholder="Add item..."
-                        className="flex-1 bg-transparent text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t border-[var(--border-subtle)]">
-                    <button onClick={() => onDelete(task.id)} className="flex items-center gap-1 text-[12px] text-[var(--text-tertiary)] hover:text-red-400 transition-colors min-h-[44px]">
-                      <Trash2 className="h-3.5 w-3.5" /> Delete task
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>

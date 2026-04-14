@@ -7,6 +7,8 @@ import { summarizeAndSaveToNote } from "@/lib/document-processor";
 import fs from "fs/promises";
 import path from "path";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -42,6 +44,7 @@ export async function POST(req: NextRequest) {
   });
 
   // Auto-save as Note for long-term AI context retrieval
+  let noteId: string | undefined;
   if (text && text.length > 50) {
     try {
       const note = await prisma.note.create({
@@ -51,6 +54,7 @@ export async function POST(req: NextRequest) {
           tags: ["upload", file.name.split(".").pop() || "file"],
         },
       });
+      noteId = note.id;
       // Fire-and-forget AI summary generation
       if (text.length > 500) {
         summarizeAndSaveToNote(note.id, text, file.name, roleId);
@@ -60,5 +64,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ...upload, base64 });
+  return NextResponse.json({ ...upload, base64, noteId });
 }

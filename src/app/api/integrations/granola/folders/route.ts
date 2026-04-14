@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getGranolaApiKey } from "@/lib/api-keys";
 
 const GRANOLA_API = "https://public-api.granola.ai/v1";
 
@@ -8,9 +9,9 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const apiKey = process.env.GRANOLA_API_KEY;
+  const apiKey = await getGranolaApiKey();
   if (!apiKey) {
-    return NextResponse.json({ error: "GRANOLA_API_KEY not configured" }, { status: 500 });
+    return NextResponse.json({ error: "Granola API key not configured" }, { status: 500 });
   }
 
   // Fetch recent notes and extract unique folder names
@@ -32,8 +33,10 @@ export async function GET() {
 
     const data = await res.json();
     for (const note of data.notes || []) {
-      if (note.folder?.name && !folders.has(note.folder.name)) {
-        folders.set(note.folder.name, note.folder.id || "");
+      const folderName = note.folder_membership?.[0]?.name || note.folder?.name;
+      const folderId = note.folder_membership?.[0]?.id || note.folder?.id || "";
+      if (folderName && !folders.has(folderName)) {
+        folders.set(folderName, folderId);
       }
     }
 

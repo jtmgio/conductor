@@ -134,10 +134,11 @@ export function DraftsPage() {
   return (
     <AppShell>
       <div className="py-6">
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-1">
           <Send className="w-7 h-7 text-[var(--text-primary)]" />
           <h1 className="text-[32px] font-semibold text-[var(--text-primary)]">Draft Queue</h1>
         </div>
+        <p className="text-[15px] text-[var(--text-tertiary)] mb-6">AI-drafted messages saved for review. Edit, copy, or discard before sending.</p>
 
         <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 mb-8">
           <button

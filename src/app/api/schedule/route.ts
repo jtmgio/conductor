@@ -8,12 +8,14 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const now = new Date();
-  const current = await getCurrentBlock(now);
-  const next = await getNextBlocks(3, now);
+  const current = await getCurrentBlock();
+  const next = await getNextBlocks(3);
   const allBlocks = await getScheduleBlocks();
-  const dayOfWeek = now.getDay();
-  const offClockMessage = getOffClockMessage(now);
+  const now = new Date();
+  const localStr = now.toLocaleString("en-US", { timeZone: process.env.TIMEZONE || "America/New_York" });
+  const localNow = new Date(localStr);
+  const dayOfWeek = localNow.getDay();
+  const offClockMessage = getOffClockMessage();
 
   const roles = await prisma.role.findMany({ where: { active: true }, select: { id: true, name: true, title: true, color: true } });
   const roleMap = Object.fromEntries(roles.map((r) => [r.id, r]));

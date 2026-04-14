@@ -11,6 +11,9 @@ const nextConfig = {
     serverComponentsExternalPackages: ["pdf-parse", "mammoth", "sharp"],
     workerThreads: false,
     cpus: 1,
+    serverActions: {
+      bodySizeLimit: "50mb",
+    },
   },
 };
 

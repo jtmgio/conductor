@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ArrowUp, MoreVertical, Plus, PenLine, ListChecks, CalendarClock, Sparkles, Mic, Calendar, Send, AlertCircle, Target, Users, RefreshCw, XCircle, Zap, Copy, Maximize2, CheckSquare, FileOutput, Loader2 } from "lucide-react";
+import { ArrowUp, MoreVertical, Plus, PenLine, ListChecks, CalendarClock, Sparkles, Mic, Calendar, Send, AlertCircle, Target, Users, RefreshCw, XCircle, Zap, Copy, Maximize2, Minimize2, X, CheckSquare, FileOutput, Loader2, Trash2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Message {
   role: "user" | "assistant";
@@ -38,6 +40,7 @@ interface ChatThreadProps {
   loading?: boolean;
   conductorData?: ConductorContext;
   threadName?: string;
+  fontSize?: number;
 }
 
 function getGreeting(): string {
@@ -75,6 +78,7 @@ type MessagePart = TextPart | ArtifactPart;
 
 function parseArtifacts(content: string): MessagePart[] {
   const parts: MessagePart[] = [];
+  // Match :::artifact{title="..." type="..."} ... ::: delimiters
   const regex = /:::artifact\{title="([^"]+)"\s+type="([^"]+)"\}\n([\s\S]*?)\n:::/g;
 
   let lastIndex = 0;
@@ -94,7 +98,27 @@ function parseArtifacts(content: string): MessagePart[] {
   }
 
   if (lastIndex < content.length) {
-    parts.push({ type: "text", text: content.slice(lastIndex) });
+    const remaining = content.slice(lastIndex);
+    parts.push({ type: "text", text: remaining });
+  }
+
+  // If no artifacts were found, check if the entire response looks like raw HTML
+  // (starts with <!DOCTYPE, <html, or contains substantial HTML structure)
+  if (parts.length === 1 && parts[0].type === "text") {
+    const text = parts[0].text.trim();
+    const htmlMatch = text.match(/^([\s\S]*?)(<!DOCTYPE[\s\S]*|<html[\s\S]*)/i);
+    if (htmlMatch) {
+      const before = htmlMatch[1].trim();
+      const htmlCode = htmlMatch[2];
+      const result: MessagePart[] = [];
+      if (before) result.push({ type: "text", text: before });
+      result.push({ type: "artifact", title: "HTML Output", artifactType: "html", code: htmlCode });
+      return result;
+    }
+    // Also detect HTML that starts with <style> or <head> or a block of tags
+    if (/^<(style|head|div|section|main)\b/i.test(text) || (text.split('<').length > 10 && text.split('>').length > 10)) {
+      return [{ type: "artifact", title: "HTML Output", artifactType: "html", code: text }];
+    }
   }
 
   return parts;
@@ -136,9 +160,45 @@ ${code}
 </body></html>`;
 }
 
+function ArtifactDrawer({ title, htmlContent, onClose, onCopy }: { title: string; htmlContent: string; onClose: () => void; onCopy: () => void }) {
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      {/* Drawer panel — slides in from right */}
+      <div className="relative ml-auto w-full max-w-[75vw] h-full bg-[var(--surface)] border-l border-[var(--border-subtle)] flex flex-col animate-in slide-in-from-right duration-200">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)] bg-[var(--surface-raised)] shrink-0">
+          <span className="text-[15px] font-semibold text-[var(--text-primary)] truncate">{title}</span>
+          <div className="flex items-center gap-2">
+            <button onClick={onCopy} className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1 px-2 py-1 rounded-md hover:bg-[var(--sidebar-hover)]">
+              <Copy className="h-3.5 w-3.5" /> Copy
+            </button>
+            <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[var(--sidebar-hover)] flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        {/* Full-height iframe */}
+        <iframe
+          srcDoc={htmlContent}
+          sandbox="allow-scripts allow-same-origin"
+          className="flex-1 w-full border-0"
+        />
+      </div>
+    </div>
+  );
+}
+
 function ArtifactBlock({ title, type, code, conductorData }: { title: string; type: string; code: string; conductorData?: ConductorContext }) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const htmlContent = type === "mermaid"
     ? buildMermaidHTML(code)
@@ -150,76 +210,95 @@ function ArtifactBlock({ title, type, code, conductorData }: { title: string; ty
     navigator.clipboard.writeText(code);
   };
 
-  const resizeToContent = () => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    try {
-      const body = iframe.contentDocument?.body;
-      if (body) {
-        const height = Math.min(Math.max(body.scrollHeight + 32, 200), expanded ? 2000 : 600);
-        iframe.style.height = height + "px";
-      }
-    } catch {
-      // cross-origin, use default height
-    }
-  };
-
   return (
-    <div className="my-3 border border-[var(--border-subtle)] rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 bg-[var(--surface-sunken,var(--surface-raised))] border-b border-[var(--border-subtle)]">
-        <span className="text-[14px] font-medium text-[var(--text-primary)]">{title}</span>
-        <div className="flex gap-2">
-          <button onClick={copyCode} className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1">
-            <Copy className="h-3 w-3" /> Copy
-          </button>
-          <button onClick={() => setExpanded(!expanded)} className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1">
-            <Maximize2 className="h-3 w-3" /> {expanded ? "Collapse" : "Expand"}
-          </button>
+    <>
+      {/* Inline preview card */}
+      <div className="my-3 border border-[var(--border-subtle)] rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2 bg-[var(--surface-sunken,var(--surface-raised))] border-b border-[var(--border-subtle)]">
+          <span className="text-[14px] font-medium text-[var(--text-primary)]">{title}</span>
+          <div className="flex gap-2">
+            <button onClick={copyCode} className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1">
+              <Copy className="h-3 w-3" /> Copy
+            </button>
+            <button onClick={() => setDrawerOpen(true)} className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1">
+              <Maximize2 className="h-3 w-3" /> Open
+            </button>
+          </div>
+        </div>
+        {/* Clickable preview */}
+        <div className="relative cursor-pointer group" onClick={() => setDrawerOpen(true)}>
+          <iframe
+            srcDoc={htmlContent}
+            sandbox="allow-scripts allow-same-origin"
+            className="w-full border-0 pointer-events-none"
+            style={{ height: 350 }}
+          />
+          {/* Fade overlay to indicate there's more */}
+          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[var(--surface)] to-transparent flex items-end justify-center pb-2">
+            <span className="text-[12px] text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1">
+              <Maximize2 className="h-3 w-3" /> Click to expand
+            </span>
+          </div>
         </div>
       </div>
-      <iframe
-        ref={iframeRef}
-        srcDoc={htmlContent}
-        sandbox="allow-scripts"
-        className="w-full border-0"
-        style={{ minHeight: 200, maxHeight: expanded ? 2000 : 600 }}
-        onLoad={resizeToContent}
-      />
-    </div>
+
+      {/* Full-screen drawer */}
+      {drawerOpen && (
+        <ArtifactDrawer
+          title={title}
+          htmlContent={htmlContent}
+          onClose={() => setDrawerOpen(false)}
+          onCopy={copyCode}
+        />
+      )}
+    </>
   );
 }
 
 function renderMessageContent(content: string) {
-  const parts = content.split(/(```[\s\S]*?```)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith("```") && part.endsWith("```")) {
-      const code = part.slice(3, -3).replace(/^\w*\n/, "");
-      return (
-        <pre key={i} className="font-mono text-[12px] bg-white/5 rounded-lg px-3 py-2 my-2 overflow-x-auto whitespace-pre-wrap">
-          <code>{code}</code>
-        </pre>
-      );
-    }
-    const inlineParts = part.split(/(`[^`]+`)/g);
-    return (
-      <span key={i}>
-        {inlineParts.map((ip, j) => {
-          if (ip.startsWith("`") && ip.endsWith("`")) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        h1: ({ children }) => <h1 className="text-[18px] font-bold mt-3 mb-1 text-[var(--text-primary)]">{children}</h1>,
+        h2: ({ children }) => <h2 className="text-[16px] font-semibold mt-2.5 mb-1 text-[var(--text-primary)]">{children}</h2>,
+        h3: ({ children }) => <h3 className="text-[15px] font-semibold mt-2 mb-0.5 text-[var(--text-primary)]">{children}</h3>,
+        p: ({ children }) => <p className="mb-1 last:mb-0 leading-snug">{children}</p>,
+        strong: ({ children }) => <strong className="font-semibold text-[var(--text-primary)]">{children}</strong>,
+        em: ({ children }) => <em className="italic">{children}</em>,
+        ul: ({ children }) => <ul className="list-disc pl-5 mb-1.5">{children}</ul>,
+        ol: ({ children }) => <ol className="list-decimal pl-5 mb-1.5">{children}</ol>,
+        li: ({ children }) => <li className="text-[var(--text-primary)] leading-snug [&>p]:mb-0">{children}</li>,
+        a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-[var(--accent-blue)] underline hover:opacity-80">{children}</a>,
+        blockquote: ({ children }) => <blockquote className="border-l-2 border-[var(--border-default)] pl-3 my-2 text-[var(--text-secondary)] italic">{children}</blockquote>,
+        hr: () => <hr className="border-[var(--border-subtle)] my-3" />,
+        table: ({ children }) => <div className="overflow-x-auto my-2"><table className="min-w-full text-[14px] border-collapse">{children}</table></div>,
+        thead: ({ children }) => <thead className="border-b border-[var(--border-default)]">{children}</thead>,
+        th: ({ children }) => <th className="text-left px-3 py-1.5 font-semibold text-[var(--text-secondary)]">{children}</th>,
+        td: ({ children }) => <td className="px-3 py-1.5 border-t border-[var(--border-subtle)]">{children}</td>,
+        code: ({ className, children }) => {
+          const isBlock = className?.includes("language-");
+          if (isBlock) {
             return (
-              <code key={j} className="font-mono text-[12px] bg-white/5 rounded px-1 py-0.5">
-                {ip.slice(1, -1)}
-              </code>
+              <pre className="font-mono text-[12px] bg-white/5 rounded-lg px-3 py-2 my-2 overflow-x-auto whitespace-pre-wrap">
+                <code>{children}</code>
+              </pre>
             );
           }
-          return <span key={j}>{ip}</span>;
-        })}
-      </span>
-    );
-  });
+          return (
+            <code className="font-mono text-[12px] bg-white/5 rounded px-1 py-0.5">{children}</code>
+          );
+        },
+        pre: ({ children }) => <>{children}</>,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle, messages, onSendMessage, onClearConversation, loading, conductorData, threadName }: ChatThreadProps) {
+export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle, messages, onSendMessage, onClearConversation, loading, conductorData, threadName, fontSize = 15 }: ChatThreadProps) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -433,16 +512,14 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
             <Plus className="h-[18px] w-[18px]" />
           </button>
           <div className="flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="w-9 h-9 rounded-lg hover:bg-[var(--sidebar-hover)] flex items-center justify-center transition-colors">
-                  <MoreVertical className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={onClearConversation} className="text-red-400">Clear conversation</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <button
+              type="button"
+              onClick={onClearConversation}
+              className="w-9 h-9 rounded-lg hover:bg-red-500/10 flex items-center justify-center transition-colors group"
+              title="Clear conversation"
+            >
+              <Trash2 className="h-3.5 w-3.5 text-[var(--text-tertiary)] group-hover:text-red-400" />
+            </button>
             <button
               onClick={handleSend}
               disabled={!input.trim() || sending}
@@ -460,10 +537,10 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
   if (isEmpty) {
     return (
       <div className="flex flex-col flex-1 min-h-0 items-center justify-center">
-        <div className="flex flex-col items-center w-full max-w-[640px] px-4 -mt-12">
+        <div className="flex flex-col items-center w-full max-w-[640px] px-4 mt-12">
           {/* Greeting */}
           <div className="flex items-center gap-3 mb-10">
-            <span className="text-3xl" style={{ color: roleColor }}>*</span>
+            <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: roleColor }} />
             <h1 className="text-[32px] font-semibold text-[var(--text-primary)] tracking-tight">
               {getGreeting()}
             </h1>
@@ -501,21 +578,21 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
         </div>
       )}
       {/* Chat area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-1 py-4 hide-scrollbar space-y-5">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 hide-scrollbar space-y-5">
         {messages.map((msg, i) =>
           msg.role === "user" ? (
             <div key={i} className="flex flex-col items-end gap-1">
-              <div className="bg-[var(--surface-raised)] text-[var(--text-primary)] px-4 py-3 rounded-2xl rounded-br-sm max-w-[85%] text-[16px] leading-relaxed whitespace-pre-wrap">
+              <div className="bg-[var(--surface-raised)] text-[var(--text-primary)] px-4 py-3 rounded-2xl rounded-br-sm max-w-[85%] leading-snug" style={{ fontSize: `${fontSize}px` }}>
                 {renderMessageContent(msg.content)}
               </div>
               {msg.timestamp && <span className="text-[13px] text-[var(--text-tertiary)] px-1">{msg.timestamp}</span>}
             </div>
           ) : (
             <div key={i} className="flex flex-col items-start gap-1">
-              <div className="max-w-[85%]">
+              <div className="max-w-[85%]" data-msg-idx={i}>
                 {parseArtifacts(msg.content).map((part, j) =>
                   part.type === "text" ? (
-                    <div key={j} className="text-[var(--text-primary)] text-[16px] leading-relaxed whitespace-pre-wrap">
+                    <div key={j} className="text-[var(--text-primary)] leading-snug" style={{ fontSize: `${fontSize}px` }}>
                       {renderMessageContent(part.text)}
                     </div>
                   ) : (
@@ -531,6 +608,30 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
               </div>
               {/* Action buttons for assistant messages */}
               <div className="flex items-center gap-1.5 mt-1.5 ml-0.5">
+                <button
+                  onClick={async () => {
+                    try {
+                      // Grab rendered HTML from the message DOM
+                      const el = document.querySelector(`[data-msg-idx="${i}"]`);
+                      const html = el?.innerHTML || msg.content;
+                      await navigator.clipboard.write([
+                        new ClipboardItem({
+                          "text/html": new Blob([html], { type: "text/html" }),
+                          "text/plain": new Blob([msg.content], { type: "text/plain" }),
+                        }),
+                      ]);
+                    } catch {
+                      // Fallback for older browsers
+                      await navigator.clipboard.writeText(msg.content);
+                    }
+                    setActionFeedback((prev) => ({ ...prev, [i]: "Copied!" }));
+                    setTimeout(() => setActionFeedback((prev) => { const next = { ...prev }; delete next[i]; return next; }), 2000);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)] transition-colors"
+                >
+                  <Copy className="h-3 w-3" />
+                  Copy
+                </button>
                 <button
                   onClick={() => extractTasksFromMessage(i, msg.content)}
                   disabled={extractingIdx === i}
@@ -568,8 +669,8 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
         )}
       </div>
 
-      {/* Bottom input */}
-      <div className="shrink-0 py-3">
+      {/* Bottom input — fixed to bottom */}
+      <div className="shrink-0 px-4 pt-2 pb-4">
         {inputArea}
       </div>
     </div>

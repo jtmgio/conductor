@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Check } from "lucide-react";
+import { Check, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 interface ExtractedData { tasks: Array<{ title: string; priority: string }>; followUps: Array<{ title: string; waitingOn: string }>; decisions: Array<{ summary: string }>; keyQuotes: Array<{ text: string; speaker?: string }>; }
-interface ConfirmExtractProps { data: ExtractedData; roleId: string; roleColor: string; roleName: string; onConfirm: (data: ExtractedData) => void; onDiscard: () => void; }
+interface ConfirmExtractProps { data: ExtractedData; roleId: string; roleColor: string; roleName: string; noteId?: string | null; onConfirm: (data: ExtractedData) => void; onDiscard: () => void; }
 
-export function ConfirmExtract({ data, roleColor, roleName, onConfirm, onDiscard }: ConfirmExtractProps) {
+export function ConfirmExtract({ data, roleId, roleColor, roleName, noteId, onConfirm, onDiscard }: ConfirmExtractProps) {
   const [checkedTasks, setCheckedTasks] = useState<Set<number>>(new Set(data.tasks.map((_, i) => i)));
   const [checkedFollowUps, setCheckedFollowUps] = useState<Set<number>>(new Set(data.followUps.map((_, i) => i)));
   const [checkedDecisions, setCheckedDecisions] = useState<Set<number>>(new Set(data.decisions.map((_, i) => i)));
@@ -112,6 +113,14 @@ export function ConfirmExtract({ data, roleColor, roleName, onConfirm, onDiscard
 
       <div className="space-y-2 pt-2">
         <button onClick={handleConfirm} className="w-full py-3.5 text-white font-semibold rounded-xl transition-all hover:opacity-90 active:scale-[0.98]" style={{ backgroundColor: roleColor }}>Confirm</button>
+        {noteId && (
+          <Link
+            href={`/ai?roleId=${roleId}&docId=${noteId}`}
+            className="w-full text-center text-[15px] text-[var(--accent-blue)] font-medium py-2.5 rounded-xl border border-[var(--accent-blue)]/30 hover:bg-[var(--accent-blue)]/5 transition-colors flex items-center justify-center gap-2"
+          >
+            <MessageSquare className="h-4 w-4" /> Discuss in AI
+          </Link>
+        )}
         <button onClick={onDiscard} className="w-full text-center text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] py-2 transition-colors">Discard all</button>
       </div>
     </div>

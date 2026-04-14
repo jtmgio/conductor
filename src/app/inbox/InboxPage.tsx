@@ -17,7 +17,8 @@ export function InboxPage() {
   return (
     <AppShell>
       <div className="py-6">
-        <h1 className="text-[32px] font-semibold text-[var(--text-primary)] mb-6">Inbox</h1>
+        <h1 className="text-[32px] font-semibold text-[var(--text-primary)] mb-1">Inbox</h1>
+        <p className="text-[15px] text-[var(--text-tertiary)] mb-6">Drop in transcripts, meeting notes, or files — AI extracts tasks, follow-ups, and decisions.</p>
         {!loaded ? (
           <div className="py-20 flex justify-center"><div className="w-5 h-5 border-2 border-[var(--border-default)] border-t-[var(--accent-blue)] rounded-full animate-spin" /></div>
         ) : roles.length > 0 ? <InboxProcessor roles={roles} /> : null}
