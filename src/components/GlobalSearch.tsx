@@ -129,6 +129,7 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
       setNewTaskTitle("");
       setNewTaskPriority("normal");
       setNewTaskIsToday(false);
+      window.dispatchEvent(new CustomEvent("tasks-changed"));
       setTimeout(() => taskInputRef.current?.focus(), 50);
 
       // Fire AI suggestion in background

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sun, X, Loader2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export function MorningBriefing() {
   const [briefing, setBriefing] = useState<string | null>(null);
@@ -53,8 +55,24 @@ export function MorningBriefing() {
                 <Loader2 className="h-4 w-4 animate-spin" /> Generating your daily briefing...
               </div>
             ) : (
-              <div className="text-[14px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">
-                {briefing}
+              <div className="text-[14px] text-[var(--text-secondary)] leading-relaxed prose-briefing">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    h1: ({ children }) => <h1 className="text-[16px] font-bold mt-2 mb-1 text-[var(--text-primary)]">{children}</h1>,
+                    h2: ({ children }) => <h2 className="text-[15px] font-semibold mt-2 mb-1 text-[var(--text-primary)]">{children}</h2>,
+                    h3: ({ children }) => <h3 className="text-[14px] font-semibold mt-1.5 mb-0.5 text-[var(--text-primary)]">{children}</h3>,
+                    p: ({ children }) => <p className="mb-1.5 last:mb-0 leading-relaxed">{children}</p>,
+                    strong: ({ children }) => <strong className="font-semibold text-[var(--text-primary)]">{children}</strong>,
+                    em: ({ children }) => <em className="italic">{children}</em>,
+                    ul: ({ children }) => <ul className="list-disc pl-5 mb-1.5">{children}</ul>,
+                    ol: ({ children }) => <ol className="list-decimal pl-5 mb-1.5">{children}</ol>,
+                    li: ({ children }) => <li className="leading-relaxed [&>p]:mb-0">{children}</li>,
+                    hr: () => <hr className="border-[var(--border-subtle)] my-2" />,
+                  }}
+                >
+                  {briefing}
+                </ReactMarkdown>
               </div>
             )}
           </div>

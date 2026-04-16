@@ -9,7 +9,7 @@ export async function GET() {
   const today = new Date(localStr).toISOString().split("T")[0];
 
   const meetings = await prisma.meeting.findMany({
-    where: { date: today, isIgnored: false },
+    where: { date: today, isIgnored: false, userHidden: false },
     include: {
       role: { select: { id: true, name: true, color: true } },
       prepTask: { select: { id: true, title: true, done: true } },

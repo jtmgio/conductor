@@ -90,11 +90,12 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
         .catch(() => {});
     }
 
-    // Calendar sync — trigger if last sync was more than 35 minutes ago
+    // Calendar sync — trigger if last sync was more than 65 minutes ago
+    // (LaunchAgent runs hourly on the hour, 7 AM - 4 PM weekdays; 65 min gives a 5 min buffer)
     const lastCalSyncKey = "conductor-last-cal-sync";
     const lastCalSync = localStorage.getItem(lastCalSyncKey);
-    const thirtyFiveMinAgo = Date.now() - 35 * 60 * 1000;
-    if (!lastCalSync || parseInt(lastCalSync) < thirtyFiveMinAgo) {
+    const sixtyFiveMinAgo = Date.now() - 65 * 60 * 1000;
+    if (!lastCalSync || parseInt(lastCalSync) < sixtyFiveMinAgo) {
       fetch("/api/calendar/sync", { method: "POST" })
         .then((res) => {
           if (res.ok) localStorage.setItem(lastCalSyncKey, String(Date.now()));

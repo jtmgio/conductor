@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check } from "lucide-react";
+import { Check, Eye, EyeOff } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { TaskDetailDrawer } from "@/components/TaskDetailDrawer";
 import { STATUS_CONFIG, STATUS_ORDER, BOARD_COLUMNS } from "@/components/TaskItem";
@@ -34,6 +34,7 @@ interface BoardTask {
   notes?: string | null;
   dueDate?: string | null;
   checklist?: ChecklistItem[] | null;
+  isToday?: boolean;
   tags?: TagRelation[];
   role: { id: string; name: string; color: string };
 }
@@ -58,6 +59,7 @@ export function BoardPage() {
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [drawerTaskId, setDrawerTaskId] = useState<string | null>(null);
+  const [showDone, setShowDone] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -71,10 +73,10 @@ export function BoardPage() {
       .catch(() => {});
   }, []);
 
-  const loadBoard = useCallback(async (roleId: string) => {
+  const loadBoard = useCallback(async (roleId: string, withDone: boolean) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/tasks/board?roleId=${roleId}`);
+      const res = await fetch(`/api/tasks/board?roleId=${roleId}${withDone ? "&includeDone=1" : ""}`);
       const data = await res.json();
       setBoard(data);
     } catch {
@@ -84,8 +86,8 @@ export function BoardPage() {
   }, [toast]);
 
   useEffect(() => {
-    if (activeRoleId) loadBoard(activeRoleId);
-  }, [activeRoleId, loadBoard]);
+    if (activeRoleId) loadBoard(activeRoleId, showDone);
+  }, [activeRoleId, showDone, loadBoard]);
 
   const changeStatus = async (taskId: string, newStatus: string) => {
     try {
@@ -181,12 +183,12 @@ export function BoardPage() {
       });
     } catch {
       toast("Failed to complete task", "error");
-      loadBoard(activeRoleId);
+      loadBoard(activeRoleId, showDone);
     }
   };
 
   const activeRole = roles.find((r) => r.id === activeRoleId);
-  const drawerTask = drawerTaskId ? STATUS_ORDER.flatMap((s) => board[s] || []).find((t) => t.id === drawerTaskId) || null : null;
+  const drawerTask = drawerTaskId ? [...STATUS_ORDER, "done"].flatMap((s) => board[s] || []).find((t) => t.id === drawerTaskId) || null : null;
 
   // Get all tasks for mobile filtered view
   const allTasks = BOARD_COLUMNS.flatMap((s) => board[s] || []);
@@ -198,27 +200,41 @@ export function BoardPage() {
         <h1 className="text-[32px] font-semibold text-[var(--text-primary)] mb-1">Board</h1>
         <p className="text-[15px] text-[var(--text-tertiary)] mb-6">Kanban view of all tasks by status. Drag to reorder, filter by role.</p>
 
-        {/* Role tabs */}
-        <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 mb-8">
-          {roles.map((role) => (
-            <button
-              key={role.id}
-              onClick={() => { setActiveRoleId(role.id); setMobileFilter("all"); }}
-              className={cn(
-                "px-4 py-1.5 rounded-full text-[15px] font-medium whitespace-nowrap transition-colors shrink-0 flex items-center gap-1.5",
-                activeRoleId === role.id
-                  ? "text-white"
-                  : "border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)]"
-              )}
-              style={activeRoleId === role.id ? { backgroundColor: role.color } : undefined}
-            >
-              <span
-                className="w-2 h-2 rounded-full shrink-0"
-                style={{ backgroundColor: activeRoleId === role.id ? "white" : role.color }}
-              />
-              {role.name}
-            </button>
-          ))}
+        {/* Role tabs + done toggle */}
+        <div className="flex items-center gap-3 mb-8">
+          <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 flex-1">
+            {roles.map((role) => (
+              <button
+                key={role.id}
+                onClick={() => { setActiveRoleId(role.id); setMobileFilter("all"); }}
+                className={cn(
+                  "px-4 py-1.5 rounded-full text-[15px] font-medium whitespace-nowrap transition-colors shrink-0 flex items-center gap-1.5",
+                  activeRoleId === role.id
+                    ? "text-white"
+                    : "border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)]"
+                )}
+                style={activeRoleId === role.id ? { backgroundColor: role.color } : undefined}
+              >
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: activeRoleId === role.id ? "white" : role.color }}
+                />
+                {role.name}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowDone(!showDone)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition-colors shrink-0",
+              showDone
+                ? "bg-[#22c55e]/15 text-[#22c55e]"
+                : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-raised)]"
+            )}
+          >
+            {showDone ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            {showDone ? "Hide done" : "Show done"}
+          </button>
         </div>
 
         {loading ? (
@@ -294,7 +310,7 @@ export function BoardPage() {
                 </div>
               ))}
 
-              {/* Done column — drop target only */}
+              {/* Done column — drop target + completed tasks list */}
               <div
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -326,20 +342,64 @@ export function BoardPage() {
                   style={{ color: DONE_COL.text }}
                 >
                   {DONE_COL.label}
+                  {showDone && board.done && (
+                    <span className="text-[var(--text-tertiary)] font-normal ml-2">
+                      ({board.done.length})
+                    </span>
+                  )}
                 </div>
-                <div className="flex flex-col items-center justify-center py-8 text-center flex-1">
-                  <div
-                    className={cn(
-                      "w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-colors",
-                      dragTaskId ? "bg-[rgba(34,197,94,0.15)]" : "bg-[var(--surface-raised)]"
-                    )}
-                  >
-                    <Check className={cn("h-5 w-5 transition-colors", dragTaskId ? "text-[#22c55e]" : "text-[var(--text-tertiary)]")} />
+                {showDone && board.done && board.done.length > 0 ? (
+                  <div className="space-y-2 flex-1 overflow-y-auto hide-scrollbar">
+                    {board.done.map((task) => (
+                      <div
+                        key={task.id}
+                        onClick={() => setDrawerTaskId(task.id)}
+                        className="bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-xl cursor-pointer hover:bg-[var(--sidebar-hover)] transition-colors opacity-50 hover:opacity-70"
+                        style={{ borderLeftWidth: 3, borderLeftColor: "#22c55e" }}
+                      >
+                        <div className="p-3.5">
+                          <div className="flex items-start gap-2.5">
+                            <div className="w-8 h-8 flex-shrink-0 flex items-center justify-center mt-0.5">
+                              <span className="w-5 h-5 rounded-md bg-[#22c55e]/20 border-2 border-[#22c55e]/50 flex items-center justify-center">
+                                <Check className="h-3 w-3 text-[#22c55e]" />
+                              </span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[15px] font-medium text-[var(--text-secondary)] leading-snug line-through decoration-[var(--text-tertiary)]">{task.title}</p>
+                              {task.tags && task.tags.length > 0 && (
+                                <div className="flex gap-1.5 flex-wrap mt-2">
+                                  {task.tags.map((t) => (
+                                    <span
+                                      key={t.tag.id}
+                                      className="text-[11px] px-2 py-0.5 rounded-full"
+                                      style={{ background: `${t.tag.color}20`, color: t.tag.color }}
+                                    >
+                                      #{t.tag.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <p className="text-[13px] text-[var(--text-tertiary)]">
-                    {dragTaskId ? "Drop to complete" : "Drag here to complete"}
-                  </p>
-                </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center flex-1">
+                    <div
+                      className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-colors",
+                        dragTaskId ? "bg-[rgba(34,197,94,0.15)]" : "bg-[var(--surface-raised)]"
+                      )}
+                    >
+                      <Check className={cn("h-5 w-5 transition-colors", dragTaskId ? "text-[#22c55e]" : "text-[var(--text-tertiary)]")} />
+                    </div>
+                    <p className="text-[13px] text-[var(--text-tertiary)]">
+                      {dragTaskId ? "Drop to complete" : "Drag here to complete"}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -23,9 +23,12 @@ services:
     env_file:
       - .env
     environment:
+      # macOS/Windows: use host.docker.internal to reach host Postgres
+      # Linux: change to the Postgres container (postgresql://conductor:localdev@postgres:5432/conductor)
       DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:5432/conductor
       NODE_ENV: production
       UPLOAD_DIR: /opt/conductor/uploads
+      # Change this if deploying to a real domain or different port
       NEXTAUTH_URL: http://localhost:5402
     volumes:
       - uploads:/opt/conductor/uploads

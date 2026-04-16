@@ -2,7 +2,7 @@
 # Conductor DB backup — runs nightly via LaunchAgent
 # Keeps last 7 days of backups
 
-BACKUP_DIR="/Users/joshuagonzalez/projects/jtmg/conductor/backups"
+BACKUP_DIR="${BACKUP_DIR:-$(cd "$(dirname "$0")/.." && pwd)/backups}"
 CONTAINER="postgresql"
 DB_NAME="conductor"
 DB_USER="conductor"

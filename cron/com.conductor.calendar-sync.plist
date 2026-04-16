@@ -7,14 +7,29 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/joshuagonzalez/projects/jtmg/conductor/cron/calendar-sync.sh</string>
+        <!-- UPDATE THIS PATH to your conductor repo location -->
+        <string>/path/to/conductor/cron/calendar-sync.sh</string>
     </array>
-    <key>StartInterval</key>
-    <integer>1800</integer>
+    <!-- Run hourly on the hour, 7 AM through 4 PM (last run at 16:00) -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
+    </array>
     <key>StandardOutPath</key>
-    <string>/Users/joshuagonzalez/projects/jtmg/conductor/logs/calendar-sync.log</string>
+    <!-- UPDATE THIS PATH to your conductor repo location -->
+    <string>/path/to/conductor/logs/calendar-sync.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/joshuagonzalez/projects/jtmg/conductor/logs/calendar-sync.log</string>
+    <!-- UPDATE THIS PATH to your conductor repo location -->
+    <string>/path/to/conductor/logs/calendar-sync.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>CONDUCTOR_URL</key>

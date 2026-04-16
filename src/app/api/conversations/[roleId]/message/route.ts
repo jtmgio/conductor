@@ -22,11 +22,13 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
     // Find or create a meeting-scoped conversation
     conv = await prisma.conversation.findFirst({ where: { roleId: params.roleId, meetingId } });
     if (!conv) {
+      // Use the meeting title for a readable thread name
+      const meeting = await prisma.meeting.findUnique({ where: { id: meetingId }, select: { title: true } });
       conv = await prisma.conversation.create({
         data: {
           roleId: params.roleId,
           meetingId,
-          name: `Meeting-${meetingId}`,
+          name: meeting?.title || `Meeting`,
           isDefault: false,
           messages: [],
         },

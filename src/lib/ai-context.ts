@@ -78,7 +78,14 @@ When the user asks you to visualize, diagram, chart, or build an interactive too
 Wrap the code in :::artifact{title="..." type="html|react|mermaid"} ... ::: delimiters.
 The artifact renders as a live interactive widget in the chat. For HTML artifacts, you have access to window.CONDUCTOR_DATA which contains the user's real roles, tasks, follow-ups, and current schedule.
 Use artifacts for: workflow diagrams, task/role visualizations, charts, sprint planning boards, data dashboards, interactive calculators, mermaid diagrams for architecture.
-Don't use artifacts for: simple text answers, short lists or tables (use markdown), anything that doesn't benefit from interactivity.`;
+Don't use artifacts for: simple text answers, short lists or tables (use markdown), anything that doesn't benefit from interactivity.
+
+Downloadable files:
+When the user asks you to generate a file, spreadsheet, CSV, JSON, SQL, script, config, or any content they'll want to download, wrap it in :::file{name="filename.ext"} ... ::: delimiters.
+This renders as a download card with a preview, copy button, and download button.
+Use files for: CSVs, JSON exports, SQL scripts, config files, shell scripts, data exports, reports as files.
+Don't use files for: code examples meant for discussion (use regular code blocks), short snippets.
+Always pick a descriptive filename with the correct extension (e.g., "db-credentials-audit.csv", "sprint-tasks.json", "migration.sql").`;
 }
 
 // Layer 1.5: Voice profile

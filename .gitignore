@@ -44,3 +44,6 @@ next-env.d.ts
 
 # logs
 /logs
+
+# compiled calendar-events binary (built per-machine, holds its own TCC grant)
+/cron/calendar-events

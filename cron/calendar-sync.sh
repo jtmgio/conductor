@@ -7,10 +7,11 @@ SYNC_TRIGGER="${SYNC_TRIGGER:-cron-refresh}"
 TODAY=$(date +%Y-%m-%d)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Only run during working hours (7 AM - 10 PM, weekdays)
+# Only run during working hours (7 AM - 4 PM, weekdays)
+# Belt-and-suspenders with the LaunchAgent's StartCalendarInterval schedule.
 HOUR=$(date +%H)
 DAY=$(date +%u)  # 1=Mon, 7=Sun
-if [ "$DAY" -gt 5 ] || [ "$HOUR" -lt 7 ] || [ "$HOUR" -ge 22 ]; then
+if [ "$DAY" -gt 5 ] || [ "$HOUR" -lt 7 ] || [ "$HOUR" -gt 16 ]; then
   echo "$(date): Outside working hours, skipping"
   exit 0
 fi
@@ -18,7 +19,13 @@ fi
 echo "$(date): Starting calendar sync for $TODAY..."
 
 # Read events directly from macOS Calendar via EventKit (fast, accurate, no screenshot needed)
-EVENTS_JSON=$(swift "$SCRIPT_DIR/calendar-events.swift" "$TODAY" 2>&1)
+# Prefer the compiled binary (holds its own TCC Calendar grant — works under launchd).
+# Falls back to the swift script if the binary hasn't been built yet.
+if [ -x "$SCRIPT_DIR/calendar-events" ]; then
+  EVENTS_JSON=$("$SCRIPT_DIR/calendar-events" "$TODAY" 2>&1)
+else
+  EVENTS_JSON=$(swift "$SCRIPT_DIR/calendar-events.swift" "$TODAY" 2>&1)
+fi
 SWIFT_STATUS=$?
 
 if [ $SWIFT_STATUS -ne 0 ] || echo "$EVENTS_JSON" | grep -q '"error"'; then
@@ -33,8 +40,9 @@ echo "$(date): Read $EVENT_COUNT events from Calendar"
 EVENTS_ARRAY=$(echo "$EVENTS_JSON" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('events',[])))" 2>/dev/null)
 
 # Skip if events haven't changed (hash comparison)
+# Use python3 (portable; LaunchAgent PATH excludes /sbin where macOS md5 lives)
 HASH_FILE="/tmp/conductor-calendar-last-hash"
-NEW_HASH=$(echo "$EVENTS_ARRAY" | md5 -q 2>/dev/null || echo "$EVENTS_ARRAY" | md5sum | cut -d' ' -f1)
+NEW_HASH=$(python3 -c "import sys,hashlib; print(hashlib.md5(sys.argv[1].encode()).hexdigest())" "$EVENTS_ARRAY")
 if [ -f "$HASH_FILE" ] && [ "$(cat "$HASH_FILE")" = "$NEW_HASH" ]; then
   echo "$(date): Calendar unchanged (hash match), skipping API call"
   exit 0

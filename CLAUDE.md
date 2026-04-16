@@ -120,10 +120,10 @@ Open **http://localhost:5402** in your browser. The setup wizard will launch aut
 1. **Welcome** — Click "Get Started" (or import a config JSON from a previous machine)
 2. **Password** — Set your app password (min 4 characters). This auto-signs you in.
 3. **Companies** — Add each role/company you work for:
-   - Name (e.g., "vQuip"), Title (e.g., "VP Engineering"), Platform (Slack/Teams), Color
+   - Name (e.g., "Acme Corp"), Title (e.g., "VP Engineering"), Platform (Slack/Teams), Color
    - Add as many as needed. Priority is set by order (first = highest).
 4. **Schedule** — Create time blocks mapping roles to hours:
-   - e.g., "Morning" 7:30-10:00 → vQuip, "Midday" 10:30-3:00 → Zeta Global
+   - e.g., "Morning" 7:30-10:00 → Acme Corp, "Midday" 10:30-3:00 → Globex Inc
    - These can be refined later in Settings > System > Schedule
 5. **Profile** (optional) — Communication style and global context for AI
 6. **Done** — Click "Open Conductor" to start using the app
@@ -148,10 +148,9 @@ swift cron/calendar-events.swift | python3 -c "import sys,json; [print(a) for a 
 
 This prints your calendar account emails, e.g.:
 ```
-josh@vquip.com
-jogonzalez@zetaglobal.com
-jgonzalez@healthmapoffice.com
-jgonzalez@healthmedocs.com
+you@acme-corp.com
+you@globex-inc.com
+you@initech.com
 ```
 
 #### 5c. Configure account-to-role mappings
@@ -160,10 +159,9 @@ In **Settings > Integrations > Calendar**, or directly in the database:
 
 ```sql
 psql -U postgres -h localhost -p 5432 -d conductor -c "
-UPDATE \"UserProfile\" SET \"calendarRoleMappings\" = 'josh@vquip.com = vQuip
-jogonzalez@zetaglobal.com = Zeta Global
-jgonzalez@healthmapoffice.com = Healthmap Solutions
-jgonzalez@healthmedocs.com = HealthMe' WHERE id='default';"
+UPDATE \"UserProfile\" SET \"calendarRoleMappings\" = 'you@acme-corp.com = Acme Corp
+you@globex-inc.com = Globex Inc
+you@initech.com = Initech' WHERE id='default';"
 ```
 
 Format is one mapping per line: `calendar-account-email = Role Name`
@@ -186,7 +184,7 @@ Personal
 
 #### 5e. Install the LaunchAgent
 
-The LaunchAgent runs every 30 minutes on your Mac, reads Calendar events via EventKit, and POSTs to the Docker container.
+The LaunchAgent runs hourly on the hour (7 AM - 4 PM, weekdays) on your Mac, reads Calendar events via EventKit, and POSTs to the Docker container.
 
 ```bash
 # Create logs directory
@@ -219,7 +217,7 @@ Calendar sync success — {"meetingsFound":13,"meetingsCreated":13,...}
 ```
 
 The sync:
-- Runs every 30 minutes during working hours (7 AM - 10 PM, weekdays)
+- Runs hourly on the hour during working hours (7 AM - 4 PM, weekdays)
 - Hashes event data — skips API call if nothing changed (saves cost)
 - Uses Claude Haiku for prep task generation (~$0.001/call)
 - AgendaStrip on the Focus page auto-refreshes within 15 seconds
@@ -434,15 +432,15 @@ Sonnet 4.6 (default), Haiku 4.5, Opus 4.6. Dropdown in AI page header.
 - Dedup: `sourceType="granola"`, `sourceId="granola-{noteId}"`
 
 ### Calendar (macOS EventKit)
-- **30-minute sync** via macOS LaunchAgent (`cron/com.conductor.calendar-sync.plist`)
+- **Hourly sync** via macOS LaunchAgent (`cron/com.conductor.calendar-sync.plist`) — runs on the hour, 7 AM - 4 PM weekdays
 - Reads events directly from macOS Calendar via **EventKit** (`cron/calendar-events.swift`) — no screenshots needed
-- Maps calendar accounts to roles (e.g., `josh@vquip.com → vQuip`) configured in Settings > Integrations > Calendar
+- Maps calendar accounts to roles (e.g., `you@acme-corp.com → Acme Corp`) configured in Settings > Integrations > Calendar
 - Generates prep tasks for each non-ignored meeting via Claude Haiku (text, not vision — cheap)
 - 3-phase reconciliation: upsert new/changed meetings, remove deleted meetings, preserve completed prep tasks
 - Dedup: `sourceType="calendar"`, `sourceId="cal-{date}-{normalizedTitle}"`
 - Hash-based change detection: hashes event data, skips API call if calendar unchanged
 - AgendaStrip polls `/api/calendar/last-sync` every 15 seconds, auto-refreshes when new sync lands
-- AppShell triggers sync on app open if last sync was >35 minutes ago
+- AppShell triggers sync on app open if last sync was >65 minutes ago
 - **Fallback**: screenshot upload via Settings > Integrations > Calendar drop zone (uses Sonnet vision)
 
 #### Calendar sync setup on a new machine
@@ -456,15 +454,14 @@ Sonnet 4.6 (default), Haiku 4.5, Opus 4.6. Dropdown in AI page header.
 
 3. **Configure mappings** in Settings > Integrations > Calendar, or directly in DB:
    ```sql
-   UPDATE "UserProfile" SET "calendarRoleMappings" = 'josh@vquip.com = vQuip
-   jogonzalez@zetaglobal.com = Zeta Global
-   jgonzalez@healthmapoffice.com = Healthmap Solutions
-   jgonzalez@healthmedocs.com = HealthMe' WHERE id='default';
+   UPDATE "UserProfile" SET "calendarRoleMappings" = 'you@acme-corp.com = Acme Corp
+   you@globex-inc.com = Globex Inc
+   you@initech.com = Initech' WHERE id='default';
    ```
 
 4. **Configure ignore patterns** in Settings > Integrations > Calendar (OOO, Busy, Deep Work, etc.)
 
-5. **Install the LaunchAgent** (runs every 30 min, guards for weekday working hours 7AM-10PM):
+5. **Install the LaunchAgent** (runs hourly on the hour, guards for weekday working hours 7AM-4PM):
    ```bash
    cp cron/com.conductor.calendar-sync.plist ~/Library/LaunchAgents/
    launchctl load ~/Library/LaunchAgents/com.conductor.calendar-sync.plist

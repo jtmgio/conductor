@@ -42,11 +42,17 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const meeting = await prisma.meeting.findUnique({ where: { id: params.id } });
   if (!meeting) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Delete linked prep task
+  // Soft-delete: mark userHidden=true and detach the prep task. The meeting row
+  // stays in the DB so the calendar sync recognizes it (via sourceId) and won't
+  // re-create it on the next run.
   if (meeting.prepTaskId) {
+    await prisma.meeting.update({ where: { id: params.id }, data: { prepTaskId: null } });
     await prisma.task.delete({ where: { id: meeting.prepTaskId } }).catch(() => {});
   }
+  await prisma.meeting.update({
+    where: { id: params.id },
+    data: { userHidden: true },
+  });
 
-  await prisma.meeting.delete({ where: { id: params.id } });
   return NextResponse.json({ ok: true });
 }

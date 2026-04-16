@@ -176,6 +176,7 @@ model FileUpload {
   extractedText String?
   summary       String?
   tasks         TaskFile[]
+  meetings      MeetingFile[]
   createdAt     DateTime   @default(now())
 
   @@index([roleId])
@@ -189,6 +190,17 @@ model TaskFile {
 
   @@id([taskId, fileId])
   @@index([taskId])
+  @@index([fileId])
+}
+
+model MeetingFile {
+  meetingId String
+  fileId    String
+  meeting   Meeting    @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  file      FileUpload @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@id([meetingId, fileId])
+  @@index([meetingId])
   @@index([fileId])
 }
 
@@ -304,6 +316,7 @@ model Meeting {
   endTime       String
   attendees     String[]
   isIgnored     Boolean  @default(false)
+  userHidden    Boolean  @default(false)  // user-deleted from UI; sync should not surface it again
   prepTaskId    String?  @unique
   prepTask      Task?    @relation(fields: [prepTaskId], references: [id])
   meetingNoteId  String?  @unique
@@ -314,9 +327,11 @@ model Meeting {
   followUpNotes  String?
   sourceId       String   @unique
   conversations  Conversation[]
+  files          MeetingFile[]
   createdAt      DateTime @default(now())
 
   @@index([date, isIgnored])
+  @@index([date, userHidden])
 }
 
 model AiUsage {

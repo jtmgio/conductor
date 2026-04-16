@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, RefreshCw, Users, Clock, Loader2, Check, MessageSquare, FileText, ListTodo, Plus, Trash2, Sparkles, ScrollText, Search, Download, ArrowRight } from "lucide-react";
+import { X, RefreshCw, Users, Clock, Loader2, Check, MessageSquare, FileText, ListTodo, Plus, Trash2, Sparkles, ScrollText, Search, Download, ArrowRight, Paperclip } from "lucide-react";
+import { FileIcon, formatFileSize } from "@/lib/file-utils";
+import { DocumentViewer, type ViewerFile } from "./DocumentViewer";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { NoteEditor } from "./NoteEditor";
@@ -81,7 +83,7 @@ function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
 }
 
-type TabId = "prep" | "notes" | "transcript" | "chat" | "tasks";
+type TabId = "prep" | "notes" | "transcript" | "chat" | "tasks" | "files";
 
 export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelProps) {
   // Shared state
@@ -118,6 +120,14 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
   const [extracting, setExtracting] = useState(false);
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
   const [transcriptFilter, setTranscriptFilter] = useState("");
+
+  // Files state
+  const [meetingFiles, setMeetingFiles] = useState<ViewerFile[]>([]);
+  const [filesLoaded, setFilesLoaded] = useState(false);
+  const [fileUploading, setFileUploading] = useState(false);
+  const [fileDragOver, setFileDragOver] = useState(false);
+  const [viewerFile, setViewerFile] = useState<ViewerFile | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Data Loading ──
 
@@ -164,9 +174,9 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
     return () => { cancelled = true; };
   }, [open, meeting.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load chat history when switching to chat tab
+  // Load chat history when panel opens (eagerly, not just on tab switch)
   useEffect(() => {
-    if (activeTab !== "chat" || chatLoaded) return;
+    if (!open || chatLoaded) return;
 
     async function loadChat() {
       try {
@@ -190,13 +200,19 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
     }
 
     loadChat();
-  }, [activeTab, chatLoaded, meeting.id, meeting.roleId]);
+  }, [open, chatLoaded, meeting.id, meeting.roleId]);
 
   // Load tasks when switching to tasks tab
   useEffect(() => {
     if (activeTab !== "tasks" || tasksLoaded) return;
     loadTasks();
   }, [activeTab, tasksLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load files when switching to files tab
+  useEffect(() => {
+    if (activeTab !== "files" || filesLoaded) return;
+    loadFiles();
+  }, [activeTab, filesLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── AI Prep ──
 
@@ -365,6 +381,60 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
     } catch {}
   }, []);
 
+  // ── Files ──
+
+  const loadFiles = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/meetings/${meeting.id}/files`);
+      if (res.ok) setMeetingFiles(await res.json());
+    } catch {}
+    setFilesLoaded(true);
+  }, [meeting.id]);
+
+  const uploadMeetingFile = useCallback(async (file: globalThis.File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      toast("File exceeds 10MB limit", "error");
+      return;
+    }
+    setFileUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/meetings/${meeting.id}/files`, {
+        method: "POST",
+        body: formData,
+      });
+      if (res.ok) {
+        const uploaded = await res.json();
+        setMeetingFiles((prev) => [uploaded, ...prev]);
+        toast("File attached", "success");
+      } else {
+        toast("Failed to upload file", "error");
+      }
+    } catch {
+      toast("Failed to upload file", "error");
+    }
+    setFileUploading(false);
+  }, [meeting.id, toast]);
+
+  const removeMeetingFile = useCallback(async (fileId: string) => {
+    try {
+      await fetch(`/api/meetings/${meeting.id}/files`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileId }),
+      });
+      setMeetingFiles((prev) => prev.filter((f) => f.id !== fileId));
+    } catch {}
+  }, [meeting.id]);
+
+  const handleFileDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setFileDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) uploadMeetingFile(file);
+  }, [uploadMeetingFile]);
+
   // ── Transcript ──
 
   const searchGranola = useCallback(async () => {
@@ -495,7 +565,7 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
     onClose();
   }, [noteContent, saveNote, onClose, toast]);
 
-  // Reset state when meeting changes
+  // Reset state when meeting changes (only on meeting.id change, not on prop updates)
   useEffect(() => {
     setAiPrep(meeting.aiPrepContent || null);
     setSaveStatus("idle");
@@ -509,8 +579,10 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
     setGranolaMatch(null);
     setExtractedData(null);
     setTranscriptFilter("");
+    setFilesLoaded(false);
+    setMeetingFiles([]);
     setActiveTab("prep");
-  }, [meeting.id, meeting.aiPrepContent, meeting.transcript]);
+  }, [meeting.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null;
 
@@ -520,6 +592,7 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
     { id: "transcript", label: "Transcript", icon: ScrollText },
     { id: "chat", label: "AI Chat", icon: MessageSquare },
     { id: "tasks", label: "Tasks", icon: ListTodo },
+    { id: "files", label: "Files", icon: Paperclip },
   ];
 
   // Filtered unimported notes for manual pick
@@ -530,6 +603,7 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
   }) || [];
 
   return (
+    <>
     <AnimatePresence>
       {open && (
         <>
@@ -611,6 +685,9 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
                   )}
                   {tab.id === "transcript" && transcript && (
                     <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                  )}
+                  {tab.id === "files" && meetingFiles.length > 0 && (
+                    <span className="text-[11px] text-[var(--text-tertiary)]">({meetingFiles.length})</span>
                   )}
                 </button>
               ))}
@@ -808,7 +885,7 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
 
               {/* AI Chat Tab */}
               {activeTab === "chat" && (
-                <div className="flex-1 min-h-0">
+                <div className="flex-1 min-h-0 flex flex-col">
                   <ChatThread
                     roleId={meeting.roleId}
                     roleName={meeting.role.name}
@@ -891,10 +968,92 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
                   </div>
                 </div>
               )}
+
+              {/* Files Tab */}
+              {activeTab === "files" && (
+                <div className="flex-1 min-h-0 flex flex-col">
+                  {/* File list */}
+                  <div className="flex-1 overflow-y-auto px-6 py-4">
+                    {!filesLoaded ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-4 w-4 animate-spin text-[var(--text-tertiary)]" />
+                      </div>
+                    ) : meetingFiles.length > 0 ? (
+                      <div className="space-y-1.5 mb-4">
+                        {meetingFiles.map((file) => (
+                          <div key={file.id} onClick={() => setViewerFile(file)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[var(--surface-raised)] group cursor-pointer hover:bg-[var(--sidebar-hover)] transition-colors">
+                            <FileIcon mimeType={file.mimeType} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[14px] text-[var(--text-primary)] truncate">{file.filename}</p>
+                              <p className="text-[11px] text-[var(--text-tertiary)]">{formatFileSize(file.size)}</p>
+                            </div>
+                            <a
+                              href={`/api/documents/download?fileId=${file.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent-blue)] hover:bg-[var(--sidebar-hover)] transition-colors opacity-0 group-hover:opacity-100"
+                              title="Download"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </a>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); removeMeetingFile(file.id); }}
+                              className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-red-400 hover:bg-[var(--sidebar-hover)] transition-colors opacity-0 group-hover:opacity-100"
+                              title="Remove"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 mb-4">
+                        <Paperclip className="h-8 w-8 text-[var(--text-tertiary)] mx-auto mb-2" />
+                        <p className="text-[14px] text-[var(--text-tertiary)]">No files attached</p>
+                        <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5">Attach agendas, decks, or reference docs</p>
+                      </div>
+                    )}
+
+                    {/* Drop zone */}
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setFileDragOver(true); }}
+                      onDragLeave={() => setFileDragOver(false)}
+                      onDrop={handleFileDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
+                        fileDragOver
+                          ? "border-[var(--accent-blue)] bg-[var(--accent-blue)]/5"
+                          : "border-[var(--border-subtle)] hover:border-[var(--border-default)] hover:bg-[var(--surface-raised)]"
+                      }`}
+                    >
+                      {fileUploading ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-[var(--text-tertiary)]" />
+                      ) : (
+                        <Paperclip className="h-4 w-4 text-[var(--text-tertiary)]" />
+                      )}
+                      <span className="text-[13px] text-[var(--text-tertiary)]">
+                        {fileUploading ? "Uploading..." : "Drop file or click to attach"}
+                      </span>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        accept="image/*,.pdf,.docx,.doc,.txt,.md,.csv,.xlsx,.xls,.pptx,.ppt,.zip"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) uploadMeetingFile(file);
+                          e.target.value = "";
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </motion.div>
         </>
       )}
     </AnimatePresence>
+    <DocumentViewer file={viewerFile} onClose={() => setViewerFile(null)} />
+    </>
   );
 }

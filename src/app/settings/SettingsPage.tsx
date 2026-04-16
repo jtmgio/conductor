@@ -100,7 +100,7 @@ function CalendarAccountMappings({ value, roles, onChange }: { value: string; ro
           <input
             value={m.account}
             onChange={(e) => updateRow(i, "account", e.target.value)}
-            placeholder="e.g. josh@company.com"
+            placeholder="e.g. user@company.com"
             className={`${inputCls} flex-1`}
           />
           <select
@@ -1273,7 +1273,7 @@ Based on the above, provide:`;
                             }
                             try {
                               const n = new Notification("Meeting in 5 min", {
-                                body: "HealthMe Dev Stand-Up · 11:00 AM",
+                                body: "Team Stand-Up · 11:00 AM",
                                 requireInteraction: true,
                               });
                               n.onclick = () => { window.focus(); n.close(); };

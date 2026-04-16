@@ -220,6 +220,12 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
   useEffect(() => {
+    const handler = () => fetchTasks();
+    window.addEventListener("tasks-changed", handler);
+    return () => window.removeEventListener("tasks-changed", handler);
+  }, [fetchTasks]);
+
+  useEffect(() => {
     if (typeof window !== "undefined" && localStorage.getItem("conductor-checklist-dismissed") === "true") {
       setShowChecklist(false);
     }

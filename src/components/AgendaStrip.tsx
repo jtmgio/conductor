@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, ChevronDown, ChevronUp, Check, Users, Bell } from "lucide-react";
+import { Calendar, ChevronDown, ChevronUp, Check, Users, Bell, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { useMeetingNotifications } from "@/hooks/useMeetingNotifications";
 import { MeetingPrepPanel } from "./MeetingPrepPanel";
@@ -34,6 +34,11 @@ function formatTime(time: string): string {
   const hour = h > 12 ? h - 12 : h === 0 ? 12 : h;
   return m === 0 ? `${hour} ${period}` : `${hour}:${m.toString().padStart(2, "0")} ${period}`;
 }
+
+// Module-scoped dedupe: FocusView mounts two AgendaStrip instances (desktop
+// sidebar + mobile strip) hidden via CSS. Both poll for sync updates, so we
+// dedupe sync-toast notifications across all mounted instances.
+let lastToastedSyncAt: string | null = null;
 
 function getMeetingStatus(meeting: Meeting): "past" | "current" | "upcoming" {
   const now = new Date();
@@ -78,18 +83,41 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
     return () => clearInterval(interval);
   }, []);
 
-  // Poll for calendar sync changes — refetch meetings when a new sync lands
+  // Poll for calendar sync changes — refetch meetings when a new sync lands.
+  // Toast on success/failure (skipping the initial mount baseline).
   const lastSyncRef = useRef<string | null>(null);
+  const syncBaselineSetRef = useRef(false);
   useEffect(() => {
     const checkSync = async () => {
       try {
         const res = await fetch("/api/calendar/last-sync");
-        if (res.ok) {
-          const { lastSyncAt } = await res.json();
-          if (lastSyncAt && lastSyncAt !== lastSyncRef.current) {
-            lastSyncRef.current = lastSyncAt;
-            fetchMeetings();
-          }
+        if (!res.ok) return;
+        const { lastSyncAt, status, summary, errorMessage, itemsFound, itemsCreated, itemsUpdated } =
+          await res.json();
+        if (!lastSyncAt || lastSyncAt === lastSyncRef.current) return;
+
+        const isBaseline = !syncBaselineSetRef.current;
+        lastSyncRef.current = lastSyncAt;
+        syncBaselineSetRef.current = true;
+
+        if (status === "success") fetchMeetings();
+
+        // Skip toast on first poll — that's just establishing the baseline.
+        if (isBaseline) return;
+
+        // Dedupe across mounted AgendaStrip instances (see module comment).
+        if (lastToastedSyncAt === lastSyncAt) return;
+        lastToastedSyncAt = lastSyncAt;
+
+        if (status === "success") {
+          const counts: string[] = [];
+          if (itemsFound != null) counts.push(`${itemsFound} found`);
+          if (itemsCreated) counts.push(`${itemsCreated} new`);
+          if (itemsUpdated) counts.push(`${itemsUpdated} updated`);
+          const detail = counts.length ? counts.join(", ") : summary || "no changes";
+          toast(`Calendar synced — ${detail}`, "success");
+        } else if (status === "error") {
+          toast(`Calendar sync failed${errorMessage ? `: ${errorMessage}` : ""}`, "error");
         }
       } catch {}
     };
@@ -97,13 +125,29 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
     checkSync();
     const interval = setInterval(checkSync, 15_000);
     return () => clearInterval(interval);
-  }, [fetchMeetings]);
+  }, [fetchMeetings, toast]);
 
   // Notifications + prep alert
   const handleMeetingAlert = useCallback((meeting: Meeting) => {
     setPrepMeeting(meeting);
   }, []);
   useMeetingNotifications(meetings, { onMeetingAlert: handleMeetingAlert });
+
+  const deleteMeeting = useCallback(
+    async (meetingId: string, title: string) => {
+      // Optimistic remove
+      setMeetings((prev) => prev.filter((m) => m.id !== meetingId));
+      try {
+        const res = await fetch(`/api/meetings/${meetingId}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("delete failed");
+        toast(`Hid "${title}" from agenda`, "success");
+      } catch {
+        toast("Failed to delete meeting", "error");
+        fetchMeetings();
+      }
+    },
+    [toast, fetchMeetings]
+  );
 
   const togglePrepTask = async (taskId: string, currentDone: boolean) => {
     const newDone = !currentDone;
@@ -177,7 +221,7 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                     key={meeting.id}
                     onClick={() => setPrepMeeting(meeting)}
                     className={`
-                      flex items-center gap-2 px-3 py-1.5 transition-all cursor-pointer hover:bg-[var(--sidebar-hover)]
+                      group/row flex items-center gap-2 px-3 py-1.5 transition-all cursor-pointer hover:bg-[var(--sidebar-hover)]
                       ${isPast ? "opacity-35" : ""}
                       ${isHighlighted ? "bg-[var(--surface-sunken)]" : ""}
                     `}
@@ -196,6 +240,14 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                     {isCurrent && (
                       <span className="text-[9px] font-bold text-[var(--accent-blue)] shrink-0">NOW</span>
                     )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id, meeting.title); }}
+                      className="ml-auto shrink-0 p-1 rounded opacity-0 group-hover/row:opacity-60 hover:!opacity-100 hover:bg-[var(--surface-sunken)] hover:text-red-400 transition-all text-[var(--text-tertiary)]"
+                      aria-label="Delete meeting"
+                      title="Delete meeting"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
                   </div>
                 );
               })}
@@ -214,7 +266,7 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                     key={meeting.id}
                     onClick={() => setPrepMeeting(meeting)}
                     className={`
-                      flex items-center gap-2.5 rounded-xl transition-all overflow-hidden cursor-pointer hover:bg-[var(--sidebar-hover)]
+                      group/row flex items-center gap-2.5 rounded-xl transition-all overflow-hidden cursor-pointer hover:bg-[var(--sidebar-hover)]
                       ${isPast ? "opacity-30 py-1 px-3" : "px-3 py-2.5"}
                       ${isHighlighted ? "bg-[var(--surface-sunken)] ring-1 ring-[var(--border-subtle)]" : ""}
                     `}
@@ -233,6 +285,14 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                         <span className="text-[12px] text-[var(--text-tertiary)] line-through truncate">
                           {meeting.title}
                         </span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id, meeting.title); }}
+                          className="ml-auto shrink-0 p-1 rounded opacity-0 group-hover/row:opacity-60 hover:!opacity-100 hover:bg-[var(--surface-sunken)] hover:text-red-400 transition-all text-[var(--text-tertiary)]"
+                          aria-label="Delete meeting"
+                          title="Delete meeting"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
                       </>
                     ) : (
                     <>
@@ -266,6 +326,16 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                       <span className="text-[11px] text-[var(--text-tertiary)]">{meeting.role.name}</span>
 
                     </div>
+
+                    {/* Delete button (hover-revealed) */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id, meeting.title); }}
+                      className="shrink-0 self-start p-1.5 rounded opacity-0 group-hover/row:opacity-60 hover:!opacity-100 hover:bg-[var(--surface-sunken)] hover:text-red-400 transition-all text-[var(--text-tertiary)]"
+                      aria-label="Delete meeting"
+                      title="Delete meeting"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                     </>
                     )}
                   </div>
@@ -342,7 +412,7 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                     key={meeting.id}
                     onClick={() => setPrepMeeting(meeting)}
                     className={`
-                      flex items-start gap-3 px-3.5 py-3 rounded-xl transition-all cursor-pointer hover:bg-[var(--sidebar-hover)]
+                      group/row flex items-start gap-3 px-3.5 py-3 rounded-xl transition-all cursor-pointer hover:bg-[var(--sidebar-hover)]
                       ${isPast ? "opacity-40" : ""}
                       ${isHighlighted ? "bg-[var(--surface-sunken)] ring-1 ring-[var(--border-subtle)]" : ""}
                     `}
@@ -421,6 +491,16 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                         </p>
                       )}
                     </div>
+
+                    {/* Delete button (hover-revealed on desktop, faded but visible on mobile) */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id, meeting.title); }}
+                      className="shrink-0 self-start p-2 rounded opacity-30 group-hover/row:opacity-70 hover:!opacity-100 hover:bg-[var(--surface-sunken)] hover:text-red-400 transition-all text-[var(--text-tertiary)]"
+                      aria-label="Delete meeting"
+                      title="Delete meeting"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 );
               })}

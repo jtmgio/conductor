@@ -172,19 +172,20 @@ async function processStructuredEvents(
 
   // Use text AI (Haiku — cheap) to generate prep tasks for non-ignored meetings
   if (nonIgnored.length > 0) {
-    const meetingList = nonIgnored.map((m) => {
-      const parts = [`- ${m.event.startTime}-${m.event.endTime}: ${m.event.title}`];
-      if (m.event.attendees?.length) parts.push(`  Attendees: ${m.event.attendees.join(", ")}`);
-      if (m.event.notes) parts.push(`  Notes: ${m.event.notes}`);
-      return parts.join("\n");
-    }).join("\n");
+    try {
+      const meetingList = nonIgnored.map((m) => {
+        const parts = [`- ${m.event.startTime}-${m.event.endTime}: ${m.event.title}`];
+        if (m.event.attendees?.length) parts.push(`  Attendees: ${m.event.attendees.join(", ")}`);
+        if (m.event.notes) parts.push(`  Notes: ${m.event.notes}`);
+        return parts.join("\n");
+      }).join("\n");
 
-    const response = await createCompletion({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
-      messages: [{
-        role: "user",
-        content: `Generate a short prep task for each meeting and identify any scheduling conflicts.
+      const response = await createCompletion({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        messages: [{
+          role: "user",
+          content: `Generate a short prep task for each meeting and identify any scheduling conflicts.
 
 Date: ${date}
 
@@ -203,12 +204,11 @@ Respond with ONLY valid JSON:
   "conflicts": ["any scheduling conflicts"],
   "summary": "one sentence summary of the day"
 }`,
-      }],
-    });
+        }],
+      });
 
-    await trackUsage("calendar", response.model, response.usage);
+      await trackUsage("calendar", response.model, response.usage);
 
-    try {
       const jsonMatch = response.text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const prepData = JSON.parse(jsonMatch[0]);
@@ -238,7 +238,9 @@ Respond with ONLY valid JSON:
           summary: prepData.summary,
         };
       }
-    } catch { /* fall through with no prep tasks */ }
+    } catch (err) {
+      console.error("Calendar AI prep task generation failed (continuing without prep tasks):", err);
+    }
   }
 
   return { date, meetings };
@@ -340,9 +342,10 @@ async function reconcileAndSave(
   }
 
   function buildSourceId(meeting: Meeting, date: string): string {
-    // Include calendar account to avoid collisions when same title appears on multiple calendars
+    // Include calendar account and start time to avoid collisions
     const acct = meeting.calendarAccount ? normalize(meeting.calendarAccount).slice(0, 20) + "-" : "";
-    return `cal-${date}-${acct}${normalize(meeting.title)}`;
+    const time = meeting.startTime.replace(":", "");
+    return `cal-${date}-${acct}${time}-${normalize(meeting.title)}`;
   }
 
   // Phase 1: Build maps
@@ -357,8 +360,19 @@ async function reconcileAndSave(
   const createdMeetings: { id: string }[] = [];
   const updatedMeetings: { id: string }[] = [];
 
-  // Phase 2: Upsert meetings
+  // Deduplicate meetings by sourceId (e.g., multiple identical OOO blocks)
+  const deduped: Meeting[] = [];
+  const seenSourceIds = new Set<string>();
   for (const meeting of parsed.meetings) {
+    const sid = buildSourceId(meeting, date);
+    if (!seenSourceIds.has(sid)) {
+      seenSourceIds.add(sid);
+      deduped.push(meeting);
+    }
+  }
+
+  // Phase 2: Upsert meetings
+  for (const meeting of deduped) {
     const sourceId = buildSourceId(meeting, date);
     parsedSourceIds.add(sourceId);
     const roleId = meeting.roleId || roles[0]?.id;

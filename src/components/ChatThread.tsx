@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ArrowUp, MoreVertical, Plus, PenLine, ListChecks, CalendarClock, Sparkles, Mic, Calendar, Send, AlertCircle, Target, Users, RefreshCw, XCircle, Zap, Copy, Maximize2, Minimize2, X, CheckSquare, FileOutput, Loader2, Trash2 } from "lucide-react";
+import { ArrowUp, MoreVertical, Plus, PenLine, ListChecks, CalendarClock, Sparkles, Mic, Calendar, Send, AlertCircle, Target, Users, RefreshCw, XCircle, Zap, Copy, Maximize2, Minimize2, X, CheckSquare, FileOutput, Loader2, Trash2, Download, FileText, Paperclip, Image } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -69,17 +69,23 @@ interface ArtifactPart {
   code: string;
 }
 
+interface FilePart {
+  type: "file";
+  filename: string;
+  content: string;
+}
+
 interface TextPart {
   type: "text";
   text: string;
 }
 
-type MessagePart = TextPart | ArtifactPart;
+type MessagePart = TextPart | ArtifactPart | FilePart;
 
 function parseArtifacts(content: string): MessagePart[] {
   const parts: MessagePart[] = [];
-  // Match :::artifact{title="..." type="..."} ... ::: delimiters
-  const regex = /:::artifact\{title="([^"]+)"\s+type="([^"]+)"\}\n([\s\S]*?)\n:::/g;
+  // Match :::artifact{...} and :::file{...} delimiters
+  const regex = /:::(artifact|file)\{(?:title="([^"]+)"\s+type="([^"]+)"|name="([^"]+)")\}\n([\s\S]*?)\n:::/g;
 
   let lastIndex = 0;
   let match;
@@ -88,12 +94,20 @@ function parseArtifacts(content: string): MessagePart[] {
     if (match.index > lastIndex) {
       parts.push({ type: "text", text: content.slice(lastIndex, match.index) });
     }
-    parts.push({
-      type: "artifact",
-      title: match[1],
-      artifactType: match[2],
-      code: match[3],
-    });
+    if (match[1] === "file") {
+      parts.push({
+        type: "file",
+        filename: match[4],
+        content: match[5],
+      });
+    } else {
+      parts.push({
+        type: "artifact",
+        title: match[2],
+        artifactType: match[3],
+        code: match[5],
+      });
+    }
     lastIndex = match.index + match[0].length;
   }
 
@@ -255,6 +269,67 @@ function ArtifactBlock({ title, type, code, conductorData }: { title: string; ty
   );
 }
 
+function triggerDownload(content: string, filename: string) {
+  const mimeTypes: Record<string, string> = {
+    csv: "text/csv", json: "application/json", txt: "text/plain",
+    html: "text/html", xml: "application/xml", md: "text/markdown",
+    sql: "text/x-sql", py: "text/x-python", js: "text/javascript",
+    ts: "text/typescript", sh: "text/x-sh", yaml: "text/yaml",
+    yml: "text/yaml", toml: "text/toml", ini: "text/plain",
+    svg: "image/svg+xml",
+  };
+  const ext = filename.split(".").pop()?.toLowerCase() || "txt";
+  const mime = mimeTypes[ext] || "text/plain";
+  const blob = new Blob([content], { type: `${mime};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function FileBlock({ filename, content }: { filename: string; content: string }) {
+  const ext = filename.split(".").pop()?.toUpperCase() || "FILE";
+  const lines = content.split("\n").length;
+  const size = new Blob([content]).size;
+  const sizeLabel = size < 1024 ? `${size} B` : `${(size / 1024).toFixed(1)} KB`;
+
+  return (
+    <div className="my-3 border border-[var(--border-subtle)] rounded-xl overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-3 bg-[var(--surface-sunken,var(--surface-raised))]">
+        <div className="w-10 h-10 rounded-lg bg-[var(--accent-blue)]/15 flex items-center justify-center shrink-0">
+          <FileText className="h-5 w-5 text-[var(--accent-blue)]" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[14px] font-medium text-[var(--text-primary)] truncate">{filename}</div>
+          <div className="text-[12px] text-[var(--text-tertiary)]">{ext} &middot; {lines} lines &middot; {sizeLabel}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { navigator.clipboard.writeText(content); }}
+            className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1 px-2 py-1.5 rounded-md hover:bg-[var(--sidebar-hover)]"
+          >
+            <Copy className="h-3 w-3" /> Copy
+          </button>
+          <button
+            onClick={() => triggerDownload(content, filename)}
+            className="text-[12px] text-white bg-[var(--accent-blue)] hover:opacity-90 transition-opacity flex items-center gap-1 px-3 py-1.5 rounded-md font-medium"
+          >
+            <Download className="h-3 w-3" /> Download
+          </button>
+        </div>
+      </div>
+      {/* Preview first few lines */}
+      <pre className="font-mono text-[11px] text-[var(--text-secondary)] bg-white/[0.03] px-4 py-2 max-h-[120px] overflow-hidden whitespace-pre-wrap border-t border-[var(--border-subtle)]">
+        {content.split("\n").slice(0, 6).join("\n")}{lines > 6 ? "\n…" : ""}
+      </pre>
+    </div>
+  );
+}
+
 function renderMessageContent(content: string) {
   return (
     <ReactMarkdown
@@ -279,10 +354,38 @@ function renderMessageContent(content: string) {
         code: ({ className, children }) => {
           const isBlock = className?.includes("language-");
           if (isBlock) {
+            const lang = className?.replace("language-", "") || "";
+            const text = String(children).replace(/\n$/, "");
+            const extMap: Record<string, string> = {
+              csv: "csv", json: "json", sql: "sql", python: "py", py: "py",
+              javascript: "js", js: "js", typescript: "ts", ts: "ts",
+              html: "html", xml: "xml", yaml: "yaml", yml: "yml",
+              bash: "sh", sh: "sh", markdown: "md", md: "md", svg: "svg",
+              css: "css", toml: "toml", ini: "ini", txt: "txt",
+            };
+            const ext = extMap[lang] || lang || "txt";
             return (
-              <pre className="font-mono text-[12px] bg-white/5 rounded-lg px-3 py-2 my-2 overflow-x-auto whitespace-pre-wrap">
-                <code>{children}</code>
-              </pre>
+              <div className="relative group my-2">
+                <pre className="font-mono text-[12px] bg-white/5 rounded-lg px-3 py-2 overflow-x-auto whitespace-pre-wrap">
+                  <code>{children}</code>
+                </pre>
+                <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => navigator.clipboard.writeText(text)}
+                    className="p-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
+                    title="Copy"
+                  >
+                    <Copy className="h-3 w-3 text-[var(--text-tertiary)]" />
+                  </button>
+                  <button
+                    onClick={() => triggerDownload(text, `output.${ext}`)}
+                    className="p-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
+                    title={`Download as .${ext}`}
+                  >
+                    <Download className="h-3 w-3 text-[var(--text-tertiary)]" />
+                  </button>
+                </div>
+              </div>
             );
           }
           return (
@@ -312,6 +415,8 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
   const [extractingIdx, setExtractingIdx] = useState<number | null>(null);
   const [savingDraftIdx, setSavingDraftIdx] = useState<number | null>(null);
   const [actionFeedback, setActionFeedback] = useState<Record<number, string>>({});
+  const [pendingAttachments, setPendingAttachments] = useState<Array<{ filename: string; text?: string; base64?: string; mimeType?: string }>>([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   const extractTasksFromMessage = async (msgIdx: number, content: string) => {
     setExtractingIdx(msgIdx);
@@ -407,13 +512,16 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
   };
 
   const handleSend = async () => {
-    if (!input.trim() || sending) return;
-    const msg = input;
+    const hasAttachments = pendingAttachments.length > 0;
+    if ((!input.trim() && !hasAttachments) || sending) return;
+    const msg = input.trim() || (hasAttachments ? `[Uploaded: ${pendingAttachments.map(a => a.filename).join(", ")}]` : "");
+    const attachments = hasAttachments ? [...pendingAttachments] : undefined;
     setInput("");
+    setPendingAttachments([]);
     setShowSkillMenu(false);
     setSending(true);
     try {
-      await onSendMessage(msg);
+      await onSendMessage(msg, attachments);
     } catch {}
     setSending(false);
   };
@@ -421,16 +529,22 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setUploadingFile(true);
     const formData = new FormData();
     formData.append("file", file);
     try {
       const res = await fetch(`/api/conversations/${roleId}/upload`, { method: "POST", body: formData });
       const data = await res.json();
       if (data.text || data.base64) {
-        await onSendMessage(`[Uploaded: ${file.name}]`, [{ filename: file.name, text: data.text, base64: data.base64, mimeType: data.mimeType }]);
+        setPendingAttachments(prev => [...prev, { filename: file.name, text: data.text, base64: data.base64, mimeType: data.mimeType }]);
       }
     } catch {}
+    setUploadingFile(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeAttachment = (index: number) => {
+    setPendingAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
   const quickPrompts = [
@@ -494,12 +608,32 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
         </div>
       )}
       <div className="bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-2xl overflow-hidden">
+        {/* Pending attachment chips */}
+        {(pendingAttachments.length > 0 || uploadingFile) && (
+          <div className="flex flex-wrap gap-2 px-4 pt-3">
+            {pendingAttachments.map((att, i) => (
+              <div key={i} className="flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-lg bg-[var(--accent-blue)]/10 border border-[var(--accent-blue)]/20 text-[13px] text-[var(--text-secondary)]">
+                {att.mimeType?.startsWith("image/") ? <Image className="h-3.5 w-3.5 text-[var(--accent-blue)] shrink-0" /> : <Paperclip className="h-3.5 w-3.5 text-[var(--accent-blue)] shrink-0" />}
+                <span className="max-w-[160px] truncate">{att.filename}</span>
+                <button onClick={() => removeAttachment(i)} className="w-5 h-5 rounded hover:bg-white/10 flex items-center justify-center transition-colors">
+                  <X className="h-3 w-3 text-[var(--text-tertiary)]" />
+                </button>
+              </div>
+            ))}
+            {uploadingFile && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 text-[13px] text-[var(--text-tertiary)]">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Uploading…
+              </div>
+            )}
+          </div>
+        )}
         <textarea
           ref={textareaRef}
           value={input}
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="How can I help you today? Type / for commands"
+          placeholder={pendingAttachments.length > 0 ? "Add a message or press send…" : "How can I help you today? Type / for commands"}
           rows={1}
           className="w-full bg-transparent px-5 pt-4 pb-2 text-[16px] text-[var(--text-primary)] outline-none resize-none placeholder:text-[var(--text-tertiary)]"
         />
@@ -522,7 +656,7 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
             </button>
             <button
               onClick={handleSend}
-              disabled={!input.trim() || sending}
+              disabled={(!input.trim() && pendingAttachments.length === 0) || sending}
               className="w-9 h-9 rounded-lg bg-[var(--accent-blue)] text-white flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-30"
             >
               <ArrowUp className="h-[16px] w-[16px]" strokeWidth={2.5} />
@@ -595,6 +729,8 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
                     <div key={j} className="text-[var(--text-primary)] leading-snug" style={{ fontSize: `${fontSize}px` }}>
                       {renderMessageContent(part.text)}
                     </div>
+                  ) : part.type === "file" ? (
+                    <FileBlock key={j} filename={part.filename} content={part.content} />
                   ) : (
                     <ArtifactBlock
                       key={j}

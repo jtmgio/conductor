@@ -2,7 +2,9 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Trash2, Plus, X, Pencil, ExternalLink, Sparkles, ListChecks, Paperclip, FileText, Image, File, Download, Loader2 } from "lucide-react";
+import { Check, Trash2, Plus, X, Pencil, ExternalLink, Sparkles, ListChecks, Paperclip, Download, Loader2, Sun } from "lucide-react";
+import { FileIcon, formatFileSize } from "@/lib/file-utils";
+import { DocumentViewer, type ViewerFile } from "./DocumentViewer";
 import { STATUS_CONFIG, STATUS_ORDER } from "./TaskItem";
 import { ChatThread } from "./ChatThread";
 import { FontSizeControl } from "./FontSizeControl";
@@ -38,6 +40,7 @@ export interface DrawerTask {
   notes?: string | null;
   dueDate?: string | null;
   checklist?: ChecklistItem[] | null;
+  isToday?: boolean;
   tags?: TagRelation[];
   role: { id: string; name: string; color: string };
 }
@@ -49,19 +52,6 @@ interface TaskDetailDrawerProps {
   onStatusChange: (id: string, status: string) => void;
   onComplete: (id: string) => void;
   onDelete: (id: string) => void;
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function FileIcon({ mimeType }: { mimeType: string }) {
-  if (mimeType.startsWith("image/")) return <Image className="h-4 w-4 text-purple-400" />;
-  if (mimeType.includes("pdf")) return <FileText className="h-4 w-4 text-red-400" />;
-  if (mimeType.includes("word") || mimeType.includes("document")) return <FileText className="h-4 w-4 text-blue-400" />;
-  return <File className="h-4 w-4 text-[var(--text-tertiary)]" />;
 }
 
 export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onComplete, onDelete }: TaskDetailDrawerProps) {
@@ -83,6 +73,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [viewerFile, setViewerFile] = useState<ViewerFile | null>(null);
 
   const font = useFontSize("task-drawer");
 
@@ -187,6 +178,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
   const borderColor = STATUS_CONFIG[task.status]?.text || "var(--border-subtle)";
 
   return (
+    <>
     <AnimatePresence>
       {task && (
         <>
@@ -360,7 +352,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                   {attachments.length > 0 && (
                     <div className="space-y-1.5 mb-3">
                       {attachments.map((file) => (
-                        <div key={file.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[var(--surface-raised)] group">
+                        <div key={file.id} onClick={() => setViewerFile(file)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[var(--surface-raised)] group cursor-pointer hover:bg-[var(--sidebar-hover)] transition-colors">
                           <FileIcon mimeType={file.mimeType} />
                           <div className="flex-1 min-w-0">
                             <p className="text-[14px] text-[var(--text-primary)] truncate">{file.filename}</p>
@@ -368,13 +360,14 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                           </div>
                           <a
                             href={`/api/documents/download?fileId=${file.id}`}
+                            onClick={(e) => e.stopPropagation()}
                             className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent-blue)] hover:bg-[var(--sidebar-hover)] transition-colors opacity-0 group-hover:opacity-100"
                             title="Download"
                           >
                             <Download className="h-3.5 w-3.5" />
                           </a>
                           <button
-                            onClick={() => removeFile(file.id)}
+                            onClick={(e) => { e.stopPropagation(); removeFile(file.id); }}
                             className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-red-400 hover:bg-[var(--sidebar-hover)] transition-colors opacity-0 group-hover:opacity-100"
                             title="Remove"
                           >
@@ -509,6 +502,20 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                   >
                     <Check className="w-4 h-4" /> Complete
                   </button>
+                  <button
+                    onClick={() => {
+                      const newVal = !task.isToday;
+                      save({ isToday: newVal });
+                      window.dispatchEvent(new CustomEvent("tasks-changed"));
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[14px] font-medium transition-colors ${
+                      task.isToday
+                        ? "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                        : "bg-[var(--surface-raised)] text-[var(--text-tertiary)] hover:text-amber-400 hover:bg-amber-500/10"
+                    }`}
+                  >
+                    <Sun className="w-4 h-4" /> {task.isToday ? "In Today" : "Add to Today"}
+                  </button>
                   <div className="flex-1" />
                   <button
                     onClick={() => { onDelete(task.id); onClose(); }}
@@ -538,5 +545,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
         </>
       )}
     </AnimatePresence>
+    <DocumentViewer file={viewerFile} onClose={() => setViewerFile(null)} />
+    </>
   );
 }
