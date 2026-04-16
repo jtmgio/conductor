@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, ChevronDown, ChevronUp, Check, Users, Bell, Trash2 } from "lucide-react";
+import { Calendar, ChevronDown, ChevronUp, Check, Users, Bell, Trash2, ArrowRight } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { useMeetingNotifications } from "@/hooks/useMeetingNotifications";
 import { MeetingPrepPanel } from "./MeetingPrepPanel";
@@ -345,6 +346,17 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
           )}
         </div>
 
+        {/* Footer: link to full meetings history */}
+        {!sidebarCollapsed && (
+          <Link
+            href="/meetings"
+            className="shrink-0 px-4 py-2 text-[12px] text-[var(--text-tertiary)] hover:text-[var(--accent-blue)] inline-flex items-center justify-between border-t border-[var(--border-subtle)] transition-colors"
+          >
+            <span>View all meetings</span>
+            <ArrowRight className="h-3 w-3" />
+          </Link>
+        )}
+
         {/* Notification prompt at bottom */}
         {!sidebarCollapsed && <NotificationPrompt />}
       </motion.div>
@@ -505,6 +517,17 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                 );
               })}
             </div>
+
+            {/* Footer: link to full meetings history */}
+            <Link
+              href="/meetings"
+              className="block px-5 py-2.5 text-[13px] text-[var(--text-tertiary)] hover:text-[var(--accent-blue)] border-t border-[var(--border-subtle)] transition-colors"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                View all meetings
+                <ArrowRight className="h-3 w-3" />
+              </span>
+            </Link>
 
             {/* Notification permission prompt */}
             <NotificationPrompt />
