@@ -3,11 +3,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, X, CheckSquare, Clock, FileText, MessageSquare, Sparkles, Loader2, RefreshCw, Calendar, Mic, Link2, Plus } from "lucide-react";
+import { Search, X, CheckSquare, Clock, FileText, MessageSquare, Sparkles, Loader2, RefreshCw, Calendar, Mic, Link2, Plus, PenLine, Copy, Check } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { useTaskSuggestion } from "@/hooks/useTaskSuggestion";
 import { TaskSuggestionBox } from "@/components/TaskSuggestionBox";
 import { TaskBrainDump } from "@/components/TaskBrainDump";
+import { useFormatMessage } from "@/hooks/useFormatMessage";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 
 interface SearchResult {
   tasks: Array<{ id: string; title: string; priority: string; dueDate?: string; role: { id: string; name: string; color: string } }>;
@@ -42,11 +44,26 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
   const [newTaskPriority, setNewTaskPriority] = useState<"normal" | "urgent">("normal");
   const [newTaskIsToday, setNewTaskIsToday] = useState(false);
   const [roles, setRoles] = useState<Array<{ id: string; name: string; color: string }>>([]);
+  const [formatMessageMode, setFormatMessageMode] = useState(false);
+  const [formatRoleId, setFormatRoleId] = useState("");
+  const [formatType, setFormatType] = useState<"slack" | "teams" | "email" | "sms">("slack");
+  const [formatInput, setFormatInput] = useState("");
+  const fmtHook = useFormatMessage();
+  const formatTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const formatCopyRef = useRef<HTMLButtonElement>(null);
+  const formatRoleSelectRef = useRef<HTMLSelectElement>(null);
   const { suggestion, setSuggestion, requestSuggestion, applyTaskSuggestion } = useTaskSuggestion();
   const inputRef = useRef<HTMLInputElement>(null);
   const taskInputRef = useRef<HTMLInputElement>(null);
   const roleSelectRef = useRef<HTMLSelectElement>(null);
   const debounceRef = useRef<NodeJS.Timeout>();
+
+  // Auto-focus copy button when format preview appears
+  useEffect(() => {
+    if (fmtHook.state === "preview") {
+      setTimeout(() => formatCopyRef.current?.focus(), 50);
+    }
+  }, [fmtHook.state]);
 
   // Fetch roles for task creation
   useEffect(() => {
@@ -104,6 +121,18 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
       action: async () => {
         setAddTaskMode(true);
         setTimeout(() => roleSelectRef.current?.focus(), 100);
+      },
+    },
+    {
+      id: "format-message",
+      label: "Format message",
+      description: "Rewrite in your tone for Slack, Teams, or email",
+      icon: PenLine,
+      keywords: ["format", "tone", "rewrite", "message", "draft", "slack", "teams", "email"],
+      action: async () => {
+        setFormatMessageMode(true);
+        setFormatRoleId(roles[0]?.id || "");
+        setTimeout(() => formatRoleSelectRef.current?.focus(), 100);
       },
     },
   ];
@@ -273,7 +302,124 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
               transition={{ duration: 0.2 }}
               className="fixed top-[10%] left-4 right-4 z-[60] mx-auto max-w-[560px] bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden"
             >
-              {addTaskMode ? (
+              {formatMessageMode ? (
+                /* ── Format Message Mode ── */
+                <div className="p-4 space-y-4 max-h-[80vh] overflow-y-auto">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[16px] font-semibold text-[var(--text-primary)]">Format message</h3>
+                    <button onClick={() => { setFormatMessageMode(false); fmtHook.reset(); setFormatInput(""); }} className="text-[13px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">Back to search</button>
+                  </div>
+
+                  {/* Role select */}
+                  <select
+                    ref={formatRoleSelectRef}
+                    tabIndex={1}
+                    value={formatRoleId}
+                    onChange={(e) => setFormatRoleId(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Escape") { setOpen(false); setFormatMessageMode(false); fmtHook.reset(); } }}
+                    className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[15px] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 appearance-none cursor-pointer"
+                    style={formatRoleId ? { borderColor: roles.find(r => r.id === formatRoleId)?.color } : undefined}
+                  >
+                    <option value="">Select role...</option>
+                    {roles.map((role) => (
+                      <option key={role.id} value={role.id}>{role.name}</option>
+                    ))}
+                  </select>
+
+                  {/* Format type picker */}
+                  <div className="flex gap-1.5">
+                    {(["slack", "teams", "email", "sms"] as const).map((fmt) => (
+                      <button
+                        key={fmt}
+                        tabIndex={2}
+                        onClick={() => setFormatType(fmt)}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFormatType(fmt); } }}
+                        className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors focus:ring-2 focus:ring-[var(--accent-blue)]/30 outline-none ${
+                          formatType === fmt
+                            ? "bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]"
+                            : "bg-[var(--surface)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                        }`}
+                      >
+                        {fmt.charAt(0).toUpperCase() + fmt.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <AnimatePresence mode="wait">
+                    {/* Input state */}
+                    {fmtHook.state === "idle" && (
+                      <motion.div key="fmt-input" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                        <textarea
+                          ref={formatTextareaRef}
+                          tabIndex={3}
+                          value={formatInput}
+                          onChange={(e) => setFormatInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              if (formatInput.trim() && formatRoleId) fmtHook.formatMessage(formatInput.trim(), formatRoleId, formatType);
+                            }
+                            if (e.key === "Escape") { setOpen(false); setFormatMessageMode(false); }
+                          }}
+                          placeholder="Paste your raw message here..."
+                          rows={5}
+                          className="w-full bg-transparent border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent-blue)] resize-none"
+                        />
+                        <p className="text-[11px] text-[var(--text-tertiary)] mt-1.5">Enter to format. Shift+Enter for new line.</p>
+                      </motion.div>
+                    )}
+
+                    {/* Formatting state */}
+                    {fmtHook.state === "formatting" && (
+                      <motion.div key="fmt-loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center justify-center gap-3 py-8">
+                        <Loader2 className="h-5 w-5 animate-spin text-[var(--accent-blue)]" />
+                        <span className="text-[14px] text-[var(--text-tertiary)]">Formatting in your tone...</span>
+                      </motion.div>
+                    )}
+
+                    {/* Preview state */}
+                    {fmtHook.state === "preview" && fmtHook.formatted && (
+                      <motion.div key="fmt-preview" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
+                        <div className="border border-[var(--border-subtle)] rounded-xl bg-[var(--surface)] p-4">
+                          {fmtHook.format === "email" ? (
+                            <div
+                              className="text-[14px] text-[var(--text-primary)] leading-relaxed [&_p]:mb-2 [&_strong]:font-semibold [&_ul]:pl-5 [&_ul]:list-disc [&_ol]:pl-5 [&_ol]:list-decimal [&_li]:mb-1 [&_h3]:font-semibold [&_h3]:text-[15px] [&_h3]:mb-2 [&_blockquote]:border-l-2 [&_blockquote]:border-[var(--border-subtle)] [&_blockquote]:pl-3 [&_blockquote]:text-[var(--text-secondary)]"
+                              dangerouslySetInnerHTML={{ __html: sanitizeHtml(fmtHook.formatted) }}
+                            />
+                          ) : (
+                            <pre className="text-[14px] text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap font-sans">{fmtHook.formatted}</pre>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center justify-between">
+                          <button
+                            tabIndex={3}
+                            onClick={() => { fmtHook.reset(); }}
+                            className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors focus:ring-2 focus:ring-[var(--accent-blue)]/30 outline-none rounded px-2 py-1"
+                          >
+                            Format again
+                          </button>
+                          <button
+                            ref={formatCopyRef}
+                            tabIndex={1}
+                            onClick={() => fmtHook.copyToClipboard()}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); fmtHook.copyToClipboard(); } }}
+                            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[13px] font-medium transition-all focus:ring-2 focus:ring-[var(--accent-blue)]/50 outline-none ${
+                              fmtHook.copied
+                                ? "bg-green-500/15 text-green-400"
+                                : "bg-[var(--accent-blue)] text-white hover:opacity-90"
+                            }`}
+                          >
+                            {fmtHook.copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                            {fmtHook.copied ? "Copied!" : "Copy"}
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ) : addTaskMode ? (
                 /* ── Add Task Mode ── */
                 <div className="p-4 space-y-4 max-h-[80vh] overflow-y-auto">
                   <div className="flex items-center justify-between">
