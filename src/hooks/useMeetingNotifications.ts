@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { playSound } from "@/lib/sounds";
 
 interface BaseMeeting {
   id: string;
@@ -96,6 +97,7 @@ export function useMeetingNotifications<T extends BaseMeeting>(meetings: T[], op
             tag: `meeting-${meeting.id}`,
             icon: "/icon-192.png",
           });
+          playSound("meeting");
         },
         Math.max(delay, 0)
       );

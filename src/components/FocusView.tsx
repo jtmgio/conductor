@@ -17,6 +17,7 @@ import { RoleHandoff } from "./RoleHandoff";
 import { useCheckInTimer } from "@/hooks/useCheckInTimer";
 import { useBlockTimer } from "@/hooks/useBlockTimer";
 import { TaskBrainDump } from "@/components/TaskBrainDump";
+import { playSound } from "@/lib/sounds";
 import Link from "next/link";
 
 interface Task {
@@ -213,6 +214,18 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     !isOverridden && currentBlock ? { endHour: currentBlock.endHour, endMinute: currentBlock.endMinute } : null
   );
 
+  // Play overtime sound once when block goes overtime
+  const overtimeSoundedRef = useRef(false);
+  useEffect(() => {
+    if (blockTimer.isOvertime && !overtimeSoundedRef.current) {
+      playSound("overtime");
+      overtimeSoundedRef.current = true;
+    }
+    if (!blockTimer.isOvertime) {
+      overtimeSoundedRef.current = false;
+    }
+  }, [blockTimer.isOvertime]);
+
   // Block transition toast — detect when currentBlock.id changes
   const prevBlockIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -224,6 +237,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
         `Switching to ${currentBlock.roleName || "next role"}${taskCount > 0 ? ` — ${taskCount} task${taskCount !== 1 ? "s" : ""} today` : ""}`,
         "default"
       );
+      playSound("transition");
     }
     prevBlockIdRef.current = blockId;
   }, [currentBlock?.id]); // eslint-disable-line react-hooks/exhaustive-deps

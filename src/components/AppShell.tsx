@@ -10,6 +10,7 @@ import { GlobalSearch } from "./GlobalSearch";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 import { cn } from "@/lib/utils";
 import { useCheckInTimer } from "@/hooks/useCheckInTimer";
+import { playSound } from "@/lib/sounds";
 import { MessageSquare, Clock, Check } from "lucide-react";
 
 interface BlockInfo {
@@ -133,6 +134,13 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
 
   // Communication check-in timer (30-min intervals)
   const checkIn = useCheckInTimer(currentBlock?.roleId);
+
+  // Play sound when check-in expires
+  useEffect(() => {
+    if (checkIn.isExpired && currentBlock?.roleId) {
+      playSound("checkin");
+    }
+  }, [checkIn.isExpired, currentBlock?.roleId]);
 
   return (
     <div className="min-h-screen bg-[var(--surface)] text-[var(--text-primary)]" data-sidebar-collapsed={sidebarCollapsed}>
