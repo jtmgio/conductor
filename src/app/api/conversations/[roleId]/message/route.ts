@@ -123,9 +123,17 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
     }
   }
 
+  const userMessage: Record<string, unknown> = { role: "user", content: savedUserContent, timestamp: new Date().toISOString() };
+  if (attachments?.length) {
+    userMessage.attachments = attachments.map((a: { filename?: string; mimeType?: string }) => ({
+      filename: a.filename,
+      mimeType: a.mimeType,
+    }));
+  }
+
   const updated = [
     ...existing,
-    { role: "user", content: savedUserContent, timestamp: new Date().toISOString() },
+    userMessage,
     { role: "assistant", content: response.text, timestamp: new Date().toISOString() },
   ];
 

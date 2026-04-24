@@ -15,7 +15,7 @@ import { FontSizeControl } from "@/components/FontSizeControl";
 import Link from "next/link";
 
 interface Role { id: string; name: string; title: string; color: string; }
-interface Message { role: "user" | "assistant"; content: string; timestamp?: string; }
+interface Message { role: "user" | "assistant"; content: string; timestamp?: string; attachments?: Array<{ filename: string; mimeType?: string }>; }
 interface DraftVariant { label: string; text: string; }
 interface ConductorContext {
   roles: Array<{ id: string; name: string; color: string; title: string }>;
@@ -132,7 +132,11 @@ export function AIPage() {
   const pendingDocId = searchParams.get("docId");
 
   const handleSendMessage = async (message: string, attachments?: Array<{ filename: string; text?: string; base64?: string; mimeType?: string }>) => {
-    setMessages((prev) => [...prev, { role: "user", content: message }]);
+    setMessages((prev) => [...prev, {
+      role: "user",
+      content: message,
+      ...(attachments?.length ? { attachments: attachments.map(a => ({ filename: a.filename, mimeType: a.mimeType })) } : {}),
+    }]);
     setLoading(true);
     try {
       const res = await fetch(`/api/conversations/${activeRoleId}/message`, {

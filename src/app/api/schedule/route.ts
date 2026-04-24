@@ -17,7 +17,7 @@ export async function GET() {
   const dayOfWeek = localNow.getDay();
   const offClockMessage = getOffClockMessage();
 
-  const roles = await prisma.role.findMany({ where: { active: true }, select: { id: true, name: true, title: true, color: true } });
+  const roles = await prisma.role.findMany({ where: { active: true }, select: { id: true, name: true, title: true, color: true, platform: true } });
   const roleMap = Object.fromEntries(roles.map((r) => [r.id, r]));
 
   return NextResponse.json({
@@ -26,20 +26,30 @@ export async function GET() {
           id: current.block.id,
           label: current.block.label,
           timeLabel: getTimeLabel(current.block),
+          startHour: current.block.startHour,
+          startMinute: current.block.startMinute,
+          endHour: current.block.endHour,
+          endMinute: current.block.endMinute,
           roleId: current.roleId,
           roleName: current.roleId ? roleMap[current.roleId]?.name : null,
           roleColor: current.roleId ? roleMap[current.roleId]?.color : null,
           roleTitle: current.roleId ? roleMap[current.roleId]?.title : null,
+          rolePlatform: current.roleId ? roleMap[current.roleId]?.platform : null,
         }
       : null,
     nextBlocks: next.map((n) => ({
       id: n.block.id,
       label: n.block.label,
       timeLabel: getTimeLabel(n.block),
+      startHour: n.block.startHour,
+      startMinute: n.block.startMinute,
+      endHour: n.block.endHour,
+      endMinute: n.block.endMinute,
       roleId: n.roleId,
       roleName: n.roleId ? roleMap[n.roleId]?.name : null,
       roleColor: n.roleId ? roleMap[n.roleId]?.color : null,
       roleTitle: n.roleId ? roleMap[n.roleId]?.title : null,
+      rolePlatform: n.roleId ? roleMap[n.roleId]?.platform : null,
     })),
     offClockMessage,
     allBlocks: allBlocks.map((b) => {
@@ -48,10 +58,15 @@ export async function GET() {
         id: b.id,
         label: b.label,
         timeLabel: getTimeLabel(b),
+        startHour: b.startHour,
+        startMinute: b.startMinute,
+        endHour: b.endHour,
+        endMinute: b.endMinute,
         roleId: roleId || null,
         roleName: roleId ? roleMap[roleId]?.name : null,
         roleColor: roleId ? roleMap[roleId]?.color : null,
         roleTitle: roleId ? roleMap[roleId]?.title : null,
+        rolePlatform: roleId ? roleMap[roleId]?.platform : null,
       };
     }),
   });

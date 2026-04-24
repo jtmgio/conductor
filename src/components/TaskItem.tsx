@@ -19,6 +19,7 @@ export const STATUS_CONFIG: Record<string, { label: string; bg: string; text: st
   in_progress: { label: "in progress", bg: "rgba(77,142,247,0.15)", text: "#4d8ef7" },
   in_review: { label: "in review", bg: "rgba(167,139,250,0.15)", text: "#a78bfa" },
   blocked: { label: "blocked", bg: "rgba(239,68,68,0.15)", text: "#EF4444" },
+  icebox: { label: "icebox", bg: "rgba(148,210,242,0.12)", text: "#94D2F2" },
 };
 
 export const STATUS_ORDER = ["backlog", "in_progress", "in_review", "blocked"];
@@ -315,7 +316,7 @@ export function TaskItem({
                   <div>
                     <p className="text-[12px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-1.5">Status</p>
                     <div className="flex gap-1.5 flex-wrap">
-                      {STATUS_ORDER.map((s) => (
+                      {[...STATUS_ORDER, "icebox"].map((s) => (
                         <button
                           key={s}
                           onClick={() => {

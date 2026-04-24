@@ -8,6 +8,10 @@ interface BlockInfo {
   id: string;
   label: string;
   timeLabel: string;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
   roleId: string | null;
   roleName?: string;
   roleColor?: string;

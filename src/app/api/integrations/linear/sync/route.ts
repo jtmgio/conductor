@@ -41,7 +41,7 @@ async function fetchLinearIssues(apiKey: string, teamId: string, userId: string)
         filter: {
           team: { id: { eq: $teamId } }
           assignee: { id: { eq: $userId } }
-          state: { name: { eq: "Todo" } }
+          state: { type: { in: ["backlog", "unstarted", "started"] } }
         }
         orderBy: updatedAt
         first: 100

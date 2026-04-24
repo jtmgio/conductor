@@ -12,5 +12,16 @@ export async function POST() {
     data: { isToday: false },
   });
 
-  return NextResponse.json({ ok: true });
+  // Monday thaw — move icebox tasks back to backlog
+  let thawed = 0;
+  const today = new Date();
+  if (today.getDay() === 1) {
+    const result = await prisma.task.updateMany({
+      where: { status: "icebox", done: false },
+      data: { status: "backlog" },
+    });
+    thawed = result.count;
+  }
+
+  return NextResponse.json({ ok: true, thawed });
 }

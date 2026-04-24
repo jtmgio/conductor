@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const includeDone = req.nextUrl.searchParams.get("includeDone") === "1";
 
   const tasks = await prisma.task.findMany({
-    where: { roleId, done: false },
+    where: { roleId, done: false, status: { not: "icebox" } },
     include: {
       role: { select: { id: true, name: true, color: true } },
       tags: { include: { tag: true } },

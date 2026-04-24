@@ -55,6 +55,7 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp?: string;
+  attachments?: Array<{ filename: string; mimeType?: string }>;
 }
 
 interface GranolaMatch {
@@ -292,12 +293,18 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
 
   // ── Chat ──
 
-  const handleSendMessage = useCallback(async (message: string) => {
-    setChatMessages((prev) => [...prev, { role: "user", content: message, timestamp: new Date().toISOString() }]);
+  const handleSendMessage = useCallback(async (message: string, attachments?: Array<{ filename: string; text?: string; base64?: string; mimeType?: string }>) => {
+    setChatMessages((prev) => [...prev, {
+      role: "user",
+      content: message,
+      timestamp: new Date().toISOString(),
+      ...(attachments?.length ? { attachments: attachments.map(a => ({ filename: a.filename, mimeType: a.mimeType })) } : {}),
+    }]);
     setChatLoading(true);
     try {
-      const body: Record<string, string | null> = { message, meetingId: meeting.id };
+      const body: Record<string, unknown> = { message, meetingId: meeting.id };
       if (chatThreadId) body.threadId = chatThreadId;
+      if (attachments?.length) body.attachments = attachments;
 
       const res = await fetch(`/api/conversations/${meeting.roleId}/message`, {
         method: "POST",

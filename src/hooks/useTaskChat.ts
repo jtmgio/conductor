@@ -6,6 +6,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp?: string;
+  attachments?: Array<{ filename: string; mimeType?: string }>;
 }
 
 export function useTaskChat(taskId: string | null, roleId: string, taskTitle: string) {
@@ -48,14 +49,20 @@ export function useTaskChat(taskId: string | null, roleId: string, taskTitle: st
 
   const sendMessage = useCallback(async (
     text: string,
-    attachments?: Array<{ filename: string; text?: string; base64?: string; mimeType?: string }>
+    attachments?: Array<{ filename: string; text?: string; base64?: string; mimeType?: string }>,
+    model?: string
   ) => {
     if (!taskId || !roleId || !text.trim()) return;
 
     setSending(true);
 
     // Optimistic: add user message immediately
-    const userMsg: Message = { role: "user", content: text, timestamp: new Date().toISOString() };
+    const userMsg: Message = {
+      role: "user",
+      content: text,
+      timestamp: new Date().toISOString(),
+      ...(attachments?.length ? { attachments: attachments.map(a => ({ filename: a.filename, mimeType: a.mimeType })) } : {}),
+    };
     setMessages((prev) => [...prev, userMsg]);
 
     try {
@@ -78,6 +85,7 @@ export function useTaskChat(taskId: string | null, roleId: string, taskTitle: st
         body: JSON.stringify({
           message: text,
           attachments,
+          model,
           threadId: threadIdRef.current,
           taskId,
         }),

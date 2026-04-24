@@ -10,6 +10,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp?: string;
+  attachments?: Array<{ filename: string; mimeType?: string }>;
 }
 
 interface Skill {
@@ -365,26 +366,27 @@ function renderMessageContent(content: string) {
             };
             const ext = extMap[lang] || lang || "txt";
             return (
-              <div className="relative group my-2">
-                <pre className="font-mono text-[12px] bg-white/5 rounded-lg px-3 py-2 overflow-x-auto whitespace-pre-wrap">
+              <div className="my-2 rounded-lg border border-[var(--border-subtle)] overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-white/[0.06] border-b border-[var(--border-subtle)]">
+                  <span className="text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wide">{lang || "Code"}</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => navigator.clipboard.writeText(text)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-white/10 transition-colors"
+                    >
+                      <Copy className="h-3 w-3" /> Copy
+                    </button>
+                    <button
+                      onClick={() => triggerDownload(text, `output.${ext}`)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-white/10 transition-colors"
+                    >
+                      <Download className="h-3 w-3" /> Download
+                    </button>
+                  </div>
+                </div>
+                <pre className="font-mono text-[12px] px-3 py-2 overflow-x-auto whitespace-pre" style={{ overflowWrap: "normal", wordBreak: "normal" }}>
                   <code>{children}</code>
                 </pre>
-                <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => navigator.clipboard.writeText(text)}
-                    className="p-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
-                    title="Copy"
-                  >
-                    <Copy className="h-3 w-3 text-[var(--text-tertiary)]" />
-                  </button>
-                  <button
-                    onClick={() => triggerDownload(text, `output.${ext}`)}
-                    className="p-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
-                    title={`Download as .${ext}`}
-                  >
-                    <Download className="h-3 w-3 text-[var(--text-tertiary)]" />
-                  </button>
-                </div>
               </div>
             );
           }
@@ -716,6 +718,16 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
         {messages.map((msg, i) =>
           msg.role === "user" ? (
             <div key={i} className="flex flex-col items-end gap-1">
+              {msg.attachments && msg.attachments.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 justify-end max-w-[85%]">
+                  {msg.attachments.map((att, j) => (
+                    <span key={j} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--surface-raised)] border border-[var(--border-subtle)] text-[12px] text-[var(--text-secondary)]">
+                      <Paperclip className="h-3 w-3 shrink-0 text-[var(--text-tertiary)]" />
+                      {att.filename}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="bg-[var(--surface-raised)] text-[var(--text-primary)] px-4 py-3 rounded-2xl rounded-br-sm max-w-[85%] leading-snug" style={{ fontSize: `${fontSize}px` }}>
                 {renderMessageContent(msg.content)}
               </div>
@@ -723,7 +735,7 @@ export function ChatThread({ roleId, roleName, roleColor = "#4d8ef7", roleTitle,
             </div>
           ) : (
             <div key={i} className="flex flex-col items-start gap-1">
-              <div className="max-w-[85%]" data-msg-idx={i}>
+              <div className="max-w-[85%] overflow-x-auto" data-msg-idx={i}>
                 {parseArtifacts(msg.content).map((part, j) =>
                   part.type === "text" ? (
                     <div key={j} className="text-[var(--text-primary)] leading-snug" style={{ fontSize: `${fontSize}px` }}>

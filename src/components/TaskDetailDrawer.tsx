@@ -54,6 +54,12 @@ interface TaskDetailDrawerProps {
   onDelete: (id: string) => void;
 }
 
+const MODELS = [
+  { id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
+  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
+  { id: "claude-opus-4-6", label: "Opus 4.6" },
+];
+
 export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onComplete, onDelete }: TaskDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<"details" | "chat">("details");
   const [editTitle, setEditTitle] = useState("");
@@ -64,6 +70,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
   const [editTags, setEditTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState("");
   const [editingNotes, setEditingNotes] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
   const titleRef = useRef<HTMLInputElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -253,6 +260,17 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                   )}
                 </button>
                 <div className="flex-1" />
+                {activeTab === "chat" && (
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-lg px-2 py-1 text-[12px] text-[var(--text-secondary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 shrink-0 cursor-pointer"
+                  >
+                    {MODELS.map((m) => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </select>
+                )}
                 <FontSizeControl size={font.size} onIncrease={font.increase} onDecrease={font.decrease} atMin={font.atMin} atMax={font.atMax} />
               </div>
             </div>
@@ -264,7 +282,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                 <div>
                   <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-2">Status</p>
                   <div className="flex gap-1.5 flex-wrap">
-                    {STATUS_ORDER.map((s) => (
+                    {[...STATUS_ORDER, "icebox"].map((s) => (
                       <button
                         key={s}
                         onClick={() => onStatusChange(task.id, s)}
@@ -533,7 +551,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                   roleName={task.role.name}
                   roleColor={task.role.color}
                   messages={messages}
-                  onSendMessage={sendMessage}
+                  onSendMessage={(text, attachments) => sendMessage(text, attachments, selectedModel)}
                   onClearConversation={clearConversation}
                   loading={chatLoading || sending}
                   threadName={task.title}

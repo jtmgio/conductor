@@ -167,6 +167,12 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
   useEffect(() => { setSelectedIdx(0); }, [query, totalResults]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+      return;
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setSelectedIdx((prev) => Math.min(prev + 1, selectableItems.length - 1));

@@ -15,12 +15,15 @@ export async function GET(req: NextRequest) {
   const sourceId = searchParams.get("sourceId");
   const includeDone = searchParams.get("includeDone");
 
+  const includeIcebox = searchParams.get("includeIcebox");
+
   const where: Record<string, unknown> = {};
   if (includeDone !== "true") where.done = false;
   if (roleId) where.roleId = roleId;
   if (today === "true") where.isToday = true;
   if (sourceType) where.sourceType = sourceType;
   if (sourceId) where.sourceId = sourceId;
+  if (includeIcebox !== "true") where.status = { not: "icebox" };
 
   const tasks = await prisma.task.findMany({
     where,

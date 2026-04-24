@@ -39,7 +39,8 @@ export function useHotkeys(shortcuts: Shortcut[]) {
         // Handle number keys with Cmd (e.key returns "1", "2", etc.)
         if (pressedKey === targetKey || (targetKey === "," && pressedKey === ",")) {
           e.preventDefault();
-          e.stopPropagation();
+          // Don't stopPropagation for Escape — multiple overlays may need to handle it
+          if (pressedKey !== "escape") e.stopPropagation();
           s.action();
           return;
         }

@@ -14,6 +14,8 @@ import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 import { MorningBriefing } from "./MorningBriefing";
 import { AgendaStrip } from "./AgendaStrip";
 import { RoleHandoff } from "./RoleHandoff";
+import { useCheckInTimer } from "@/hooks/useCheckInTimer";
+import { useBlockTimer } from "@/hooks/useBlockTimer";
 import Link from "next/link";
 
 interface Task {
@@ -42,10 +44,15 @@ interface BlockInfo {
   id: string;
   label: string;
   timeLabel: string;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
   roleId: string | null;
   roleName?: string;
   roleColor?: string;
   roleTitle?: string;
+  rolePlatform?: string;
 }
 
 interface FocusViewProps {
@@ -79,6 +86,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     loading: boolean;
     data: Record<string, unknown> | null;
   } | null>(null);
+  const [dayReview, setDayReview] = useState<{ loading: boolean; data: Record<string, unknown> | null }>({ loading: false, data: null });
   const [agendaCollapsed, setAgendaCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("conductor-agenda-collapsed") === "true";
@@ -192,8 +200,32 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     { key: "[", action: goToPrevBlock, description: "Previous time block", category: "Focus" },
     { key: "]", action: goToNextBlock, description: "Next time block", category: "Focus" },
     { key: "l", modifiers: ["cmd"], action: () => setViewMode((v) => v === "list" ? "board" : "list"), description: "Toggle list/board", category: "Focus" },
-  ], [activeIdx, allBlocks.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    { key: "r", modifiers: ["cmd", "shift"], action: () => { if (!dayReview.loading) reviewMyDay(); }, description: "Review my day (AI)", category: "Focus" },
+  ], [activeIdx, allBlocks.length, dayReview.loading]); // eslint-disable-line react-hooks/exhaustive-deps
   useHotkeys(focusShortcuts);
+
+  // Communication check-in timer (30-min intervals)
+  const checkIn = useCheckInTimer(activeBlock?.roleId);
+
+  // Block countdown timer
+  const blockTimer = useBlockTimer(
+    !isOverridden && currentBlock ? { endHour: currentBlock.endHour, endMinute: currentBlock.endMinute } : null
+  );
+
+  // Block transition toast — detect when currentBlock.id changes
+  const prevBlockIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!currentBlock?.roleId) return;
+    const blockId = currentBlock.id;
+    if (prevBlockIdRef.current && prevBlockIdRef.current !== blockId) {
+      const taskCount = tasks.filter((t) => t.roleId === currentBlock.roleId).length;
+      toast(
+        `Switching to ${currentBlock.roleName || "next role"}${taskCount > 0 ? ` — ${taskCount} task${taskCount !== 1 ? "s" : ""} today` : ""}`,
+        "default"
+      );
+    }
+    prevBlockIdRef.current = blockId;
+  }, [currentBlock?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -361,6 +393,59 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     }
   };
 
+  const acceptAllSuggestions = async () => {
+    if (!suggestion?.data) return;
+    const s = suggestion.data;
+    const updates: Record<string, unknown> = {};
+    if (s.rewrite) updates.title = s.rewrite;
+    if (s.priority === "urgent") updates.priority = "urgent";
+    if (Array.isArray(s.subtasks) && (s.subtasks as string[]).length > 0) {
+      updates.checklist = (s.subtasks as string[]).map((text) => ({ text, done: false }));
+    }
+    if (Object.keys(updates).length > 0) {
+      await updateTask(suggestion.taskId, updates);
+      toast("AI suggestions applied", "success");
+      fetchTasks();
+    }
+    setSuggestion(null);
+  };
+
+  const reviewMyDay = async () => {
+    setDayReview({ loading: true, data: null });
+    try {
+      const res = await fetch("/api/ai/review-today", { method: "POST" });
+      const data = await res.json();
+      if (data.review) {
+        setDayReview({ loading: false, data });
+      } else {
+        toast(data.message || "No tasks to review", "default");
+        setDayReview({ loading: false, data: null });
+      }
+    } catch {
+      toast("Failed to review tasks", "error");
+      setDayReview({ loading: false, data: null });
+    }
+  };
+
+  // Keyboard shortcuts for AI suggestion panel
+  useEffect(() => {
+    if (!suggestion || suggestion.loading || !suggestion.data) return;
+    const handler = (e: KeyboardEvent) => {
+      // Don't capture if user is typing in an input
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "Tab") {
+        e.preventDefault();
+        acceptAllSuggestions();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setSuggestion(null);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [suggestion]);
+
   const loadBacklog = async (roleId: string) => {
     setBacklogLoading(true);
     try {
@@ -515,6 +600,17 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
         <section className="mb-8">
           <div className="flex items-center gap-2 mb-1.5">
             <p className="text-[15px] text-[var(--text-tertiary)]">{activeBlock.timeLabel}</p>
+            {!isOverridden && blockTimer.formattedRemaining && (
+              <span className={`text-[13px] font-medium px-2 py-0.5 rounded-full ${
+                blockTimer.urgency === "overtime" ? "bg-red-500/15 text-red-400 animate-pulse" :
+                blockTimer.urgency === "critical" ? "bg-amber-500/15 text-amber-400" :
+                blockTimer.urgency === "warning" ? "bg-amber-500/10 text-amber-400/80" :
+                "text-[var(--text-tertiary)]"
+              }`}>
+                <Clock className="h-3 w-3 inline mr-1" />
+                {blockTimer.formattedRemaining}
+              </span>
+            )}
             {isOverridden && (
               <button
                 onClick={resetToCurrentBlock}
@@ -536,10 +632,13 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
                   <ChevronLeft className="h-5 w-5" />
                 </button>
               )}
-              <h1 className="text-[32px] md:text-[44px] font-bold leading-tight" style={{ color: activeBlock.roleColor || "#e8e6e1" }}>
+              <h1
+                className={`text-[32px] md:text-[44px] font-bold leading-tight transition-colors ${blockTimer.isOvertime && !isOverridden ? "animate-pulse" : ""}`}
+                style={{ color: blockTimer.isOvertime && !isOverridden ? "#EF4444" : (activeBlock.roleColor || "#e8e6e1") }}
+              >
                 {activeBlock.roleName || "Triage"}
               </h1>
-              {!isOverridden && (
+              {!isOverridden && !blockTimer.isOvertime && (
                 <span className="w-2 h-2 rounded-full animate-pulse shrink-0 mt-1" style={{ backgroundColor: activeBlock.roleColor || "#706c65" }} />
               )}
               {allBlocks.length > 1 && (
@@ -553,32 +652,124 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
                 </button>
               )}
             </div>
-            {/* View toggle */}
-            <div className="flex items-center bg-[var(--surface-raised)] rounded-lg border border-[var(--border-subtle)] p-0.5">
-              <button
-                onClick={() => setViewMode("list")}
-                className={`p-2 rounded-md transition-colors ${viewMode === "list" ? "bg-[var(--sidebar-active)] text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"}`}
-                aria-label="List view"
-              >
-                <List className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setViewMode("board")}
-                className={`p-2 rounded-md transition-colors ${viewMode === "board" ? "bg-[var(--sidebar-active)] text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"}`}
-                aria-label="Board view"
-              >
-                <Columns3 className="h-4 w-4" />
-              </button>
+            <div className="flex items-center gap-2">
+              {/* Review my day button */}
+              {tasks.length > 0 && (
+                <button
+                  onClick={reviewMyDay}
+                  disabled={dayReview.loading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] border border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--accent-blue)] hover:border-[var(--accent-blue)]/30 transition-colors disabled:opacity-50"
+                >
+                  {dayReview.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  {dayReview.loading ? "Reviewing..." : "Review"}
+                </button>
+              )}
+              {/* View toggle */}
+              <div className="flex items-center bg-[var(--surface-raised)] rounded-lg border border-[var(--border-subtle)] p-0.5">
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={`p-2 rounded-md transition-colors ${viewMode === "list" ? "bg-[var(--sidebar-active)] text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"}`}
+                  aria-label="List view"
+                >
+                  <List className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode("board")}
+                  className={`p-2 rounded-md transition-colors ${viewMode === "board" ? "bg-[var(--sidebar-active)] text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"}`}
+                  aria-label="Board view"
+                >
+                  <Columns3 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
           {activeBlock.roleTitle && (
             <p className="text-[17px] text-[var(--text-secondary)] mt-0.5">{activeBlock.roleTitle}</p>
+          )}
+          {activeBlock.roleId && !checkIn.isExpired && (
+            <p className="text-[13px] text-[var(--text-tertiary)] mt-1.5 flex items-center gap-1.5">
+              <MessageSquare className="h-3.5 w-3.5" />
+              Check Slack / Teams in {checkIn.formattedTime}
+            </p>
           )}
           {viewMode === "board" && (
             <p className="text-[13px] text-[var(--text-tertiary)] mt-2">Today&apos;s tasks by status</p>
           )}
         </section>
       )}
+
+      {/* AI Day Review Panel */}
+      <AnimatePresence>
+        {dayReview.data && (() => {
+          const reviewData = (dayReview.data as Record<string, unknown>).review as Record<string, unknown> | null;
+          if (!reviewData) return null;
+          const verdict = reviewData.verdict as string;
+          const taskReviews = (reviewData.tasks || []) as Array<Record<string, unknown>>;
+          const hoursRemaining = (dayReview.data as Record<string, unknown>).hoursRemaining as number;
+          const totalEst = reviewData.totalEstimatedMinutes as number;
+          const totalEstHours = totalEst ? Math.round(totalEst / 60 * 10) / 10 : 0;
+          const verdictColors: Record<string, string> = { realistic: "text-green-400 bg-green-500/15", ambitious: "text-amber-400 bg-amber-500/15", overloaded: "text-red-400 bg-red-500/15" };
+          return (
+            <motion.div
+              key="day-review"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden mb-6"
+            >
+              <div className="border border-[var(--border-subtle)] rounded-xl bg-[var(--surface-raised)] p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-[var(--accent-blue)]" />
+                    <span className="text-[13px] font-medium text-[var(--text-secondary)] uppercase tracking-wider">Day Review</span>
+                    <span className={`text-[12px] font-medium px-2 py-0.5 rounded-full ${verdictColors[verdict] || "text-[var(--text-tertiary)]"}`}>
+                      {verdict}
+                    </span>
+                  </div>
+                  <button onClick={() => setDayReview({ loading: false, data: null })} className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <p className="text-[14px] text-[var(--text-secondary)] mb-3">{reviewData.summary as string}</p>
+                <div className="flex gap-4 mb-3 text-[12px] text-[var(--text-tertiary)]">
+                  <span>~{hoursRemaining}h available</span>
+                  <span>~{totalEstHours}h estimated</span>
+                  {totalEstHours > hoursRemaining && (
+                    <span className="text-red-400 font-medium">
+                      {Math.round((totalEstHours - hoursRemaining) * 10) / 10}h over capacity
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {taskReviews.map((t, i) => {
+                    const assessment = t.assessment as string;
+                    const icon = assessment === "too_big" ? "🔴" : assessment === "vague" ? "🟡" : "✅";
+                    return (
+                      <div key={i} className="flex items-start gap-2">
+                        <span className="text-[13px] mt-0.5 shrink-0">{icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] text-[var(--text-primary)] font-medium">{t.title as string}</span>
+                            <span className="text-[11px] text-[var(--text-tertiary)]">~{t.estimatedMinutes as number}min</span>
+                          </div>
+                          {!!t.suggestion && (
+                            <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">{String(t.suggestion)}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {!!reviewData.recommendation && (
+                  <p className="text-[13px] text-amber-400/90 mt-3 pt-3 border-t border-[var(--border-subtle)]">
+                    {String(reviewData.recommendation)}
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
 
       {!activeBlock && offClockMessage && (
         <section className="mb-8">
@@ -811,6 +1002,22 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
                                   <p className="text-[13px] text-[var(--text-secondary)]">{String(suggestion.data.clarify)}</p>
                                 </div>
                               )}
+
+                              {/* Accept / Dismiss footer */}
+                              <div className="flex items-center justify-end gap-2 pt-2 mt-1 border-t border-[var(--border-subtle)]">
+                                  <button
+                                    onClick={() => setSuggestion(null)}
+                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-white/5 transition-colors"
+                                  >
+                                    Dismiss <kbd className="ml-1 px-1 py-0.5 rounded bg-white/10 text-[10px] font-mono">Esc</kbd>
+                                  </button>
+                                  <button
+                                    onClick={acceptAllSuggestions}
+                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors font-medium"
+                                  >
+                                    Accept all <kbd className="ml-1 px-1 py-0.5 rounded bg-[var(--accent-blue)]/20 text-[10px] font-mono">Tab</kbd>
+                                  </button>
+                                </div>
                             </div>
                           )}
                         </div>
