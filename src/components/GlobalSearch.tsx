@@ -7,6 +7,7 @@ import { Search, X, CheckSquare, Clock, FileText, MessageSquare, Sparkles, Loade
 import { useToast } from "@/components/ui/toast";
 import { useTaskSuggestion } from "@/hooks/useTaskSuggestion";
 import { TaskSuggestionBox } from "@/components/TaskSuggestionBox";
+import { TaskBrainDump } from "@/components/TaskBrainDump";
 
 interface SearchResult {
   tasks: Array<{ id: string; title: string; priority: string; dueDate?: string; role: { id: string; name: string; color: string } }>;
@@ -274,7 +275,7 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
             >
               {addTaskMode ? (
                 /* ── Add Task Mode ── */
-                <div className="p-4 space-y-4">
+                <div className="p-4 space-y-4 max-h-[80vh] overflow-y-auto">
                   <div className="flex items-center justify-between">
                     <h3 className="text-[16px] font-semibold text-[var(--text-primary)]">Add task</h3>
                     <button onClick={() => setAddTaskMode(false)} className="text-[13px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">Back to search</button>
@@ -298,61 +299,16 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
                     ))}
                   </select>
 
-                  {/* Title input — tab index 2 */}
-                  <input
-                    ref={taskInputRef}
-                    tabIndex={2}
-                    value={newTaskTitle}
-                    onChange={(e) => setNewTaskTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") { e.preventDefault(); submitTask(); }
-                      if (e.key === "Escape") { e.preventDefault(); setOpen(false); setAddTaskMode(false); }
-                    }}
-                    placeholder="Task title..."
-                    className="w-full bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[16px] text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 placeholder:text-[var(--text-tertiary)]"
-                  />
-
-                  {/* Options row */}
-                  <div className="flex items-center gap-3">
-                    <button
-                      tabIndex={3}
-                      onClick={() => setNewTaskPriority(newTaskPriority === "normal" ? "urgent" : "normal")}
-                      className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors flex items-center gap-1.5 focus:ring-2 focus:ring-[var(--accent-blue)]/20 outline-none ${
-                        newTaskPriority === "urgent"
-                          ? "bg-red-500/15 text-red-400"
-                          : "bg-[var(--surface)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-                      }`}
-                    >
-                      {newTaskPriority === "urgent" ? "Urgent" : "Normal"}
-                    </button>
-                    <button
-                      tabIndex={4}
-                      onClick={() => setNewTaskIsToday(!newTaskIsToday)}
-                      className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors flex items-center gap-1.5 focus:ring-2 focus:ring-[var(--accent-blue)]/20 outline-none ${
-                        newTaskIsToday
-                          ? "bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]"
-                          : "bg-[var(--surface)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-                      }`}
-                    >
-                      {newTaskIsToday ? "Today" : "Backlog"}
-                    </button>
-                    <div className="flex-1" />
-                    <button
-                      tabIndex={5}
-                      onClick={submitTask}
-                      disabled={!newTaskTitle.trim() || !newTaskRoleId}
-                      className="px-5 py-2 rounded-xl bg-[var(--accent-blue)] text-white text-[14px] font-medium hover:opacity-90 transition-opacity disabled:opacity-30 focus:ring-2 focus:ring-[var(--accent-blue)]/40 outline-none"
-                    >
-                      Add
-                    </button>
-                  </div>
-
-                  {/* AI suggestion bar */}
-                  {suggestion && (
-                    <TaskSuggestionBox
-                      suggestion={suggestion}
-                      onDismiss={() => setSuggestion(null)}
-                      onApply={applyTaskSuggestion}
+                  {/* Brain dump → AI refine → create */}
+                  {newTaskRoleId && (
+                    <TaskBrainDump
+                      roleId={newTaskRoleId}
+                      roleName={roles.find(r => r.id === newTaskRoleId)?.name}
+                      roleColor={roles.find(r => r.id === newTaskRoleId)?.color}
+                      onTaskCreated={() => {
+                        window.dispatchEvent(new CustomEvent("tasks-changed"));
+                      }}
+                      onCancel={() => { setOpen(false); setAddTaskMode(false); }}
                     />
                   )}
                 </div>

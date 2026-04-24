@@ -16,6 +16,7 @@ import { AgendaStrip } from "./AgendaStrip";
 import { RoleHandoff } from "./RoleHandoff";
 import { useCheckInTimer } from "@/hooks/useCheckInTimer";
 import { useBlockTimer } from "@/hooks/useBlockTimer";
+import { TaskBrainDump } from "@/components/TaskBrainDump";
 import Link from "next/link";
 
 interface Task {
@@ -874,156 +875,16 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
                     <p className="text-[13px] text-[var(--text-tertiary)] text-center py-3">No backlog tasks for this role</p>
                   )}
 
-                  {/* New task input */}
-                  <div className="flex gap-2">
-                    <input
-                      value={newTaskTitle}
-                      onChange={(e) => setNewTaskTitle(e.target.value)}
-                      placeholder="Or create a new task..."
-                      className="flex-1 bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-blue)]/20 outline-none transition-all placeholder:text-[var(--text-tertiary)]"
-                      onKeyDown={(e) => e.key === "Enter" && addTask()}
-                    />
-                    <Button onClick={addTask} size="sm">Add</Button>
-                    <Button onClick={() => { setShowAdd(false); setBacklogTasks([]); setSuggestion(null); }} size="sm" variant="ghost">Done</Button>
-                  </div>
-
-                  {/* AI suggestion bar */}
-                  <AnimatePresence>
-                    {suggestion && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="border border-[var(--border-subtle)] rounded-xl bg-[var(--surface-raised)] p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-1.5">
-                              <Wand2 className="h-3.5 w-3.5 text-[var(--accent-blue)]" />
-                              <span className="text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider">AI Review</span>
-                            </div>
-                            <button onClick={() => setSuggestion(null)} className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-
-                          {suggestion.loading ? (
-                            <div className="flex items-center gap-2 py-1">
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--text-tertiary)]" />
-                              <span className="text-[13px] text-[var(--text-tertiary)]">Reviewing &ldquo;{suggestion.taskTitle}&rdquo;...</span>
-                            </div>
-                          ) : suggestion.data && (
-                            <div className="space-y-2">
-                              {/* Duplicate warning */}
-                              {!!suggestion.data.duplicate && (
-                                <div className="flex items-start gap-2">
-                                  <Copy className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
-                                  <p className="text-[13px] text-[var(--text-secondary)]">
-                                    Similar to: <span className="text-[var(--text-primary)] font-medium">{String(suggestion.data.duplicate)}</span>
-                                  </p>
-                                </div>
-                              )}
-
-                              {/* Rewrite suggestion */}
-                              {!!suggestion.data.rewrite && (
-                                <div className="flex items-start gap-2">
-                                  <FileEdit className="h-3.5 w-3.5 text-[var(--accent-blue)] mt-0.5 shrink-0" />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-[13px] text-[var(--text-secondary)]">{String(suggestion.data.rewrite)}</p>
-                                    <button
-                                      onClick={() => {
-                                        updateTask(suggestion.taskId, { title: suggestion.data!.rewrite });
-                                        setSuggestion(null);
-                                        toast("Title updated", "success");
-                                        fetchTasks();
-                                      }}
-                                      className="text-[12px] text-[var(--accent-blue)] hover:underline mt-0.5"
-                                    >
-                                      Apply
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Priority suggestion */}
-                              {suggestion.data.priority === "urgent" && (
-                                <div className="flex items-start gap-2">
-                                  <AlertTriangle className="h-3.5 w-3.5 text-red-400 mt-0.5 shrink-0" />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-[13px] text-[var(--text-secondary)]">This sounds time-sensitive</p>
-                                    <button
-                                      onClick={() => {
-                                        updateTask(suggestion.taskId, { priority: "urgent" });
-                                        setSuggestion(null);
-                                        toast("Marked urgent", "success");
-                                      }}
-                                      className="text-[12px] text-[var(--accent-blue)] hover:underline mt-0.5"
-                                    >
-                                      Mark urgent
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Subtasks suggestion */}
-                              {Array.isArray(suggestion.data.subtasks) && (suggestion.data.subtasks as string[]).length > 0 && (
-                                <div className="flex items-start gap-2">
-                                  <Check className="h-3.5 w-3.5 text-green-400 mt-0.5 shrink-0" />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-[13px] text-[var(--text-secondary)] mb-1">Break into checklist:</p>
-                                    <ul className="space-y-0.5">
-                                      {(suggestion.data.subtasks as string[]).map((s, i) => (
-                                        <li key={i} className="text-[13px] text-[var(--text-primary)] flex items-center gap-1.5">
-                                          <span className="w-1 h-1 rounded-full bg-[var(--text-tertiary)] shrink-0" />
-                                          {s}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                    <button
-                                      onClick={() => {
-                                        const checklist = (suggestion.data!.subtasks as string[]).map((text) => ({ text, done: false }));
-                                        updateTask(suggestion.taskId, { checklist });
-                                        setSuggestion(null);
-                                        toast("Checklist added", "success");
-                                        fetchTasks();
-                                      }}
-                                      className="text-[12px] text-[var(--accent-blue)] hover:underline mt-1"
-                                    >
-                                      Add checklist
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Clarify question */}
-                              {!!suggestion.data.clarify && (
-                                <div className="flex items-start gap-2">
-                                  <HelpCircle className="h-3.5 w-3.5 text-[var(--text-tertiary)] mt-0.5 shrink-0" />
-                                  <p className="text-[13px] text-[var(--text-secondary)]">{String(suggestion.data.clarify)}</p>
-                                </div>
-                              )}
-
-                              {/* Accept / Dismiss footer */}
-                              <div className="flex items-center justify-end gap-2 pt-2 mt-1 border-t border-[var(--border-subtle)]">
-                                  <button
-                                    onClick={() => setSuggestion(null)}
-                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-white/5 transition-colors"
-                                  >
-                                    Dismiss <kbd className="ml-1 px-1 py-0.5 rounded bg-white/10 text-[10px] font-mono">Esc</kbd>
-                                  </button>
-                                  <button
-                                    onClick={acceptAllSuggestions}
-                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors font-medium"
-                                  >
-                                    Accept all <kbd className="ml-1 px-1 py-0.5 rounded bg-[var(--accent-blue)]/20 text-[10px] font-mono">Tab</kbd>
-                                  </button>
-                                </div>
-                            </div>
-                          )}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  {/* New task — brain dump with AI refine */}
+                  <TaskBrainDump
+                    roleId={activeBlock!.roleId!}
+                    roleName={activeBlock?.roleName}
+                    roleColor={activeBlock?.roleColor}
+                    isToday={true}
+                    compact={true}
+                    onTaskCreated={() => { fetchTasks(); }}
+                    onCancel={() => { setShowAdd(false); setBacklogTasks([]); setSuggestion(null); }}
+                  />
                 </div>
               ) : (
                 <button
