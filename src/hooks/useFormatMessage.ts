@@ -10,7 +10,7 @@ interface UseFormatMessageReturn {
   format: FormatType;
   copied: boolean;
   formatMessage: (rawMessage: string, roleId: string, format: FormatType) => Promise<void>;
-  copyToClipboard: () => Promise<void>;
+  copyToClipboard: (previewEl?: HTMLElement | null) => Promise<void>;
   reset: () => void;
 }
 
@@ -47,36 +47,35 @@ export function useFormatMessage(): UseFormatMessageReturn {
     }
   }, []);
 
-  const copyToClipboard = useCallback(async () => {
+  const copyToClipboard = useCallback(async (previewEl?: HTMLElement | null) => {
     if (!formatted) return;
 
     try {
-      if (format === "email") {
-        // Rich HTML copy for email
-        const htmlBlob = new Blob([formatted], { type: "text/html" });
-        const textBlob = new Blob([formatted.replace(/<[^>]+>/g, "")], { type: "text/plain" });
-        await navigator.clipboard.write([
-          new ClipboardItem({
-            "text/html": htmlBlob,
-            "text/plain": textBlob,
-          }),
-        ]);
-      } else {
-        // Plain text copy for Slack, Teams, SMS
-        await navigator.clipboard.writeText(formatted);
-      }
+      // Grab rendered HTML from the preview DOM element (same approach as AI chat page)
+      let html = previewEl?.innerHTML || formatted;
+      // Add line breaks between block elements so paste preserves paragraph spacing
+      // Exclude li/ul/ol — injecting <br> between list items breaks list rendering in Slack/Teams
+      html = html.replace(/<\/(p|h[1-6]|blockquote)>\s*</g, "</$1><br><");
+      const plainText = previewEl?.innerText || formatted.replace(/<[^>]+>/g, "");
+
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([plainText], { type: "text/plain" }),
+        }),
+      ]);
 
       setCopied(true);
       if (copiedTimeout.current) clearTimeout(copiedTimeout.current);
       copiedTimeout.current = setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback
+      // Fallback for older browsers
       await navigator.clipboard.writeText(formatted);
       setCopied(true);
       if (copiedTimeout.current) clearTimeout(copiedTimeout.current);
       copiedTimeout.current = setTimeout(() => setCopied(false), 2000);
     }
-  }, [formatted, format]);
+  }, [formatted]);
 
   const reset = useCallback(() => {
     setState("idle");

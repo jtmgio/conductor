@@ -15,20 +15,20 @@ Use these tags: <p>, <strong>, <em>, <ul>, <ol>, <li>, <br>, <h3>.
 Do NOT wrap in <html>/<body> — just the message content.
 Do NOT include a subject line or greeting unless the original had one.`,
 
-  slack: `Return the formatted message using Slack mrkdwn syntax:
-- Bold: *text*
-- Italic: _text_
-- Strikethrough: ~text~
-- Bulleted list: • item (use bullet character, not dash)
-- Code: \`code\`
-- Block quote: > text
-- Line breaks: just use newlines
-Do NOT use HTML tags.`,
-
-  teams: `Return the formatted message using Microsoft Teams markdown:
+  slack: `Return the formatted message using standard markdown:
 - Bold: **text**
 - Italic: *text*
-- Bulleted list: - item
+- Bulleted list: - item (use dash, one item per line)
+- Numbered list: 1. item
+- Code: \`code\`
+- Block quote: > text
+- Line breaks: use two newlines for paragraph breaks
+Do NOT use HTML tags. Do NOT use bullet character (•).`,
+
+  teams: `Return the formatted message using standard markdown:
+- Bold: **text**
+- Italic: *text*
+- Bulleted list: - item (use dash, one item per line)
 - Numbered list: 1. item
 - Code: \`code\`
 - Line breaks: use two newlines for paragraph breaks
