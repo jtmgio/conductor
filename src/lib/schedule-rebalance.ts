@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { type TimeBlock, timeToMinutes, minutesToTime } from "./schedule";
+import { today } from "./dates";
 
 // Blocks shorter than this (in minutes) are "fixed" — excluded from rebalance
 const MIN_REBALANCEABLE_DURATION = 30;
@@ -67,10 +68,10 @@ async function computeRebalance(
   );
   if (scheduledRoleIds.length === 0) return baseBlocks;
 
-  // Query which roles have non-done tasks today
+  // Query which roles have non-done tasks today (or earlier — yesterday's leftovers carry forward)
   const counts = await prisma.task.groupBy({
     by: ["roleId"],
-    where: { isToday: true, done: false, roleId: { in: scheduledRoleIds } },
+    where: { scheduledFor: { lte: today() }, done: false, roleId: { in: scheduledRoleIds } },
     _count: true,
   });
   const activeRoleIds = new Set(counts.map((c) => c.roleId));

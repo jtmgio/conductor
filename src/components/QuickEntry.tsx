@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, X } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { todayISO } from "@/lib/dates";
 
 interface Role { id: string; name: string; color: string; }
 
@@ -57,7 +58,7 @@ export function QuickEntry() {
         body: JSON.stringify({
           roleId,
           title: title.trim(),
-          isToday: true,
+          scheduledFor: todayISO(),
           dueDate: dueDate || undefined,
         }),
       });

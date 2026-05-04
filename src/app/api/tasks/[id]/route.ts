@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { invalidateRebalanceCache } from "@/lib/schedule-rebalance";
+import { parseDateOnly } from "@/lib/dates";
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -13,7 +14,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   if (body.title !== undefined) data.title = body.title;
   if (body.priority !== undefined) data.priority = body.priority;
-  if (body.isToday !== undefined) data.isToday = body.isToday;
+  if (body.scheduledFor !== undefined) data.scheduledFor = parseDateOnly(body.scheduledFor);
   if (body.notes !== undefined) data.notes = body.notes;
   if (body.dueDate !== undefined) data.dueDate = body.dueDate ? new Date(body.dueDate) : null;
   if (body.checklist !== undefined) data.checklist = body.checklist;
@@ -32,8 +33,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   await prisma.task.update({ where: { id: params.id }, data });
 
-  // Invalidate rebalance cache when done status changes (affects schedule)
-  if (body.done !== undefined) invalidateRebalanceCache();
+  // Invalidate rebalance cache when done state or schedule date changes (affects schedule)
+  if (body.done !== undefined || body.scheduledFor !== undefined) invalidateRebalanceCache();
 
   if (body.tags !== undefined) {
     const tagRecords = await Promise.all(

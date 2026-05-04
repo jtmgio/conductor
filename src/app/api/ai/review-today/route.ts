@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { createCompletion } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 import { getScheduleBlocks } from "@/lib/schedule";
+import { today } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export async function POST() {
 
   // Get today's tasks
   const todayTasks = await prisma.task.findMany({
-    where: { isToday: true, done: false, status: { not: "icebox" } },
+    where: { scheduledFor: { lte: today() }, done: false, status: { not: "icebox" } },
     include: {
       role: { select: { id: true, name: true, color: true } },
     },

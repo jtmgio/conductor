@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { trackUsage } from "@/lib/ai-usage";
 import { createCompletion } from "@/lib/ai-provider";
 import { logSync, type SyncTrigger } from "@/lib/sync-logger";
+import { parseDateOnly } from "@/lib/dates";
 
 const DEFAULT_IGNORE_PATTERNS = [
   "OOO", "Out of Office", "Busy", "Deep Work", "Focus Time",
@@ -409,7 +410,7 @@ async function reconcileAndSave(
             title: `${meeting.startTime} — ${meeting.prepTask}`,
             priority: "normal",
             status: "backlog",
-            isToday: true,
+            scheduledFor: parseDateOnly(date),
             sourceType: "calendar",
             sourceId,
             notes: [

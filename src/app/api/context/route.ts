@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCurrentBlock, getTimeLabel } from "@/lib/schedule";
+import { today } from "@/lib/dates";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -14,7 +15,7 @@ export async function GET() {
       orderBy: { priority: "asc" },
     }),
     prisma.task.findMany({
-      where: { isToday: true, done: false },
+      where: { scheduledFor: { lte: today() }, done: false },
       select: { id: true, title: true, status: true, roleId: true, tags: { include: { tag: true } } },
     }),
     prisma.followUp.findMany({

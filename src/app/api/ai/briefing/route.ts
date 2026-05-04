@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { createCompletion } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 import { getScheduleBlocks } from "@/lib/schedule";
+import { today } from "@/lib/dates";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -16,7 +17,7 @@ export async function GET() {
 
   const [todayTasks, staleFollowUps, scheduleBlocks, roles] = await Promise.all([
     prisma.task.findMany({
-      where: { isToday: true, done: false },
+      where: { scheduledFor: { lte: today() }, done: false },
       include: { role: { select: { name: true, color: true } } },
       orderBy: [{ priority: "desc" }, { sortOrder: "asc" }],
     }),

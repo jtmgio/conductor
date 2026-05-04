@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { getCurrentBlock, getTimeLabel, getScheduleBlocks } from "./schedule";
+import { today } from "./dates";
 
 // Configurable context settings with three-tier resolution:
 // role override → system default (UserProfile) → hardcoded fallback
@@ -110,7 +111,7 @@ async function buildVoiceProfile(): Promise<string> {
 async function buildStateSnapshot(): Promise<string> {
   const current = await getCurrentBlock();
   const todayTasks = await prisma.task.findMany({
-    where: { isToday: true, done: false },
+    where: { scheduledFor: { lte: today() }, done: false },
     include: { role: { select: { name: true } } },
     orderBy: { role: { priority: "asc" } },
   });

@@ -111,7 +111,7 @@ export async function GET() {
       title: t.title,
       priority: t.priority,
       status: t.status,
-      isToday: t.isToday,
+      scheduledFor: t.scheduledFor,
       done: t.done,
       doneAt: t.doneAt,
       notes: t.notes,

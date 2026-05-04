@@ -34,7 +34,7 @@ interface BoardTask {
   notes?: string | null;
   dueDate?: string | null;
   checklist?: ChecklistItem[] | null;
-  isToday?: boolean;
+  scheduledFor?: string | null;
   tags?: TagRelation[];
   role: { id: string; name: string; color: string };
 }

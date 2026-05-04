@@ -10,6 +10,7 @@ import { TaskSuggestionBox } from "@/components/TaskSuggestionBox";
 import { TaskBrainDump } from "@/components/TaskBrainDump";
 import { useFormatMessage } from "@/hooks/useFormatMessage";
 import { sanitizeHtml } from "@/lib/sanitize-html";
+import { todayISO } from "@/lib/dates";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -152,7 +153,7 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
           roleId,
           title: taskTitle,
           priority: newTaskPriority,
-          isToday: newTaskIsToday,
+          scheduledFor: newTaskIsToday ? todayISO() : null,
           status: "backlog",
         }),
       });

@@ -10,13 +10,13 @@ interface TaskBrainDumpProps {
   roleId: string;
   roleName?: string;
   roleColor?: string;
-  isToday?: boolean;
+  scheduledFor?: string | null;
   onTaskCreated: () => void;
   onCancel: () => void;
   compact?: boolean;
 }
 
-export function TaskBrainDump({ roleId, roleName, roleColor, isToday = false, onTaskCreated, onCancel, compact = false }: TaskBrainDumpProps) {
+export function TaskBrainDump({ roleId, roleName, roleColor, scheduledFor = null, onTaskCreated, onCancel, compact = false }: TaskBrainDumpProps) {
   const { state, refined, refine, updateField, reset } = useTaskRefine();
   const [inputText, setInputText] = useState("");
   const [saving, setSaving] = useState(false);
@@ -83,7 +83,7 @@ export function TaskBrainDump({ roleId, roleName, roleColor, isToday = false, on
           notes: refined.notes || undefined,
           checklist: refined.checklist || undefined,
           priority: refined.priority,
-          isToday,
+          scheduledFor,
           dueDate: refined.dueDate || undefined,
         }),
       });

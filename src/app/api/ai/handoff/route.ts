@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createCompletion } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
+import { today } from "@/lib/dates";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -23,9 +24,9 @@ export async function GET(req: NextRequest) {
     }),
     prisma.task.findMany({
       where: { roleId, done: false },
-      orderBy: [{ isToday: "desc" }, { priority: "desc" }, { sortOrder: "asc" }],
+      orderBy: [{ scheduledFor: { sort: "desc", nulls: "last" } }, { priority: "desc" }, { sortOrder: "asc" }],
       take: 10,
-      select: { title: true, priority: true, status: true, isToday: true },
+      select: { title: true, priority: true, status: true, scheduledFor: true },
     }),
     prisma.followUp.findMany({
       where: { roleId, status: "waiting" },
@@ -55,8 +56,12 @@ export async function GET(req: NextRequest) {
   const lastMessages = (messages as any[]).slice(-3).map((m: any) => `${m.role}: ${typeof m.content === "string" ? m.content.slice(0, 200) : "[content]"}`).join("\n");
 
   // Build context
+  const todayDate = today().getTime();
   const taskList = openTasks.length > 0
-    ? openTasks.map((t) => `- ${t.title} (${t.priority}${t.isToday ? ", today" : ""}, ${t.status})`).join("\n")
+    ? openTasks.map((t) => {
+        const isOnTodayList = t.scheduledFor && t.scheduledFor.getTime() <= todayDate;
+        return `- ${t.title} (${t.priority}${isOnTodayList ? ", today" : ""}, ${t.status})`;
+      }).join("\n")
     : "No open tasks.";
 
   const followUpList = pendingFollowUps.length > 0

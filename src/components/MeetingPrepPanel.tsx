@@ -13,6 +13,7 @@ import { ConfirmExtract } from "./ConfirmExtract";
 import { FontSizeControl } from "./FontSizeControl";
 import { useFontSize } from "@/hooks/useFontSize";
 import { useToast } from "@/components/ui/toast";
+import { todayISO } from "@/lib/dates";
 
 interface TranscriptData {
   id: string;
@@ -352,7 +353,7 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
         body: JSON.stringify({
           roleId: meeting.roleId,
           title: newTaskTitle.trim(),
-          isToday: true,
+          scheduledFor: todayISO(),
           sourceType: "meeting",
           sourceId: `meeting-${meeting.id}`,
         }),
@@ -521,7 +522,7 @@ export function MeetingPrepPanel({ meeting, open, onClose }: MeetingPrepPanelPro
           roleId: meeting.roleId,
           title: task.title,
           priority: task.priority,
-          isToday: true,
+          scheduledFor: todayISO(),
           sourceType: "meeting",
           sourceId: `meeting-${meeting.id}`,
         }),

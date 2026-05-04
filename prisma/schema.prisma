@@ -26,6 +26,7 @@ model UserProfile {
   aiNoteChunkSize            Int?
   aiTranscriptChunkSize      Int?
   aiPinnedNoteChunkSize      Int?
+  lastPlannedFor         DateTime? @db.Date
   updatedAt              DateTime @updatedAt
 }
 
@@ -73,18 +74,18 @@ model Staff {
 }
 
 model Task {
-  id         String    @id @default(cuid())
-  roleId     String
-  role       Role      @relation(fields: [roleId], references: [id])
-  title      String
-  priority   String    @default("normal")
-  status     String    @default("backlog")
-  isToday    Boolean   @default(false)
-  done       Boolean   @default(false)
-  doneAt     DateTime?
-  notes      String?
-  dueDate    DateTime?
-  checklist  Json?
+  id           String    @id @default(cuid())
+  roleId       String
+  role         Role      @relation(fields: [roleId], references: [id])
+  title        String
+  priority     String    @default("normal")
+  status       String    @default("backlog")
+  scheduledFor DateTime? @db.Date
+  done         Boolean   @default(false)
+  doneAt       DateTime?
+  notes        String?
+  dueDate      DateTime?
+  checklist    Json?
   tags          TaskTag[]
   files         TaskFile[]
   meeting       Meeting?
@@ -96,7 +97,7 @@ model Task {
   updatedAt  DateTime  @updatedAt
 
   @@index([roleId, done])
-  @@index([isToday, done])
+  @@index([scheduledFor, done])
   @@index([roleId, status])
 }
 

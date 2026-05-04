@@ -18,6 +18,7 @@ import { useCheckInTimer } from "@/hooks/useCheckInTimer";
 import { useBlockTimer } from "@/hooks/useBlockTimer";
 import { TaskBrainDump } from "@/components/TaskBrainDump";
 import { playSound } from "@/lib/sounds";
+import { todayISO } from "@/lib/dates";
 import Link from "next/link";
 
 interface Task {
@@ -26,7 +27,7 @@ interface Task {
   priority: string;
   status: string;
   roleId: string;
-  isToday: boolean;
+  scheduledFor: string | null;
   done: boolean;
   notes?: string | null;
   dueDate?: string | null;
@@ -378,7 +379,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roleId, title: taskTitle, isToday: true }),
+        body: JSON.stringify({ roleId, title: taskTitle, scheduledFor: todayISO() }),
       });
       if (!res.ok) throw new Error();
       const created = await res.json();
@@ -468,7 +469,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
       const res = await fetch(`/api/tasks?roleId=${roleId}&backlog=true`);
       if (res.ok) {
         const data = await res.json();
-        setBacklogTasks(Array.isArray(data) ? data.filter((t: Task) => !t.isToday && !t.done) : []);
+        setBacklogTasks(Array.isArray(data) ? data.filter((t: Task) => !t.scheduledFor && !t.done) : []);
       }
     } catch {}
     setBacklogLoading(false);
@@ -479,7 +480,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
       await fetch(`/api/tasks/${taskId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isToday: true }),
+        body: JSON.stringify({ scheduledFor: todayISO() }),
       });
       setBacklogTasks((prev) => prev.filter((t) => t.id !== taskId));
       fetchTasks();
@@ -895,7 +896,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
                     roleId={activeBlock!.roleId!}
                     roleName={activeBlock?.roleName}
                     roleColor={activeBlock?.roleColor}
-                    isToday={true}
+                    scheduledFor={todayISO()}
                     compact={true}
                     onTaskCreated={() => { fetchTasks(); }}
                     onCancel={() => { setShowAdd(false); setBacklogTasks([]); setSuggestion(null); }}

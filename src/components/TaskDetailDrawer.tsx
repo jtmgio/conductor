@@ -11,6 +11,7 @@ import { FontSizeControl } from "./FontSizeControl";
 import { useTaskChat } from "@/hooks/useTaskChat";
 import { useFontSize } from "@/hooks/useFontSize";
 import { useToast } from "@/components/ui/toast";
+import { todayISO, isScheduledForTodayOrPast } from "@/lib/dates";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -40,7 +41,7 @@ export interface DrawerTask {
   notes?: string | null;
   dueDate?: string | null;
   checklist?: ChecklistItem[] | null;
-  isToday?: boolean;
+  scheduledFor?: string | null;
   tags?: TagRelation[];
   role: { id: string; name: string; color: string };
 }
@@ -522,17 +523,17 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                   </button>
                   <button
                     onClick={() => {
-                      const newVal = !task.isToday;
-                      save({ isToday: newVal });
+                      const onTodayList = isScheduledForTodayOrPast(task.scheduledFor);
+                      save({ scheduledFor: onTodayList ? null : todayISO() });
                       window.dispatchEvent(new CustomEvent("tasks-changed"));
                     }}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[14px] font-medium transition-colors ${
-                      task.isToday
+                      isScheduledForTodayOrPast(task.scheduledFor)
                         ? "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
                         : "bg-[var(--surface-raised)] text-[var(--text-tertiary)] hover:text-amber-400 hover:bg-amber-500/10"
                     }`}
                   >
-                    <Sun className="w-4 h-4" /> {task.isToday ? "In Today" : "Add to Today"}
+                    <Sun className="w-4 h-4" /> {isScheduledForTodayOrPast(task.scheduledFor) ? "In Today" : "Add to Today"}
                   </button>
                   <div className="flex-1" />
                   <button

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { today, parseDateOnly } from "@/lib/dates";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -9,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const roleId = searchParams.get("roleId");
-  const today = searchParams.get("today");
+  const todayFilter = searchParams.get("today");
 
   const sourceType = searchParams.get("sourceType");
   const sourceId = searchParams.get("sourceId");
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
   const where: Record<string, unknown> = {};
   if (includeDone !== "true") where.done = false;
   if (roleId) where.roleId = roleId;
-  if (today === "true") where.isToday = true;
+  if (todayFilter === "true") where.scheduledFor = { lte: today() };
   if (sourceType) where.sourceType = sourceType;
   if (sourceId) where.sourceId = sourceId;
   if (includeIcebox !== "true") where.status = { not: "icebox" };
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
       title: body.title,
       priority: body.priority || "normal",
       status: body.status || "backlog",
-      isToday: body.isToday || false,
+      scheduledFor: parseDateOnly(body.scheduledFor),
       notes: body.notes,
       dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
       checklist: body.checklist,

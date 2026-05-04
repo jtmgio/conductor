@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
           title: t.title,
           priority: t.priority ?? "medium",
           status: t.status ?? "backlog",
-          isToday: t.isToday ?? false,
+          scheduledFor: t.scheduledFor ? new Date(t.scheduledFor) : null,
           done: t.done ?? false,
           doneAt: t.doneAt ? new Date(t.doneAt) : null,
           notes: t.notes,
