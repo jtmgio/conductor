@@ -79,6 +79,20 @@ export function EodPlanningPrompt() {
     return () => clearInterval(interval);
   }, [check]);
 
+  // Manual trigger — bypasses time/weekday/snooze/skip/lastPlannedFor gates.
+  // Useful for testing the modal flow without waiting until 4:45pm.
+  useEffect(() => {
+    const handler = () => {
+      const target = computeTarget();
+      if (!target) return;
+      setTargetDate(target.iso);
+      setTargetDayName(target.dayName);
+      setShow(true);
+    };
+    window.addEventListener("eod-trigger-now", handler);
+    return () => window.removeEventListener("eod-trigger-now", handler);
+  }, [computeTarget]);
+
   const onPlan = () => {
     if (!targetDate) return;
     setShow(false);

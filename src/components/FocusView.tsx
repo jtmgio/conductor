@@ -757,6 +757,15 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
                   return next.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
                 })()}
               </button>
+              {/* Test the 4:45pm modal on demand */}
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("eod-trigger-now"))}
+                className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+                title="Trigger the 4:45pm prompt now (test)"
+                aria-label="Trigger end-of-day prompt"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+              </button>
               {/* Review my day button */}
               {tasks.length > 0 && (
                 <button
