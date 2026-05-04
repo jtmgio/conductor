@@ -288,6 +288,16 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
   }, [fetchTasks]);
 
   useEffect(() => {
+    // EodPlanningPrompt dispatches this when the user taps "Plan tomorrow".
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ targetDate?: string }>).detail;
+      if (detail?.targetDate) setPickerTarget(detail.targetDate);
+    };
+    window.addEventListener("eod-plan-day", handler);
+    return () => window.removeEventListener("eod-plan-day", handler);
+  }, []);
+
+  useEffect(() => {
     if (typeof window !== "undefined" && localStorage.getItem("conductor-checklist-dismissed") === "true") {
       setShowChecklist(false);
     }

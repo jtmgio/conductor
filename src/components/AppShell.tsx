@@ -7,6 +7,7 @@ import { Sidebar } from "./Sidebar";
 import { MobileDrawer } from "./MobileDrawer";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { GlobalSearch } from "./GlobalSearch";
+import { EodPlanningPrompt } from "./EodPlanningPrompt";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 import { cn } from "@/lib/utils";
 import { useCheckInTimer } from "@/hooks/useCheckInTimer";
@@ -165,6 +166,9 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
       <KeyboardShortcuts open={showShortcuts} onClose={closeShortcuts} />
       {/* GlobalSearch always mounted for ⌘K even when sidebar is collapsed */}
       {sidebarCollapsed && <GlobalSearch hideTrigger />}
+
+      {/* End-of-day planning prompt — fires at 4:45pm Mon-Fri if not yet planned */}
+      <EodPlanningPrompt />
 
       {/* Communication check-in dialog */}
       <AnimatePresence>
