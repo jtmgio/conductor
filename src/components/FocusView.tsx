@@ -79,7 +79,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
   const [viewMode, setViewMode] = useState<"list" | "board">("board");
   const [boardDragId, setBoardDragId] = useState<string | null>(null);
   const [boardDragOverCol, setBoardDragOverCol] = useState<string | null>(null);
-  const [blockOverrideIdx, setBlockOverrideIdx] = useState<number | null>(null);
+  const [blockOverrideId, setBlockOverrideId] = useState<string | null>(null);
   const [onboarding, setOnboarding] = useState<Record<string, boolean> | null>(null);
   const [showChecklist, setShowChecklist] = useState(true);
   const [suggestion, setSuggestion] = useState<{
@@ -134,7 +134,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     }
 
     // Skip if user has manually overridden block
-    if (blockOverrideIdx !== null) {
+    if (blockOverrideId !== null) {
       prevRoleIdRef.current = newRoleId;
       return;
     }
@@ -156,7 +156,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     });
 
     // Clear any manual block override so we snap to the new block
-    setBlockOverrideIdx(null);
+    setBlockOverrideId(null);
   }, [currentBlock?.roleId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-trigger after pause expires
@@ -181,21 +181,22 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     return () => clearTimeout(timer);
   }, [pauseUntil, currentBlock]);
 
-  // Block navigation: override lets user cycle through all blocks
+  // Block navigation: override lets user cycle through all blocks (ID-based for stability during rebalance)
   const currentBlockIdx = allBlocks.findIndex((b) => b.id === currentBlock?.id);
-  const activeIdx = blockOverrideIdx !== null ? blockOverrideIdx : currentBlockIdx;
+  const overrideIdx = blockOverrideId ? allBlocks.findIndex((b) => b.id === blockOverrideId) : -1;
+  const activeIdx = overrideIdx >= 0 ? overrideIdx : currentBlockIdx;
   const activeBlock = activeIdx >= 0 ? allBlocks[activeIdx] : currentBlock;
-  const isOverridden = blockOverrideIdx !== null && blockOverrideIdx !== currentBlockIdx;
+  const isOverridden = blockOverrideId !== null && overrideIdx !== currentBlockIdx;
   const canGoPrev = activeIdx > 0;
   const canGoNext = activeIdx < allBlocks.length - 1;
 
   const goToPrevBlock = () => {
-    if (canGoPrev) setBlockOverrideIdx(activeIdx - 1);
+    if (canGoPrev) setBlockOverrideId(allBlocks[activeIdx - 1]?.id || null);
   };
   const goToNextBlock = () => {
-    if (canGoNext) setBlockOverrideIdx(activeIdx + 1);
+    if (canGoNext) setBlockOverrideId(allBlocks[activeIdx + 1]?.id || null);
   };
-  const resetToCurrentBlock = () => setBlockOverrideIdx(null);
+  const resetToCurrentBlock = () => setBlockOverrideId(null);
 
   // Focus-specific keyboard shortcuts
   const focusShortcuts: Shortcut[] = useMemo(() => [
@@ -949,7 +950,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
             setTransitionRole(null);
             // Stay on previous block
             const prevIdx = currentBlockIdx > 0 ? currentBlockIdx - 1 : 0;
-            setBlockOverrideIdx(prevIdx);
+            setBlockOverrideId(allBlocks[prevIdx]?.id || null);
           }}
         />
       )}

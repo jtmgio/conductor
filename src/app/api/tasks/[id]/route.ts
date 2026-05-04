@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { invalidateRebalanceCache } from "@/lib/schedule-rebalance";
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -30,6 +31,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 
   await prisma.task.update({ where: { id: params.id }, data });
+
+  // Invalidate rebalance cache when done status changes (affects schedule)
+  if (body.done !== undefined) invalidateRebalanceCache();
 
   if (body.tags !== undefined) {
     const tagRecords = await Promise.all(

@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 const TIMEZONE = process.env.TIMEZONE || "America/New_York";
 
 /** Get current time in the configured timezone */
-function localNow(): Date {
+export function localNow(): Date {
   const now = new Date();
   const localStr = now.toLocaleString("en-US", { timeZone: TIMEZONE });
   return new Date(localStr);
@@ -54,8 +54,12 @@ export function invalidateScheduleCache() {
   cacheTimestamp = 0;
 }
 
-function timeToMinutes(h: number, m: number): number {
+export function timeToMinutes(h: number, m: number): number {
   return h * 60 + m;
+}
+
+export function minutesToTime(totalMinutes: number): { hour: number; minute: number } {
+  return { hour: Math.floor(totalMinutes / 60), minute: totalMinutes % 60 };
 }
 
 export async function getCurrentBlock(now?: Date): Promise<{

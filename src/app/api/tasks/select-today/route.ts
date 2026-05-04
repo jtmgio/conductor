@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { invalidateRebalanceCache } from "@/lib/schedule-rebalance";
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -17,5 +18,6 @@ export async function POST(req: NextRequest) {
     data: { isToday: true },
   });
 
+  invalidateRebalanceCache();
   return NextResponse.json({ ok: true, count: taskIds.length });
 }

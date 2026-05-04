@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { invalidateRebalanceCache } from "@/lib/schedule-rebalance";
 
 export async function POST() {
   const session = await getServerSession(authOptions);
@@ -23,5 +24,6 @@ export async function POST() {
     thawed = result.count;
   }
 
+  invalidateRebalanceCache();
   return NextResponse.json({ ok: true, thawed });
 }
