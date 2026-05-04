@@ -1,22 +1,54 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Pencil, Trash2, X } from "lucide-react";
+import { Check, Pencil, Trash2, X, Calendar, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Task { id: string; title: string; priority: string; roleId: string; }
 interface Role { id: string; name: string; color: string; }
+
+export interface PickerSubmit {
+  selectedIds: string[];
+  /** Pre-picked items the user un-checked — caller should clear their scheduledFor. */
+  unscheduleIds: string[];
+}
+
 interface MorningPickProps {
   tasksByRole: Array<{ role: Role; tasks: Task[] }>;
   roles: Role[];
-  onConfirm: (selectedIds: string[]) => void;
+  onConfirm: (submit: PickerSubmit) => void;
   onSkip: () => void;
   onRefresh: () => void;
+  /** Pre-checked task IDs (e.g., in-progress carry-forward, calendar prep). */
+  prePickedIds?: Set<string>;
+  /** Source label per pre-picked id, used to render an icon hint. */
+  prePickedSources?: Map<string, "in_progress" | "calendar">;
+  /** Eyebrow text above the title. Defaults to "Morning Pick". */
+  eyebrow?: string;
+  /** Title. Defaults to today's day name. */
+  title?: string;
+  /** Subtitle copy. */
+  subtitle?: string;
+  /** CTA label. Defaults to "Go →". */
+  ctaLabel?: string;
 }
 
-export function MorningPick({ tasksByRole, roles, onConfirm, onSkip, onRefresh }: MorningPickProps) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+export function MorningPick({
+  tasksByRole,
+  roles,
+  onConfirm,
+  onSkip,
+  onRefresh,
+  prePickedIds,
+  prePickedSources,
+  eyebrow,
+  title,
+  subtitle,
+  ctaLabel,
+}: MorningPickProps) {
+  const initialSelected = useMemo(() => new Set(prePickedIds ?? []), [prePickedIds]);
+  const [selected, setSelected] = useState<Set<string>>(initialSelected);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [editRoleId, setEditRoleId] = useState<string | null>(null);
@@ -24,7 +56,7 @@ export function MorningPick({ tasksByRole, roles, onConfirm, onSkip, onRefresh }
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const editInputRef = useRef<HTMLInputElement>(null);
 
-  // Poll for new tasks while morning pick is open (catches Cmd+K additions)
+  // Poll for new tasks while picker is open (catches Cmd+K additions)
   useEffect(() => {
     const interval = setInterval(onRefresh, 3000);
     return () => clearInterval(interval);
@@ -48,16 +80,13 @@ export function MorningPick({ tasksByRole, roles, onConfirm, onSkip, onRefresh }
     if (!trimmed) { setEditingId(null); return; }
 
     const updates: Record<string, string> = {};
-    // Find original task
     const origTask = tasksByRole.flatMap(({ tasks }) => tasks).find((t) => t.id === editingId);
     const prevEdits = localEdits.get(editingId);
-    const origTitle = prevEdits?.title ?? origTask?.title;
     const origRoleId = prevEdits?.roleId ?? origTask?.roleId;
 
     if (trimmed !== origTask?.title) updates.title = trimmed;
     if (editRoleId && editRoleId !== origTask?.roleId) updates.roleId = editRoleId;
 
-    // Update local edits
     setLocalEdits((prev) => {
       const next = new Map(prev);
       next.set(editingId, {
@@ -89,7 +118,10 @@ export function MorningPick({ tasksByRole, roles, onConfirm, onSkip, onRefresh }
     if (editingId && editInputRef.current) editInputRef.current.focus();
   }, [editingId]);
 
-  const dayName = new Date().toLocaleDateString("en-US", { weekday: "long" });
+  const dayName = title ?? new Date().toLocaleDateString("en-US", { weekday: "long" });
+  const eyebrowText = eyebrow ?? "Morning Pick";
+  const subtitleText = subtitle ?? "Pick the tasks you want to focus on. Only selected tasks will show in Focus mode during each role's time block.";
+  const ctaText = ctaLabel ?? "Go →";
 
   // Build display data: apply local edits (role reassignments) on top of prop data
   const allTasks = tasksByRole.flatMap(({ tasks }) => tasks);
@@ -108,12 +140,20 @@ export function MorningPick({ tasksByRole, roles, onConfirm, onSkip, onRefresh }
 
   const rolesWithTasks = new Set(displayByRole.map(({ role }) => role.id));
 
+  const handleConfirm = () => {
+    const selectedIds = Array.from(selected);
+    const unscheduleIds = prePickedIds
+      ? Array.from(prePickedIds).filter((id) => !selected.has(id))
+      : [];
+    onConfirm({ selectedIds, unscheduleIds });
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="fixed inset-0 z-[60] bg-[var(--surface)] overflow-y-auto">
       <div className="w-full px-5 pt-10 pb-36">
-        <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] mb-1.5">Morning Pick</p>
+        <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] mb-1.5">{eyebrowText}</p>
         <h1 className="text-[36px] font-bold text-[var(--text-primary)]">{dayName}</h1>
-        <p className="text-[15px] text-[var(--text-tertiary)] mt-2 leading-relaxed">Pick the tasks you want to focus on today. Only selected tasks will show in Focus mode during each role&apos;s time block.</p>
+        <p className="text-[15px] text-[var(--text-tertiary)] mt-2 leading-relaxed">{subtitleText}</p>
         <div className="flex gap-1.5 mt-5 mb-10">
           {roles.map((role) => (
             <div key={role.id} className="flex-1 h-1 rounded-full" style={{ backgroundColor: rolesWithTasks.has(role.id) ? role.color : "rgba(255,255,255,0.1)" }} />
@@ -138,6 +178,7 @@ export function MorningPick({ tasksByRole, roles, onConfirm, onSkip, onRefresh }
                       const displayTitle = edits?.title ?? task.title;
                       const picked = selected.has(task.id);
                       const isEditing = editingId === task.id;
+                      const source = prePickedSources?.get(task.id);
 
                       return (
                         <motion.div
@@ -149,7 +190,6 @@ export function MorningPick({ tasksByRole, roles, onConfirm, onSkip, onRefresh }
                         >
                           {isEditing ? (
                             <div className="px-4 py-3 space-y-3">
-                              {/* Role pills — number keys select role when title is empty */}
                               <div className="flex gap-1.5 flex-wrap">
                                 {roles.map((r, i) => (
                                   <button
@@ -169,7 +209,6 @@ export function MorningPick({ tasksByRole, roles, onConfirm, onSkip, onRefresh }
                                   </button>
                                 ))}
                               </div>
-                              {/* Title input + actions */}
                               <div className="flex items-center gap-2">
                                 <input
                                   ref={editInputRef}
@@ -206,11 +245,18 @@ export function MorningPick({ tasksByRole, roles, onConfirm, onSkip, onRefresh }
                                 className="flex items-center gap-3 flex-1 min-w-0 text-left px-4 py-3 active:scale-[0.99]"
                               >
                                 {picked ? (
-                                  <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: role.color }}><Check className="w-3.5 h-3.5 text-white" strokeWidth={3} /></div>
+                                  <div
+                                    className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
+                                    style={{ backgroundColor: source ? `${role.color}99` : role.color }}
+                                  >
+                                    <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                                  </div>
                                 ) : (
                                   <div className="w-6 h-6 rounded-lg border-2 border-[var(--border-default)] flex-shrink-0" />
                                 )}
                                 <div className="flex-1 min-w-0 flex items-center gap-2">
+                                  {source === "calendar" && <Calendar className="w-3.5 h-3.5 text-[var(--text-tertiary)] shrink-0" aria-label="From calendar" />}
+                                  {source === "in_progress" && <Clock className="w-3.5 h-3.5 text-[var(--text-tertiary)] shrink-0" aria-label="In progress, rolling forward" />}
                                   <span className={cn("text-[17px] truncate", picked ? "line-through text-[var(--text-tertiary)]" : "text-[var(--text-primary)]")}>{displayTitle}</span>
                                   {task.priority === "urgent" && <span className="text-[13px] font-bold text-red-400 uppercase shrink-0">URGENT</span>}
                                 </div>
@@ -243,7 +289,7 @@ export function MorningPick({ tasksByRole, roles, onConfirm, onSkip, onRefresh }
       </div>
       <div className="fixed bottom-0 left-0 right-0 bg-[var(--surface)]/95 backdrop-blur-sm border-t border-[var(--border-subtle)] px-5 pb-[env(safe-area-inset-bottom)] pt-4">
         <div className="w-full space-y-2 pb-4">
-          <button onClick={() => onConfirm(Array.from(selected))} disabled={selected.size === 0} className="w-full py-4 bg-[var(--accent-blue)] text-white text-[18px] font-semibold rounded-2xl transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed">Go &rarr;</button>
+          <button onClick={handleConfirm} disabled={selected.size === 0} className="w-full py-4 bg-[var(--accent-blue)] text-white text-[18px] font-semibold rounded-2xl transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed">{ctaText}</button>
           <button onClick={onSkip} className="w-full text-center text-[16px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] py-2 transition-colors">Skip</button>
         </div>
       </div>

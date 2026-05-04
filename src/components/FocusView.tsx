@@ -18,7 +18,8 @@ import { useCheckInTimer } from "@/hooks/useCheckInTimer";
 import { useBlockTimer } from "@/hooks/useBlockTimer";
 import { TaskBrainDump } from "@/components/TaskBrainDump";
 import { playSound } from "@/lib/sounds";
-import { todayISO } from "@/lib/dates";
+import { todayISO, parseDateOnly, today, nextWorkingDay, formatDateOnly } from "@/lib/dates";
+import type { PickerSubmit } from "./MorningPick";
 import Link from "next/link";
 
 interface Task {
@@ -70,7 +71,7 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [showMorning, setShowMorning] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -246,21 +247,33 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
 
   const fetchTasks = useCallback(async () => {
     try {
-      const [todayRes, allRes, rolesRes] = await Promise.all([
+      const [todayRes, allRes, rolesRes, profileRes] = await Promise.all([
         fetch("/api/tasks?today=true"),
         fetch("/api/tasks"),
         fetch("/api/roles"),
+        fetch("/api/profile"),
       ]);
       const todayData = await todayRes.json();
       const allData = await allRes.json();
       const rolesData = await rolesRes.json();
+      const profileData = await profileRes.json().catch(() => ({}));
 
       setTasks(Array.isArray(todayData) ? todayData : []);
       setAllTasks(Array.isArray(allData) ? allData : []);
       setRoles(Array.isArray(rolesData) ? rolesData : []);
+      const planned = profileData?.lastPlannedFor ? String(profileData.lastPlannedFor).slice(0, 10) : null;
 
-      if (Array.isArray(todayData) && todayData.length === 0 && Array.isArray(allData) && allData.length > 0) {
-        setShowMorning(true);
+      // Show today's picker as a fallback when:
+      //   (a) no tasks scheduled for today, but there's stuff in backlog, and
+      //   (b) the user hasn't already finished planning today (lastPlannedFor < today)
+      const todayIso = todayISO();
+      const hasPlannedToday = planned !== null && planned >= todayIso;
+      if (
+        !hasPlannedToday &&
+        Array.isArray(todayData) && todayData.length === 0 &&
+        Array.isArray(allData) && allData.length > 0
+      ) {
+        setPickerTarget(todayIso);
       }
     } catch {}
     setLoading(false);
@@ -361,14 +374,26 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     }).catch(() => {});
   };
 
-  const handleMorningConfirm = async (ids: string[]) => {
-    await fetch("/api/tasks/select-today", {
+  const handlePickerConfirm = async ({ selectedIds, unscheduleIds }: PickerSubmit) => {
+    if (!pickerTarget) return;
+    await fetch("/api/tasks/plan-day", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ taskIds: ids }),
+      body: JSON.stringify({
+        targetDate: pickerTarget,
+        selectedIds,
+        unscheduleIds,
+        setLastPlannedFor: true,
+      }),
     });
-    setShowMorning(false);
+    setPickerTarget(null);
     fetchTasks();
+  };
+
+  const openPickerForNextDay = () => {
+    const target = parseDateOnly(todayISO());
+    if (!target) return;
+    setPickerTarget(formatDateOnly(nextWorkingDay(target))!);
   };
 
   const addTask = async () => {
@@ -497,21 +522,59 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     );
   }
 
-  if (showMorning) {
+  if (pickerTarget) {
+    const targetDateObj = parseDateOnly(pickerTarget);
+    const todayObj = today();
+    const isTodayTarget = targetDateObj?.getTime() === todayObj.getTime();
+    const targetDayName = targetDateObj?.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" }) ?? pickerTarget;
+
+    // Pre-pick: in-progress tasks (auto-roll forward) + tasks already scheduled for the target date
+    const prePickedIds = new Set<string>();
+    const prePickedSources = new Map<string, "in_progress" | "calendar">();
+    for (const t of allTasks) {
+      if (t.done) continue;
+      const scheduled = t.scheduledFor ? String(t.scheduledFor).slice(0, 10) : null;
+      if (scheduled === pickerTarget) {
+        prePickedIds.add(t.id);
+        prePickedSources.set(t.id, "calendar");
+      } else if (t.status === "in_progress" && !scheduled) {
+        prePickedIds.add(t.id);
+        prePickedSources.set(t.id, "in_progress");
+      }
+    }
+
+    // Show backlog + in-progress + already-scheduled-for-target. Hide stuff
+    // committed to other days (don't yank a task off Thursday's plan).
+    const eligible = allTasks.filter((t) => {
+      if (t.done) return false;
+      if (t.status === "icebox") return false;
+      const scheduled = t.scheduledFor ? String(t.scheduledFor).slice(0, 10) : null;
+      if (!scheduled) return true; // backlog
+      return scheduled === pickerTarget; // already on this day's list
+    });
+
     const tasksByRole = roles
-      .filter((r) => allTasks.some((t) => t.roleId === r.id))
+      .filter((r) => eligible.some((t) => t.roleId === r.id))
       .map((role) => ({
         role,
-        tasks: allTasks.filter((t) => t.roleId === role.id),
+        tasks: eligible.filter((t) => t.roleId === role.id),
       }));
 
     return (
       <MorningPick
         tasksByRole={tasksByRole}
         roles={roles}
-        onConfirm={handleMorningConfirm}
-        onSkip={() => setShowMorning(false)}
+        onConfirm={handlePickerConfirm}
+        onSkip={() => setPickerTarget(null)}
         onRefresh={fetchTasks}
+        prePickedIds={prePickedIds}
+        prePickedSources={prePickedSources}
+        eyebrow={isTodayTarget ? "Morning Pick" : "Plan Ahead"}
+        title={isTodayTarget ? targetDayName : `Plan ${targetDayName}`}
+        subtitle={isTodayTarget
+          ? "Pick the tasks you want to focus on. Only selected tasks will show in Focus mode during each role's time block."
+          : "Set tomorrow's list now so your evening is free of planning. In-progress and calendar prep are pre-checked — uncheck anything you'd rather skip."}
+        ctaLabel={isTodayTarget ? "Go →" : "Done — set the day"}
       />
     );
   }
@@ -670,6 +733,20 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
               )}
             </div>
             <div className="flex items-center gap-2">
+              {/* Plan tomorrow */}
+              <button
+                onClick={openPickerForNextDay}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] border border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--accent-blue)] hover:border-[var(--accent-blue)]/30 transition-colors"
+                title="Plan tomorrow's task list now"
+              >
+                <Moon className="h-3.5 w-3.5" />
+                Plan {(() => {
+                  const t = parseDateOnly(todayISO());
+                  if (!t) return "next";
+                  const next = nextWorkingDay(t);
+                  return next.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+                })()}
+              </button>
               {/* Review my day button */}
               {tasks.length > 0 && (
                 <button
