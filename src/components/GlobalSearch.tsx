@@ -384,17 +384,7 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
                     {/* Preview state */}
                     {fmtHook.state === "preview" && fmtHook.formatted && (
                       <motion.div key="fmt-preview" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
-                        <div ref={formatPreviewRef} className="border border-[var(--border-subtle)] rounded-xl bg-[var(--surface)] p-4 text-[14px] text-[var(--text-primary)] leading-relaxed [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_ul]:pl-5 [&_ul]:list-disc [&_ol]:pl-5 [&_ol]:list-decimal [&_li]:mb-1 [&_h3]:font-semibold [&_h3]:text-[15px] [&_h3]:mb-2 [&_h4]:font-semibold [&_h4]:text-[14px] [&_h4]:mb-1 [&_blockquote]:border-l-2 [&_blockquote]:border-[var(--border-subtle)] [&_blockquote]:pl-3 [&_blockquote]:text-[var(--text-secondary)] [&_code]:bg-white/5 [&_code]:px-1 [&_code]:rounded [&_code]:text-[13px]">
-                          {fmtHook.format === "email" ? (
-                            <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(fmtHook.formatted) }} />
-                          ) : fmtHook.format === "sms" ? (
-                            <pre className="whitespace-pre-wrap font-sans">{fmtHook.formatted}</pre>
-                          ) : (
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{fmtHook.formatted}</ReactMarkdown>
-                          )}
-                        </div>
-
-                        {/* Actions */}
+                        {/* Actions — pinned above the preview so long messages don't hide them */}
                         <div className="flex items-center justify-between">
                           <button
                             tabIndex={3}
@@ -417,6 +407,16 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
                             {fmtHook.copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                             {fmtHook.copied ? "Copied!" : "Copy"}
                           </button>
+                        </div>
+
+                        <div ref={formatPreviewRef} className="border border-[var(--border-subtle)] rounded-xl bg-[var(--surface)] p-4 text-[14px] text-[var(--text-primary)] leading-relaxed [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_ul]:pl-5 [&_ul]:list-disc [&_ol]:pl-5 [&_ol]:list-decimal [&_li]:mb-1 [&_h3]:font-semibold [&_h3]:text-[15px] [&_h3]:mb-2 [&_h4]:font-semibold [&_h4]:text-[14px] [&_h4]:mb-1 [&_blockquote]:border-l-2 [&_blockquote]:border-[var(--border-subtle)] [&_blockquote]:pl-3 [&_blockquote]:text-[var(--text-secondary)] [&_code]:bg-white/5 [&_code]:px-1 [&_code]:rounded [&_code]:text-[13px]">
+                          {fmtHook.format === "email" ? (
+                            <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(fmtHook.formatted) }} />
+                          ) : fmtHook.format === "sms" ? (
+                            <pre className="whitespace-pre-wrap font-sans">{fmtHook.formatted}</pre>
+                          ) : (
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{fmtHook.formatted}</ReactMarkdown>
+                          )}
                         </div>
                       </motion.div>
                     )}
