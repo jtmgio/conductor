@@ -15,14 +15,17 @@ Use these tags: <p>, <strong>, <em>, <ul>, <ol>, <li>, <br>, <h3>.
 Do NOT wrap in <html>/<body> — just the message content.
 Do NOT include a subject line or greeting unless the original had one.`,
 
-  slack: `Return the formatted message using standard markdown:
-- Bold: **text**
-- Italic: *text*
-- Bulleted list: - item (use dash, one item per line)
+  slack: `Return the formatted message using Slack mrkdwn — this is NOT standard markdown:
+- Bold: *text* (SINGLE asterisks — never **double asterisks**, Slack renders those as literal * characters)
+- Italic: _text_ (underscores, not asterisks)
+- Strikethrough: ~text~
+- Bulleted list: - item (dash, one item per line)
 - Numbered list: 1. item
-- Code: \`code\`
+- Code: \`code\`, multi-line code: \`\`\` on its own lines
 - Block quote: > text
-- Line breaks: use two newlines for paragraph breaks
+- Links: paste the bare URL — [markdown links](url) do NOT render in Slack
+- NO headers (# or ###) — use a short *bold* line as a section label instead
+- Line breaks: one blank line between paragraphs
 Do NOT use HTML tags. Do NOT use bullet character (•).`,
 
   teams: `Return the formatted message using standard markdown:
@@ -80,12 +83,19 @@ ${rawMessage}`;
       max_tokens: 2048,
     });
 
-    await trackUsage("format-message", "claude-sonnet-4-6", result.usage, roleId);
+    await trackUsage("format-message", result.model, result.usage, roleId);
 
     let formatted = result.text.trim();
     // Strip markdown code fences if present
     if (formatted.startsWith("```")) {
       formatted = formatted.replace(/^```(?:html|markdown|mrkdwn)?\n?/, "").replace(/\n?```$/, "").trim();
+    }
+    if (validFormat === "slack") {
+      // Safety net: models reflexively emit **markdown bold** and ### headers no matter
+      // the instructions; Slack renders both as literal characters
+      formatted = formatted
+        .replace(/\*\*(.+?)\*\*/g, "*$1*")
+        .replace(/^#{1,6}\s+(.+)$/gm, "*$1*");
     }
 
     return NextResponse.json({ formatted, format: validFormat });
