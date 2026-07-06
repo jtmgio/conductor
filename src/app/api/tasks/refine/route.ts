@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export const dynamic = "force-dynamic";
@@ -61,13 +61,13 @@ CRITICAL RULES:
 
   try {
     const result = await createCompletionWithLocalFallback({
-      model: "claude-haiku-4-5-20251001",
+      model: getDefaultTextModel(),
       system: "You are a task parser. Return only valid JSON.",
       messages: [{ role: "user", content: prompt }],
       max_tokens: 1024,
     });
 
-    await trackUsage("task-refine", "claude-haiku-4-5-20251001", result.usage, roleId || undefined);
+    await trackUsage("task-refine", result.model, result.usage, roleId || undefined);
 
     let text = result.text.trim();
     // Strip markdown code fences if present

@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { assembleContext, getConversationMessages } from "@/lib/ai-context";
-import { createCompletionWithLocalFallback, ALLOWED_MODELS, type AIMessage, type AIContentBlock } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback, ALLOWED_MODELS, type AIMessage, type AIContentBlock, getDefaultTextModel } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export async function POST(req: NextRequest, { params }: { params: { roleId: string } }) {
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
   }
   if (!conv) return NextResponse.json({ error: "Conversation thread not found" }, { status: 404 });
 
-  const selectedModel = ALLOWED_MODELS.includes(model) ? model : "claude-sonnet-4-6";
+  const selectedModel = ALLOWED_MODELS.includes(model) ? model : getDefaultTextModel();
 
   const { systemPrompt, contextMessages } = await assembleContext({
     roleId: params.roleId,

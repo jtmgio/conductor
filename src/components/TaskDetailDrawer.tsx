@@ -55,7 +55,9 @@ interface TaskDetailDrawerProps {
   onDelete: (id: string) => void;
 }
 
+// Local first (default) — keep the local id in sync with LOCAL_AI_MODEL
 const MODELS = [
+  { id: "local/mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit", label: "Qwen3 30B (local)" },
   { id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
   { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
   { id: "claude-opus-4-6", label: "Opus 4.6" },

@@ -4,7 +4,7 @@ Reusable testing script for verifying all features after a fresh deploy or major
 
 ## Prerequisites
 
-- App running at `http://localhost:3100` (Docker: `docker compose up -d`)
+- App running at `http://localhost:5402` (Docker: `docker compose up -d`)
 - Fresh database (or known state)
 - Anthropic API key configured in `.env`
 
@@ -29,7 +29,7 @@ docker compose restart conductor
 ## Phase 1: Setup Wizard
 
 ### 1.1 Welcome Screen
-- [ ] Navigate to `http://localhost:3100` — should redirect to `/setup`
+- [ ] Navigate to `http://localhost:5402` — should redirect to `/setup`
 - [ ] "Welcome to Conductor" heading visible
 - [ ] "Get Started" button visible
 - [ ] "Import config file" option visible

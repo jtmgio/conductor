@@ -141,7 +141,7 @@ After picking (or skipping), Focus view takes over and shows your current block'
 
 1. Select the role this meeting was for
 2. Paste the transcript text OR upload a file (screenshot, PDF, Word doc)
-3. Hit "Process" — Claude reads the content and extracts:
+3. Hit "Process" — the AI reads the content and extracts:
    - **Tasks** — action items assigned to you
    - **Follow-ups** — things other people owe you (with their name)
    - **Decisions** — important decisions that were made
@@ -179,11 +179,11 @@ Follow-ups can be created manually or extracted automatically from meeting trans
     title: "Drafting Messages",
     category: "daily-workflow",
     summary: "AI writes messages in your voice. Select a role, describe what you need, get 2-3 variants.",
-    content: `Go to the **AI** tab, select a role, and ask Claude to draft a message.
+    content: `Go to the **AI** tab, select a role, and ask the AI to draft a message.
 
 Example: "Draft a message to Sarah about the deployment timeline"
 
-Claude will:
+The AI will:
 - Match your communication style (configured in Settings > Profile)
 - Use the right tone for the role and platform (Slack vs Teams)
 - Reference the staff directory to use the right names
@@ -249,23 +249,29 @@ Each artifact has a header with "Copy code" and "Expand" buttons.`,
     slug: "model-selection",
     title: "AI Model Selection",
     category: "ai-features",
-    summary: "Choose between Sonnet (fast), Haiku (cheapest), and Opus (most capable).",
-    content: `The AI chat supports three Claude models, selectable via the dropdown in the top right:
+    summary: "Local Qwen3 (free, default) plus Claude and GPT cloud models, selectable per chat.",
+    content: `The AI chat supports local and cloud models, selectable via the dropdown in the top right:
 
-**Sonnet 4.6** (default) — Fast and capable. Best for most tasks: drafting messages, standup prep, general questions.
+**Qwen3 30B (local)** (default) — Runs on this machine via MLX. Free, private, no API key needed. Fast for chat, extraction, summaries, and drafts. Text-only: it cannot analyze images.
 
-**Haiku 4.5** — Fastest and cheapest. Good for simple questions, quick lookups, and when you want near-instant responses.
+**Sonnet 4.6** — Anthropic's balanced cloud model. Best quality for nuanced drafting and long role conversations. Requires an Anthropic API key with credits.
 
-**Opus 4.6** — Most capable. Use for complex analysis, detailed sprint planning, nuanced drafting, or when Sonnet's response isn't quite right.
+**Haiku 4.5** — Fastest and cheapest cloud model. Good for quick lookups.
 
-**Cost tracking:** Every AI call is tracked. View usage and costs in Settings > System > Costs.`,
+**Opus 4.6** — Most capable cloud model. Use for complex analysis or when Sonnet's response isn't quite right.
+
+**GPT-5.4 family** — Available when an OpenAI key is configured.
+
+**Automatic fallback:** If a cloud model fails (no credits, outage), text requests automatically retry on the local model — features degrade gracefully instead of breaking. Image analysis always needs a cloud model.
+
+**Cost tracking:** Every AI call is tracked. Local calls cost $0. View usage and costs in Settings > System > Costs.`,
   },
   {
     slug: "ai-context",
     title: "How AI Context Works",
     category: "ai-features",
-    summary: "Every AI call assembles 5 layers of context so Claude knows your roles, tasks, and style.",
-    content: `When you send a message in the AI chat, Conductor assembles context in 5 layers before calling Claude:
+    summary: "Every AI call assembles 5 layers of context so the AI knows your roles, tasks, and style.",
+    content: `When you send a message in the AI chat, Conductor assembles context in 5 layers before calling the model:
 
 **Layer 1: System prompt** — Your roles, the priority waterfall, schedule rules, and artifact instructions.
 
@@ -279,7 +285,7 @@ Each artifact has a header with "Copy code" and "Expand" buttons.`,
 
 Plus the **last 10 messages** from your conversation history with that role.
 
-This means Claude always knows: who you are, what role you're in, what you're working on, who your team is, and what your goals are — without you having to re-explain every time.`,
+This means the AI always knows: who you are, what role you're in, what you're working on, who your team is, and what your goals are — without you having to re-explain every time.`,
   },
 
   // === INTEGRATIONS ===
@@ -318,7 +324,7 @@ Tasks from Linear show a "Linear" indicator badge so you know where they came fr
     title: "Granola Integration",
     category: "integrations",
     summary: "Auto-sync meeting transcripts from Granola. Maps folders to roles, AI extracts everything.",
-    content: `Granola captures meeting transcripts across all platforms (Google Meet, Teams, Zoom, Slack huddles). Conductor syncs with Granola every 30 minutes to auto-process new meeting notes.
+    content: `Granola captures meeting transcripts across all platforms (Google Meet, Teams, Zoom, Slack huddles). Conductor syncs with Granola every hour to auto-process new meeting notes.
 
 **Setup:**
 1. Ensure you have Granola Business plan ($18/month) for API access
@@ -335,7 +341,7 @@ Notes without a recognized folder mapping are skipped.
 1. Conductor fetches new notes from Granola
 2. Maps each note's folder to a role
 3. Fetches the full transcript with speaker labels
-4. Sends Granola's AI summary + transcript to Claude for extraction
+4. Sends Granola's AI summary + transcript to the AI for extraction
 5. Creates tasks (your action items), follow-ups (what others owe you), and decision notes
 6. Everything is tagged and attributed to the correct role
 
@@ -343,20 +349,25 @@ Notes without a recognized folder mapping are skipped.
   },
   {
     slug: "calendar-processing",
-    title: "Calendar Processing",
+    title: "Calendar Sync",
     category: "integrations",
-    summary: "Screenshot your calendar and AI analyzes it to create meeting prep tasks.",
-    content: `Conductor can process calendar screenshots to identify meetings and create prep tasks.
+    summary: "Meetings sync automatically from macOS Calendar every hour; AI creates prep tasks.",
+    content: `Conductor reads your meetings directly from macOS Calendar (via EventKit) and creates prep tasks for each one.
 
-**How to use:**
-1. Take a screenshot of your calendar (day or week view)
-2. Go to Inbox and upload the screenshot
-3. Select the relevant role
-4. Claude analyzes the image and extracts meeting information
+**How it works (automatic):**
+1. A LaunchAgent runs hourly on the hour, 7 AM–4 PM on weekdays
+2. It reads today's events from Calendar.app — no screenshots needed
+3. Each calendar account maps to a role (configured in Settings > Integrations > Calendar)
+4. AI generates a short prep task per meeting, flags scheduling conflicts, and summarizes the day
+5. The AgendaStrip on the Focus page refreshes within 15 seconds of a sync
 
-The AI identifies meeting times, titles, and attendees, then creates tasks for meeting preparation.
+**Manual sync:** run \`bash cron/calendar-sync.sh\` from the repo, or wait for the next hourly run.
 
-**Calendar ignore patterns:** In Settings > Integrations > Calendar, you can configure patterns for meetings to skip (e.g., "OOO", "Focus Time", "Lunch", "Training").`,
+**Screenshot fallback:** if EventKit isn't available (e.g., running on a non-Mac server), upload a calendar screenshot in Settings > Integrations > Calendar. This path requires an Anthropic API key (vision analysis).
+
+**Calendar ignore patterns:** In Settings > Integrations > Calendar, configure patterns for meetings to skip (e.g., "OOO", "Focus Time", "Lunch", "Training").
+
+**Troubleshooting:** see docs/RUNBOOK_CALENDAR_SYNC.md in the repo.`,
   },
 
   // === VIEWS & NAVIGATION ===
@@ -396,7 +407,7 @@ This view is great for getting a visual overview across all your roles or drilli
 **The processing flow:**
 1. Select a role
 2. Upload or paste content
-3. Hit "Process" — Claude analyzes the content
+3. Hit "Process" — the AI analyzes the content
 4. Review extracted items: tasks, follow-ups, decisions, key quotes
 5. Uncheck anything you don't want
 6. Hit "Confirm" to save
@@ -430,7 +441,7 @@ Results are grouped by type and show the role each item belongs to. Click a resu
 - Inbox — Process files and transcripts
 - Tracker — Follow-ups you're waiting on
 - Board — Kanban view of tasks by status
-- AI — Chat with Claude per role
+- AI — Chat with the AI per role
 - Settings — Configuration, integrations, skills, reference
 
 **Mobile:** Same items in a slide-out drawer, accessible via the hamburger menu.
@@ -543,7 +554,7 @@ On your first Focus page load each day, Conductor generates a personalized morni
 
 The briefing appears as a card at the top of the Focus page. Click the X to dismiss it — it won't show again until the next day.
 
-**How it works:** The briefing assembles your full context (tasks, follow-ups, schedule, roles) and sends it to Claude for a concise summary. Uses Sonnet for quality.`,
+**How it works:** The briefing assembles your full context (tasks, follow-ups, schedule, roles) and sends it to the AI for a concise summary. Runs on the local model by default.`,
   },
   {
     slug: "role-handoff",
@@ -576,7 +587,7 @@ Press **Cmd+K** to open search. Type your query — for keyword searches, result
 - "enrollment form" → Standard keyword results across tasks, follow-ups, notes
 - "What's the status of the NestJS migration?" → AI answer with cited sources
 
-AI search runs a keyword search first, then sends the top results to Claude for a synthesized answer. Sources are cited so you know where the info came from.`,
+AI search runs a keyword search first, then sends the top results to the AI for a synthesized answer. Sources are cited so you know where the info came from.`,
   },
   {
     slug: "create-tasks-from-chat",

@@ -13,7 +13,7 @@ Conductor is a personal productivity operating system for an engineer managing m
 - PostgreSQL 16 (local on EC2 in prod, Docker in dev)
 - Prisma ORM (16 models)
 - NextAuth (credentials provider, single-user)
-- Anthropic Claude API (Sonnet 4.6 default, Haiku 4.5, Opus 4.6 selectable)
+- Local MLX server (Qwen3 30B, default for text) + Anthropic Claude API (Sonnet 4.6, Haiku 4.5, Opus 4.6) + OpenAI (GPT-5.4 family) — see docs/RUNBOOK_LOCAL_AI.md
 - File processing: pdf-parse, mammoth, sharp
 
 ## Key schema notes
@@ -239,7 +239,7 @@ If you use Granola for meeting transcripts:
 1. Get a Granola API key (requires Business plan)
 2. Set `GRANOLA_API_KEY` in `.env` or in Settings > System > API Keys
 3. In **Settings > Integrations**, configure Granola folder→role mappings
-4. The Docker `conductor-cron` sidecar syncs every 30 minutes automatically
+4. The Docker `conductor-cron` sidecar syncs hourly automatically
 
 ### Step 8: Set up database backups (optional)
 
@@ -338,7 +338,7 @@ conductor/
 ├── cron/                       # Sync scripts (run on macOS host, not inside Docker)
 │   ├── calendar-events.swift   # EventKit reader — outputs today's events as JSON
 │   ├── calendar-sync.sh        # Calendar sync runner (EventKit → API)
-│   ├── com.conductor.calendar-sync.plist  # LaunchAgent (30-min calendar sync)
+│   ├── com.conductor.calendar-sync.plist  # LaunchAgent (hourly calendar sync)
 │   ├── sync.sh                 # Unified sync runner (Linear, Granola)
 │   └── sync-crontab            # Cron schedule (Linear, Granola)
 ├── infra/                      # AWS CDK stack
@@ -432,7 +432,7 @@ Qwen3 30B (local MLX, current default), Sonnet 4.6, Haiku 4.5, Opus 4.6, GPT-5.4
 - Auth: `x-sync-secret` header
 
 ### Granola
-- 30-min sync via cron/LaunchAgent → `POST /api/integrations/granola/sync`
+- Hourly sync via cron/LaunchAgent → `POST /api/integrations/granola/sync`
 - Maps Granola folder names to Conductor roles (configured in Settings > Integrations)
 - Fetches AI summary + speaker-labeled transcript → Claude extracts tasks, follow-ups, decisions
 - Dedup: `sourceType="granola"`, `sourceId="granola-{noteId}"`

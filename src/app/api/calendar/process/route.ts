@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { trackUsage } from "@/lib/ai-usage";
-import { createCompletion, createCompletionWithLocalFallback } from "@/lib/ai-provider";
+import { createCompletion, createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
 import { logSync, type SyncTrigger } from "@/lib/sync-logger";
 import { parseDateOnly } from "@/lib/dates";
 
@@ -184,7 +184,7 @@ async function processStructuredEvents(
       // Falls back to the local MLX server if Anthropic fails (credits, outage) —
       // prep tasks should degrade to local, not silently vanish
       const response = await createCompletionWithLocalFallback({
-        model: "claude-haiku-4-5-20251001",
+        model: getDefaultTextModel(),
         max_tokens: 1024,
         messages: [{
           role: "user",

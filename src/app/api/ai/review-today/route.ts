@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 import { getScheduleBlocks } from "@/lib/schedule";
 import { today, parseDateOnly } from "@/lib/dates";
@@ -112,13 +112,13 @@ Rules:
 
   try {
     const result = await createCompletionWithLocalFallback({
-      model: "claude-haiku-4-5-20251001",
+      model: getDefaultTextModel(),
       system: "You are a productivity coach. Return only valid JSON.",
       messages: [{ role: "user", content: prompt }],
       max_tokens: 1500,
     });
 
-    await trackUsage("review-today", "claude-haiku-4-5-20251001", result.usage);
+    await trackUsage("review-today", result.model, result.usage);
 
     const text = result.text.trim();
     const review = JSON.parse(text);

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 import { getScheduleBlocks } from "@/lib/schedule";
 import { today } from "@/lib/dates";
@@ -76,7 +76,7 @@ ${todaySchedule}
 Active Roles: ${roles.map((r) => `${r.name} (${r.title})`).join(", ")}`;
 
   const response = await createCompletionWithLocalFallback({
-    model: "claude-sonnet-4-6",
+    model: getDefaultTextModel(),
     max_tokens: 1024,
     system: "Generate a concise morning briefing for an engineer managing multiple roles. Cover: top priorities, stale items needing attention, today's schedule. Keep it under 300 words. Be direct.",
     messages: [{ role: "user", content: contextMessage }],

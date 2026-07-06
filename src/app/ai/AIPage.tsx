@@ -327,7 +327,7 @@ export function AIPage() {
             <Key className="h-5 w-5 text-amber-400 shrink-0" />
             <div className="flex-1">
               <p className="text-[15px] font-medium text-[var(--text-primary)]">No API key configured</p>
-              <p className="text-[13px] text-[var(--text-tertiary)]">AI features require an Anthropic API key. Add one in Settings to get started.</p>
+              <p className="text-[13px] text-[var(--text-tertiary)]">Chat runs on the local model — no API key needed. Add an Anthropic key in Settings for Sonnet-quality drafting and image analysis.</p>
             </div>
             <Link
               href="/settings?tab=system&sub=apikeys"
@@ -389,6 +389,11 @@ export function AIPage() {
               onChange={(e) => setSelectedModel(e.target.value)}
               className="bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-lg px-3 py-1.5 text-[13px] text-[var(--text-secondary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 shrink-0 cursor-pointer"
             >
+              <optgroup label="Local (MLX)">
+                {LOCAL_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </optgroup>
               <optgroup label="Claude">
                 {ANTHROPIC_MODELS.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
@@ -401,11 +406,6 @@ export function AIPage() {
                   ))}
                 </optgroup>
               )}
-              <optgroup label="Local (MLX)">
-                {LOCAL_MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
-                ))}
-              </optgroup>
             </select>
             <FontSizeControl size={font.size} onIncrease={font.increase} onDecrease={font.decrease} atMin={font.atMin} atMax={font.atMax} />
           </div>

@@ -47,7 +47,7 @@ Conductor wires those signals together and surfaces only what matters for the ro
 |---|---|---|
 | **macOS Calendar** (EventKit) | Reads events directly from Calendar.app, generates prep tasks, maps calendar accounts → roles | Hourly on the hour, 7 AM – 4 PM weekdays via LaunchAgent |
 | **Linear** | Syncs assigned issues into tasks, mapped per-role with status tracking | Hourly via cron sidecar |
-| **Granola** | Pulls meeting transcripts, extracts action items + follow-ups + decisions via AI | Every 30 min via cron sidecar |
+| **Granola** | Pulls meeting transcripts, extracts action items + follow-ups + decisions via AI | Every hour via cron sidecar |
 
 All three use a `sourceType + sourceId` dedup pattern so re-syncs are idempotent.
 

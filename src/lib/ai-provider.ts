@@ -38,6 +38,13 @@ function getLocalBaseUrl(): string {
   return process.env.LOCAL_AI_BASE_URL || "http://host.docker.internal:11436/v1";
 }
 
+// Default model for text-only background/structured jobs: local-first (free, private,
+// no failed-cloud detour). Set DEFAULT_AI_MODEL to a cloud id to flip back globally.
+// Vision paths must NOT use this — they pin a cloud model explicitly.
+export function getDefaultTextModel(): string {
+  return process.env.DEFAULT_AI_MODEL || `local/${getLocalModelId()}`;
+}
+
 // --- Allowed models for user-selectable endpoints ---
 
 export const ALLOWED_MODELS = [

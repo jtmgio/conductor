@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export async function POST(req: NextRequest) {
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     .join("\n");
 
   const response = await createCompletionWithLocalFallback({
-    model: "claude-haiku-4-5-20251001",
+    model: getDefaultTextModel(),
     max_tokens: 1024,
     system: "Based on these search results from the user's productivity system, answer their question. Cite which source (task, note, follow-up, transcript) your answer comes from. If the results don't contain enough info, say so.",
     messages: [{ role: "user", content: `Question: ${q}\n\nSearch results:\n${resultsText}` }],

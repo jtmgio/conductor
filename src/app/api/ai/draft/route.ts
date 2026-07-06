@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { assembleContext } from "@/lib/ai-context";
 import { prisma } from "@/lib/prisma";
-import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 import { ALLOWED_MODELS } from "@/lib/ai-provider";
 
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "roleId and topic required" }, { status: 400 });
   }
 
-  const selectedModel = ALLOWED_MODELS.includes(model) ? model : "claude-sonnet-4-6";
+  const selectedModel = ALLOWED_MODELS.includes(model) ? model : getDefaultTextModel();
 
   const { systemPrompt, contextMessages } = await assembleContext({
     roleId,

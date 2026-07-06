@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export async function POST(req: NextRequest) {
@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   }
 
   const response = await createCompletionWithLocalFallback({
-    model: "claude-haiku-4-5-20251001",
+    model: getDefaultTextModel(),
     max_tokens: 1024,
     system: "Extract actionable tasks and follow-ups from this AI assistant response. Only include concrete, specific action items. Return JSON only.",
     messages: [

@@ -1413,7 +1413,7 @@ Based on the above, provide:`;
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-[15px] font-medium text-[var(--text-primary)]">Anthropic API Key</p>
-                        <p className="text-[13px] text-[var(--text-tertiary)]">Used for all AI features — chat, drafts, extraction, transcript analysis</p>
+                        <p className="text-[13px] text-[var(--text-tertiary)]">Used for cloud Claude models and image analysis — text features run on the local model without it</p>
                       </div>
                       {anthropicKeySaved && (
                         <span className="text-[12px] text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">Saved</span>

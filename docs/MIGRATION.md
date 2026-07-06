@@ -29,7 +29,7 @@ How to move Conductor from one machine to another.
    docker compose up -d --build
    ```
 
-3. Open `http://localhost:3100` — you'll see the Setup Wizard
+3. Open `http://localhost:5402` — you'll see the Setup Wizard
 
 4. On the welcome screen, click **Import config file** and select your backup JSON
 
@@ -96,7 +96,7 @@ This copies everything including IDs, so integrations (Linear, Granola) will con
 
 ```
 Services:
-  conductor       — Next.js app on port 3100
+  conductor       — Next.js app on port 5402 (3000 inside the container)
   postgres        — PostgreSQL 16 on port 5433
   conductor-cron  — Hourly sync jobs (Linear + Granola)
 

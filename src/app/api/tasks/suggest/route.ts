@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export const dynamic = "force-dynamic";
@@ -56,7 +56,7 @@ Rules:
 
   try {
     const response = await createCompletionWithLocalFallback({
-      model: "claude-haiku-4-5-20251001",
+      model: getDefaultTextModel(),
       max_tokens: 512,
       system: "You are a concise productivity assistant. Respond only with valid JSON, no markdown fencing.",
       messages: [{ role: "user", content: prompt }],
