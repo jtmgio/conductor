@@ -93,6 +93,18 @@ export async function createCompletionWithLocalFallback(params: {
     return await createCompletion(params);
   } catch (err) {
     if (getProvider(params.model) === "local") throw err;
+    // Vision requests never fall back — the local model is text-only and silently
+    // ignoring the image would produce confidently wrong output
+    const hasImages = params.messages.some(
+      (m) => Array.isArray(m.content) && m.content.some((b) => b.type === "image"),
+    );
+    if (hasImages) {
+      console.error(
+        `AI provider ${params.model} failed and request contains images — not falling back to text-only local model:`,
+        err instanceof Error ? err.message : err,
+      );
+      throw err;
+    }
     console.error(
       `AI provider ${params.model} failed, falling back to local MLX (${getLocalModelId()}):`,
       err instanceof Error ? err.message : err,

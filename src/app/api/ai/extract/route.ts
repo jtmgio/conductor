@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { assembleContext } from "@/lib/ai-context";
-import { createCompletion, type AIContentBlock } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback, type AIContentBlock } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export async function POST(req: NextRequest) {
@@ -48,7 +48,7 @@ Only include items that are clearly present. Be concise in titles.`;
     });
   }
 
-  const response = await createCompletion({
+  const response = await createCompletionWithLocalFallback({
     model: "claude-sonnet-4-6",
     max_tokens: 2048,
     system: `${systemPrompt}\n\nContext:\n${contextMessages}\n\nYou must respond with valid JSON only, no markdown fences.`,
