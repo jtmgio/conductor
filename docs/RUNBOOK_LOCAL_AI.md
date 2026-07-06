@@ -113,6 +113,34 @@ curl -s http://localhost:11435/v1/chat/completions -H "Content-Type: application
    rebuilt/upgraded onto the broken mlx-lm/transformers combo; reinstall the pins
    (`mlx-lm==0.31.3 transformers==5.12.1`).
 
+## Measured performance (2026-07-06, M2 Ultra 128GB, Qwen3-30B-A3B-4bit)
+
+Benchmarks against the dedicated server, chat-route payload shapes:
+
+| Scenario | Prompt tokens | Time to full reply |
+|----------|---------------|--------------------|
+| Small prompt, cold | ~150 | ~2s |
+| Medium context, cold | ~2.3K | ~4s |
+| Chat-scale, cold | ~5.2K | ~6s |
+| Chat-scale, warm (prefix cached) | ~5.2K | ~2.8s |
+
+Real in-app chat messages (full 5-layer context + history, measured from logs + AiUsage):
+
+| Message | Prompt | Cache reuse | End-to-end |
+|---------|--------|-------------|------------|
+| 1st (cold, incl. failed-Sonnet fallback detour) | 8,120 tok | none | ~12s |
+| 2nd (direct to local, same thread) | 8,249 tok | ~50% (4.1K reused) | ~10s |
+
+Rules of thumb: prompt processing ≈ 1,000–1,300 tok/s; generation ≈ 110 tok/s shallow,
+~60 tok/s at 8K+ context; replies capped at 2,048 tokens. The dense Qwen2.5-32B measured
+~8 tok/s generation on the same hardware — the MoE is roughly an order of magnitude faster.
+
+The server keeps a prompt-prefix cache (one slot, last prompt wins). Chat threads are
+append-only so consecutive messages in one thread reuse the prefix (~3–5s replies);
+any interleaved request — briefing, meeting prep, hourly calendar sync — evicts it and
+the next chat message pays the cold cost (~10s). If that ever becomes a real annoyance,
+a second small server for background jobs is the fix; live with it first.
+
 ## Choosing local chat models (MLX, this machine)
 
 Headroom math: 128GB total, ~18GB held by the kosmos Qwen server. A second model is
@@ -168,6 +196,8 @@ the RAM math in mind (kosmos holds ~18GB; stay well under total).
 **2026-07-06** — Built after Anthropic credits ran out and silently killed calendar prep
 tasks for a week (see the calendar runbook's incident entry). Discovery: the machine
 already ran a production MLX server for kosmos (thought to be "Gemma 3.5", actually
-Qwen2.5-32B). Chose to share it as a strict guest rather than run a second server.
-Fallback verified end-to-end with Anthropic credits exhausted: calendar sync produced
-prep tasks via the local model.
+Qwen2.5-32B). First shared it as a strict guest; same day, moved to the dedicated
+Qwen3-30B-A3B server on 11436 after chat on the dense 32B measured 25s at 4K context.
+Then defaulted chat to local and put the local fallback on every text-only route.
+Final state verified in production: real chat replies ~10s cold / ~3-5s warm at 8K+
+context, all background AI features running locally at $0, kosmos untouched throughout.
