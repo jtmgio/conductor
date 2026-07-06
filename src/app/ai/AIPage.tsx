@@ -37,6 +37,11 @@ const OPENAI_MODELS = [
   { id: "gpt-5.4-pro", label: "GPT-5.4 Pro", provider: "openai" },
 ];
 
+// Shared kosmos MLX server — id must match LOCAL_AI_MODEL (see docs/RUNBOOK_LOCAL_AI.md)
+const LOCAL_MODELS = [
+  { id: "local/mlx-community/Qwen2.5-32B-Instruct-4bit", label: "Qwen 2.5 32B (local)", provider: "local" },
+];
+
 export function AIPage() {
   const searchParams = useSearchParams();
   const [roles, setRoles] = useState<Role[]>([]);
@@ -394,6 +399,11 @@ export function AIPage() {
                   ))}
                 </optgroup>
               )}
+              <optgroup label="Local (MLX)">
+                {LOCAL_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </optgroup>
             </select>
             <FontSizeControl size={font.size} onIncrease={font.increase} onDecrease={font.decrease} atMin={font.atMin} atMax={font.atMax} />
           </div>

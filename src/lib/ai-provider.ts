@@ -22,6 +22,23 @@ export interface AIResponse {
   usage: { input_tokens: number; output_tokens: number };
 }
 
+// --- Local MLX server (shared with the kosmos stack — see docs/RUNBOOK_LOCAL_AI.md) ---
+//
+// The server on port 11435 is owned by com.kosmos.mlx and serves PRODUCTION traffic.
+// Conductor is a guest: HTTP client only, exact loaded model id only, never manage
+// the server process. mlx_lm.server will try to LOAD a model it doesn't have if a
+// request names one — on a shared box that's a multi-GB RAM spike, so callLocal
+// hard-rejects any model other than LOCAL_AI_MODEL.
+
+export function getLocalModelId(): string {
+  return process.env.LOCAL_AI_MODEL || "mlx-community/Qwen2.5-32B-Instruct-4bit";
+}
+
+function getLocalBaseUrl(): string {
+  // host.docker.internal: the app runs in Docker, the MLX server on the macOS host
+  return process.env.LOCAL_AI_BASE_URL || "http://host.docker.internal:11435/v1";
+}
+
 // --- Allowed models for user-selectable endpoints ---
 
 export const ALLOWED_MODELS = [
@@ -33,11 +50,14 @@ export const ALLOWED_MODELS = [
   "gpt-5.4",
   "gpt-5.4-mini",
   "gpt-5.4-pro",
+  // Local MLX (shared kosmos server)
+  `local/${getLocalModelId()}`,
 ];
 
 // --- Provider detection ---
 
-export function getProvider(model: string): "anthropic" | "openai" {
+export function getProvider(model: string): "anthropic" | "openai" | "local" {
+  if (model.startsWith("local/")) return "local";
   if (model.startsWith("gpt-")) return "openai";
   return "anthropic";
 }
@@ -52,10 +72,34 @@ export async function createCompletion(params: {
 }): Promise<AIResponse> {
   const provider = getProvider(params.model);
 
+  if (provider === "local") {
+    return callLocal(params);
+  }
   if (provider === "openai") {
     return callOpenAI(params);
   }
   return callAnthropic(params);
+}
+
+// Try the requested cloud model; on failure (billing, network, outage) retry once on
+// the local MLX server. Used by background/structured jobs (e.g. calendar prep) that
+// should degrade to local rather than silently produce nothing.
+export async function createCompletionWithLocalFallback(params: {
+  model: string;
+  system?: string;
+  messages: AIMessage[];
+  max_tokens: number;
+}): Promise<AIResponse> {
+  try {
+    return await createCompletion(params);
+  } catch (err) {
+    if (getProvider(params.model) === "local") throw err;
+    console.error(
+      `AI provider ${params.model} failed, falling back to local MLX (${getLocalModelId()}):`,
+      err instanceof Error ? err.message : err,
+    );
+    return createCompletion({ ...params, model: `local/${getLocalModelId()}` });
+  }
 }
 
 // --- Anthropic implementation ---
@@ -172,6 +216,64 @@ async function callOpenAI(params: {
   return {
     text,
     model: response.model,
+    usage: {
+      input_tokens: response.usage?.prompt_tokens || 0,
+      output_tokens: response.usage?.completion_tokens || 0,
+    },
+  };
+}
+
+// --- Local MLX implementation (OpenAI-compatible mlx_lm.server) ---
+
+async function callLocal(params: {
+  model: string;
+  system?: string;
+  messages: AIMessage[];
+  max_tokens: number;
+}): Promise<AIResponse> {
+  const requested = params.model.replace(/^local\//, "");
+  const loaded = getLocalModelId();
+  if (requested !== loaded) {
+    // Naming an unloaded model would make the shared server try to fetch/load it —
+    // never acceptable on the kosmos production box.
+    throw new Error(
+      `Local model "${requested}" is not the configured LOCAL_AI_MODEL ("${loaded}") — refusing to trigger a model load on the shared MLX server`,
+    );
+  }
+
+  const client = new OpenAI({
+    baseURL: getLocalBaseUrl(),
+    apiKey: "mlx", // server requires none; SDK requires a value
+    timeout: 120_000, // shared server may be busy with kosmos traffic — fail, don't wedge
+    maxRetries: 1,
+  });
+
+  const messages: OpenAI.ChatCompletionMessageParam[] = [];
+  // mlx_lm.server understands "system", not OpenAI's newer "developer" role
+  if (params.system) {
+    messages.push({ role: "system", content: params.system });
+  }
+  for (const m of params.messages) {
+    // The local model is text-only — flatten content blocks, note dropped images
+    const text = typeof m.content === "string"
+      ? m.content
+      : m.content
+          .map((b) => (b.type === "image" ? "[image attachment omitted — local model is text-only]" : b.text || ""))
+          .join("\n");
+    messages.push({ role: m.role, content: text });
+  }
+
+  const response = await client.chat.completions.create({
+    model: requested,
+    max_tokens: params.max_tokens,
+    messages,
+  });
+
+  const text = response.choices[0]?.message?.content || "";
+
+  return {
+    text,
+    model: `local/${response.model}`,
     usage: {
       input_tokens: response.usage?.prompt_tokens || 0,
       output_tokens: response.usage?.completion_tokens || 0,

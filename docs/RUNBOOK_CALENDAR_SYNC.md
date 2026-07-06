@@ -108,13 +108,17 @@ EventKit read and aborts if it changed.
 **Symptom:** sync result JSON is missing `"summary"` and `"conflicts"`; docker logs show
 `Calendar AI prep task generation failed`.
 
-**Cause:** the Claude Haiku call failed — most commonly **Anthropic API credits exhausted**
-(`Your credit balance is too low`), or a bad/missing API key.
+**Cause:** BOTH AI paths failed. The prep-task call tries Claude Haiku first, then falls
+back to the local MLX server (see `docs/RUNBOOK_LOCAL_AI.md`). Common combo: Anthropic
+credits exhausted (`Your credit balance is too low`) **and** the local server down.
+`docker compose logs conductor | grep -i "falling back"` shows whether the fallback fired.
 
-**Fix:** add credits at console.anthropic.com → Plans & Billing (or fix the key in
-Settings > System > API Keys / `ANTHROPIC_API_KEY`). No manual re-sync needed: the script
-deliberately does **not** cache the hash for a degraded sync, so the next hourly run retries
-prep-task generation automatically. To force it immediately:
+**Fix:** add Anthropic credits (console.anthropic.com → Plans & Billing) or fix the key in
+Settings > System > API Keys — or restore the local server (a kosmos concern, see the
+local-AI runbook). No manual re-sync needed: the script deliberately does **not** cache the
+hash for a degraded sync, so the next hourly run retries prep-task generation automatically,
+and the reconciler backfills prep tasks onto meetings that were first synced while AI was
+down. To force it immediately:
 ```bash
 rm -f /tmp/conductor-calendar-last-hash && bash cron/calendar-sync.sh
 ```

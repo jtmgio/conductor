@@ -413,7 +413,13 @@ AI can return `:::artifact{title="..." type="html|react|mermaid"}` blocks. Rende
 
 ### Model selector
 
-Sonnet 4.6 (default), Haiku 4.5, Opus 4.6. Dropdown in AI page header.
+Sonnet 4.6 (default), Haiku 4.5, Opus 4.6, GPT-5.4 family (if OpenAI key set), Qwen 2.5 32B (local MLX). Dropdown in AI page header.
+
+### Local AI (shared MLX server) — read `docs/RUNBOOK_LOCAL_AI.md` before touching
+
+- Model ids prefixed `local/` route to an OpenAI-compatible MLX server on the macOS host (`LOCAL_AI_BASE_URL`, default port 11435 via `host.docker.internal`).
+- **That server belongs to the kosmos production stack (`com.kosmos.mlx`) — Conductor is a strict guest.** Never restart/kill it, never touch `~/mlx-venv`, never send a model id other than `LOCAL_AI_MODEL` (the server would try to load it — RAM spike on a prod box; `callLocal()` hard-rejects mismatches).
+- `createCompletionWithLocalFallback()` in `src/lib/ai-provider.ts` retries any failed cloud call on local — used by calendar prep tasks so billing outages degrade to local instead of losing features. Local usage is tracked at $0. Local is text-only (images dropped with a placeholder).
 
 ## Integrations
 

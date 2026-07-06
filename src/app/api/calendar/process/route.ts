@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { trackUsage } from "@/lib/ai-usage";
-import { createCompletion } from "@/lib/ai-provider";
+import { createCompletion, createCompletionWithLocalFallback } from "@/lib/ai-provider";
 import { logSync, type SyncTrigger } from "@/lib/sync-logger";
 import { parseDateOnly } from "@/lib/dates";
 
@@ -181,7 +181,9 @@ async function processStructuredEvents(
         return parts.join("\n");
       }).join("\n");
 
-      const response = await createCompletion({
+      // Falls back to the local MLX server if Anthropic fails (credits, outage) —
+      // prep tasks should degrade to local, not silently vanish
+      const response = await createCompletionWithLocalFallback({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 1024,
         messages: [{
@@ -400,6 +402,34 @@ async function reconcileAndSave(
           }
         }
         updatedMeetings.push({ id: existing.id });
+      }
+
+      // Backfill a prep task if this meeting never got one — e.g. it was first synced
+      // while the AI provider was down. Without this, a degraded sync leaves the
+      // meeting permanently bare even after the provider recovers.
+      if (!existing.prepTask && !meeting.isIgnored && meeting.prepTask) {
+        const task = await prisma.task.create({
+          data: {
+            roleId,
+            title: `${meeting.startTime} — ${meeting.prepTask}`,
+            priority: "normal",
+            status: "backlog",
+            scheduledFor: parseDateOnly(date),
+            sourceType: "calendar",
+            sourceId,
+            notes: [
+              `Meeting: ${meeting.title}`,
+              meeting.attendees?.length ? `Attendees: ${meeting.attendees.join(", ")}` : null,
+              meeting.relevantFollowUps?.length
+                ? `\nBring up:\n${meeting.relevantFollowUps.map((f: string) => `- ${f}`).join("\n")}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          },
+        });
+        await prisma.meeting.update({ where: { id: existing.id }, data: { prepTaskId: task.id } });
+        createdTasks.push(task);
       }
     } else {
       let prepTaskId: string | null = null;

@@ -14,6 +14,8 @@ const RATES: Record<string, { inputPerM: number; outputPerM: number }> = {
 const DEFAULT_RATE = { inputPerM: 3.0, outputPerM: 15.0 };
 
 function calculateCostCents(model: string, inputTokens: number, outputTokens: number): number {
+  // Local MLX models are free — don't let DEFAULT_RATE invent phantom costs
+  if (model.startsWith("local/") || model.startsWith("mlx-community/")) return 0;
   const rate = RATES[model] || DEFAULT_RATE;
   const inputCost = (inputTokens / 1_000_000) * rate.inputPerM;
   const outputCost = (outputTokens / 1_000_000) * rate.outputPerM;
