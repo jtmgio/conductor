@@ -471,10 +471,21 @@ Sonnet 4.6 (default), Haiku 4.5, Opus 4.6. Dropdown in AI page header.
 
 7. **Update `CONDUCTOR_URL`** in the plist if the app runs on a different port (default: `http://localhost:5402`)
 
+#### Calendar sync troubleshooting
+
+**Full runbook: `docs/RUNBOOK_CALENDAR_SYNC.md`** — diagnostic checklist, failure modes, recovery steps, incident history. Start there when calendar sync breaks. The critical gotchas:
+
+1. **Rebuilding `cron/calendar-events` revokes its macOS Calendar (TCC) grant.** After any `bash cron/build-calendar-events.sh`, run `./cron/calendar-events` once interactively and grant the permission prompt — otherwise the next launchd run hangs forever on an invisible prompt.
+2. **A hung run wedges the whole schedule.** launchd runs one instance per label; a stuck sync silently blocks all future runs. The script has a 90s watchdog, but if `launchctl list | grep calendar-sync` shows a long-lived PID, kill it.
+3. **`tasksCreated: 0` with no `summary` in the result = the Haiku prep-task call failed** — usually Anthropic credits exhausted. Meetings still sync; the script skips hash-caching so prep tasks retry hourly once credits are restored.
+4. **Force a full re-sync:** `rm -f /tmp/conductor-calendar-last-hash && bash cron/calendar-sync.sh`
+5. The repo plist is a template (`/path/to/conductor` placeholders); the live copy in `~/Library/LaunchAgents/` has real paths.
+
 #### Key files
-- `cron/calendar-events.swift` — Swift script that reads events via EventKit, outputs JSON
-- `cron/calendar-sync.sh` — Bash wrapper: runs Swift, hashes events, POSTs to API
-- `cron/com.conductor.calendar-sync.plist` — macOS LaunchAgent (30-min interval)
+- `docs/RUNBOOK_CALENDAR_SYNC.md` — operational runbook (read this first when sync breaks)
+- `cron/calendar-events.swift` — Swift source; compiled by `cron/build-calendar-events.sh` into the `calendar-events` binary that holds the TCC grant
+- `cron/calendar-sync.sh` — Bash wrapper: reads events (90s watchdog), guards date drift, hashes events+date, POSTs to API
+- `cron/com.conductor.calendar-sync.plist` — macOS LaunchAgent (hourly, 7 AM–4 PM weekdays)
 - `src/app/api/calendar/process/route.ts` — Accepts structured events or screenshot, reconciles with DB
 - `src/app/api/calendar/last-sync/route.ts` — Returns last sync timestamp (polled by AgendaStrip)
 - `src/app/api/calendar/accounts/route.ts` — Discovers calendar accounts (macOS only, not in Docker)
