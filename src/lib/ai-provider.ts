@@ -263,9 +263,16 @@ async function callLocal(params: {
     messages.push({ role: m.role, content: text });
   }
 
+  // Cap local generations: keeps chat replies inside the 120s client timeout and
+  // bounds how long any one request occupies the shared Metal GPU
+  const maxTokens = Math.min(
+    params.max_tokens,
+    Number(process.env.LOCAL_AI_MAX_TOKENS) || 2048,
+  );
+
   const response = await client.chat.completions.create({
     model: requested,
-    max_tokens: params.max_tokens,
+    max_tokens: maxTokens,
     messages,
   });
 

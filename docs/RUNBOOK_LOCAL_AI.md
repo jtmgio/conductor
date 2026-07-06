@@ -23,13 +23,35 @@ The safety contract:
 
 ## Current setup
 
+Conductor runs its **own dedicated MLX server** (since 2026-07-06). The kosmos server is
+no longer used by Conductor at all — the safety contract above still applies to it forever.
+
 ```
 macOS host (M2 Ultra, 128GB)
-  ├─ com.kosmos.mlx → ~/mlx-venv/bin/mlx_lm.server
+  ├─ com.kosmos.mlx → ~/mlx-venv/bin/mlx_lm.server                    [KOSMOS — HANDS OFF]
   │     --model mlx-community/Qwen2.5-32B-Instruct-4bit --port 11435 --host 0.0.0.0
-  │     (~18GB resident, OpenAI-compatible API)
+  ├─ com.conductor.mlx → ~/conductor-mlx-venv/bin/mlx_lm.server       [OURS]
+  │     --model mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit --port 11436 --host 127.0.0.1
+  │     (~16GB resident, MoE ~3B active params — fast generation, short GPU occupancy)
   └─ Docker: conductor app
-        └─ reaches the host via http://host.docker.internal:11435/v1
+        └─ reaches OUR server via http://host.docker.internal:11436/v1
+```
+
+Why Qwen3-30B-A3B: mixture-of-experts with ~3B active parameters per token — generates
+several times faster than the dense 32B, so chat feels responsive and each request holds
+the shared Metal GPU briefly (the GPU is still one physical resource shared with kosmos;
+short occupancy is the courtesy that matters).
+
+Conductor-side venv pins (mirrors the known-good kosmos combo — latest mlx-lm + latest
+transformers were incompatible as of 2026-07-06, `AttributeError ... __module__` on import):
+`mlx-lm==0.31.3 transformers==5.12.1` on Python 3.13 (3.14 also broken with latest).
+
+Manage OUR server (never the kosmos one):
+```bash
+launchctl list | grep conductor.mlx                     # status
+tail -20 logs/mlx-server.log                            # server log
+launchctl unload ~/Library/LaunchAgents/com.conductor.mlx.plist   # stop
+launchctl load ~/Library/LaunchAgents/com.conductor.mlx.plist     # start
 ```
 
 Conductor-side wiring (all in `src/lib/ai-provider.ts`):
@@ -37,9 +59,11 @@ Conductor-side wiring (all in `src/lib/ai-provider.ts`):
 - Model ids prefixed `local/` route to the local provider — e.g.
   `local/mlx-community/Qwen2.5-32B-Instruct-4bit`.
 - Env vars (set in `docker-compose.yml`, overridable in `.env`):
-  - `LOCAL_AI_BASE_URL` — default `http://host.docker.internal:11435/v1`
-  - `LOCAL_AI_MODEL` — default `mlx-community/Qwen2.5-32B-Instruct-4bit`; the ONLY id
-    `callLocal()` will send
+  - `LOCAL_AI_BASE_URL` — default `http://host.docker.internal:11436/v1`
+  - `LOCAL_AI_MODEL` — default `mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit`; the ONLY
+    id `callLocal()` will send
+  - `LOCAL_AI_MAX_TOKENS` — output cap per local request (default 2048): keeps chat
+    replies inside the 120s client timeout and bounds GPU occupancy per request
 - `createCompletionWithLocalFallback()` — tries the cloud model, falls back to local on
   any error (credits exhausted, network, outage). Used by the **calendar prep-task
   route**; adopt it for other background/structured jobs as needed.
@@ -69,22 +93,21 @@ curl -s http://localhost:11435/v1/chat/completions -H "Content-Type: application
 
 ### Local fallback also fails / chat with local model errors
 
-1. Is the server up? `launchctl list | grep kosmos.mlx` and `curl -s localhost:11435/v1/models`.
-   If it's down, that's a **kosmos problem — do not fix it from here.** Conductor degrades
+1. Is OUR server up? `launchctl list | grep conductor.mlx` and
+   `curl -s localhost:11436/v1/models`. If down: `tail -30 logs/mlx-server.log`, then
+   reload the LaunchAgent (KeepAlive normally restarts it). Meanwhile Conductor degrades
    gracefully: calendar syncs without prep tasks (and retries hourly), chat shows an error.
-2. `Local model "X" is not the configured LOCAL_AI_MODEL` — the kosmos stack changed
-   which model it serves. Update `LOCAL_AI_MODEL` in `.env`/`docker-compose.yml` AND the
-   `LOCAL_MODELS` entry in `AIPage.tsx` to the id reported by `/v1/models`, rebuild.
-3. Timeouts under load — the server processes requests serially; a long kosmos job can
-   queue Conductor's request past the 120s client timeout. Transient; background jobs
-   retry on the next cycle.
+2. `Local model "X" is not the configured LOCAL_AI_MODEL` — the three config points
+   drifted: the plist `--model`, `LOCAL_AI_MODEL` env, and `LOCAL_MODELS` in `AIPage.tsx`
+   must all match what `GET /v1/models` reports.
+3. Timeouts — the server processes requests serially; long generations queue behind each
+   other past the 120s client timeout. `LOCAL_AI_MAX_TOKENS` (default 2048) bounds this.
+   Transient; background jobs retry on the next cycle.
 4. `host.docker.internal` unreachable — Docker Desktop provides it on macOS; if the app
-   runs outside Docker use `http://localhost:11435/v1`.
-
-### Model swapped by the kosmos team
-
-`GET /v1/models` is the source of truth. Sync the two Conductor config points to it
-(env var + `AIPage.tsx`) — never the other way around; Conductor adapts to kosmos.
+   runs outside Docker use `http://localhost:11436/v1`.
+5. Server crashes on startup with `AttributeError ... __module__` — the venv was
+   rebuilt/upgraded onto the broken mlx-lm/transformers combo; reinstall the pins
+   (`mlx-lm==0.31.3 transformers==5.12.1`).
 
 ## Choosing local chat models (MLX, this machine)
 
@@ -105,32 +128,36 @@ Verified-available on `mlx-community` (HF, checked 2026-07-06), best chat candid
 (Note: there is no "Gemma 3.5" — the family goes 3 → 3n → 4. The kosmos server itself
 runs Qwen 2.5, not Gemma.)
 
-## Running a dedicated Conductor server (optional, if sharing ever bites)
+## Rebuilding the dedicated server on a new machine
 
-Only if contention with kosmos becomes a real problem. This adds a SECOND server and
-model — it does not touch the kosmos one.
+This is what's running now (built 2026-07-06). It does not touch the kosmos server.
 
 ```bash
-# 1. Own venv — never reuse ~/mlx-venv
-python3 -m venv ~/conductor-mlx-venv && ~/conductor-mlx-venv/bin/pip install mlx-lm
+# 1. Own venv — never reuse ~/mlx-venv. Pin versions (latest combo is broken, see above)
+/opt/homebrew/bin/python3.13 -m venv ~/conductor-mlx-venv
+~/conductor-mlx-venv/bin/pip install "mlx-lm==0.31.3" "transformers==5.12.1"
 
-# 2. Pick a DIFFERENT port (11436) and a bursty MoE model
-~/conductor-mlx-venv/bin/mlx_lm.server \
-  --model mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit --port 11436 --host 127.0.0.1
-# (first run downloads ~16GB; check memory pressure after: `memory_pressure | head -1`)
+# 2. Pre-download the model (~16GB)
+~/conductor-mlx-venv/bin/hf download mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit
 
-# 3. Point Conductor at it in .env, then docker compose up -d conductor
-LOCAL_AI_BASE_URL=http://host.docker.internal:11436/v1
-LOCAL_AI_MODEL=mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit
-# ...and update LOCAL_MODELS in src/app/ai/AIPage.tsx, then rebuild
+# 3. Install the LaunchAgent (repo template: cron/com.conductor.mlx.plist —
+#    fix the /path/to placeholders first)
+cp cron/com.conductor.mlx.plist ~/Library/LaunchAgents/   # after editing paths
+launchctl load ~/Library/LaunchAgents/com.conductor.mlx.plist
 
-# 4. Persist with a LaunchAgent named com.conductor.mlx (RunAtLoad + KeepAlive),
-#    modeled on cron/com.conductor.calendar-sync.plist. Do NOT name it com.kosmos.*.
+# 4. Verify, then check memory headroom
+curl -s http://localhost:11436/v1/models | python3 -m json.tool
+memory_pressure | head -1
+
+# 5. Conductor env (docker-compose.yml defaults already point here):
+#    LOCAL_AI_BASE_URL=http://host.docker.internal:11436/v1
+#    LOCAL_AI_MODEL=mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit
+#    plus the LOCAL_MODELS entry in src/app/ai/AIPage.tsx must match — then rebuild.
 ```
 
-Decision guide: stay on the shared server until you actually observe kosmos latency
-complaints or Conductor timeouts. Two models resident is fine for RAM; the GPU is the
-contended resource either way, so a second server mostly buys queue isolation.
+Swapping the model later: pick from the table above, `hf download` it, update the plist's
+`--model`, reload the LaunchAgent, update `LOCAL_AI_MODEL` + `AIPage.tsx`, rebuild. Keep
+the RAM math in mind (kosmos holds ~18GB; stay well under total).
 
 ## History
 

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.conductor.mlx</string>
+    <!-- Conductor's DEDICATED MLX server on port 11436.
+         NOT to be confused with com.kosmos.mlx on 11435 (production — never touch).
+         See docs/RUNBOOK_LOCAL_AI.md -->
+    <key>ProgramArguments</key>
+    <array>
+        <!-- UPDATE THIS PATH to your conductor-mlx-venv location -->
+        <string>/path/to/conductor-mlx-venv/bin/mlx_lm.server</string>
+        <string>--model</string>
+        <string>mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit</string>
+        <string>--port</string>
+        <string>11436</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <!-- UPDATE THIS PATH to your conductor repo location -->
+    <string>/path/to/conductor/logs/mlx-server.log</string>
+    <key>StandardErrorPath</key>
+    <!-- UPDATE THIS PATH to your conductor repo location -->
+    <string>/path/to/conductor/logs/mlx-server.log</string>
+</dict>
+</plist>

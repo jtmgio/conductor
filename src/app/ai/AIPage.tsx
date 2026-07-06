@@ -37,9 +37,9 @@ const OPENAI_MODELS = [
   { id: "gpt-5.4-pro", label: "GPT-5.4 Pro", provider: "openai" },
 ];
 
-// Shared kosmos MLX server — id must match LOCAL_AI_MODEL (see docs/RUNBOOK_LOCAL_AI.md)
+// Conductor's dedicated MLX server — id must match LOCAL_AI_MODEL (see docs/RUNBOOK_LOCAL_AI.md)
 const LOCAL_MODELS = [
-  { id: "local/mlx-community/Qwen2.5-32B-Instruct-4bit", label: "Qwen 2.5 32B (local)", provider: "local" },
+  { id: "local/mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit", label: "Qwen3 30B (local)", provider: "local" },
 ];
 
 export function AIPage() {

@@ -30,10 +30,11 @@ services:
       UPLOAD_DIR: /opt/conductor/uploads
       # Change this if deploying to a real domain or different port
       NEXTAUTH_URL: http://localhost:5402
-      # Local MLX fallback — the SHARED kosmos server on the macOS host (read-only guest;
-      # never manage that process). See docs/RUNBOOK_LOCAL_AI.md before changing.
-      LOCAL_AI_BASE_URL: ${LOCAL_AI_BASE_URL:-http://host.docker.internal:11435/v1}
-      LOCAL_AI_MODEL: ${LOCAL_AI_MODEL:-mlx-community/Qwen2.5-32B-Instruct-4bit}
+      # Conductor's dedicated MLX server on the macOS host (com.conductor.mlx, port 11436).
+      # Port 11435 is the kosmos PRODUCTION server — never point Conductor back at it
+      # without reading docs/RUNBOOK_LOCAL_AI.md.
+      LOCAL_AI_BASE_URL: ${LOCAL_AI_BASE_URL:-http://host.docker.internal:11436/v1}
+      LOCAL_AI_MODEL: ${LOCAL_AI_MODEL:-mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit}
     volumes:
       - uploads:/opt/conductor/uploads
     depends_on:
