@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createCompletion } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 import { getScheduleBlocks } from "@/lib/schedule";
 import { today, parseDateOnly } from "@/lib/dates";
@@ -111,7 +111,7 @@ Rules:
 - Only return the JSON, no markdown fences`;
 
   try {
-    const result = await createCompletion({
+    const result = await createCompletionWithLocalFallback({
       model: "claude-haiku-4-5-20251001",
       system: "You are a productivity coach. Return only valid JSON.",
       messages: [{ role: "user", content: prompt }],

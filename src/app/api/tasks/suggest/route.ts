@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createCompletion } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +55,7 @@ Rules:
 - Only flag "duplicate" for very close matches, not vaguely related tasks.`;
 
   try {
-    const response = await createCompletion({
+    const response = await createCompletionWithLocalFallback({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 512,
       system: "You are a concise productivity assistant. Respond only with valid JSON, no markdown fencing.",

@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { assembleContext, getConversationMessages } from "@/lib/ai-context";
-import { createCompletion, ALLOWED_MODELS, type AIMessage, type AIContentBlock } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback, ALLOWED_MODELS, type AIMessage, type AIContentBlock } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export async function POST(req: NextRequest, { params }: { params: { roleId: string } }) {
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
   userContent.push({ type: "text", text: message });
   messages.push({ role: "user", content: userContent });
 
-  const response = await createCompletion({
+  const response = await createCompletionWithLocalFallback({
     model: selectedModel,
     max_tokens: 8192,
     system: systemPrompt,

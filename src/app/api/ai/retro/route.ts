@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createCompletion } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export async function POST() {
@@ -74,7 +74,7 @@ AI usage: ${totalAiCalls} calls, $${(totalAiCostCents / 100).toFixed(2)} total c
 
 Cover: what shipped per role, what's stuck, follow-up aging trends, time allocation observations, and one actionable insight for next week. Format with markdown headers per role. Keep it focused and direct.`;
 
-  const response = await createCompletion({
+  const response = await createCompletionWithLocalFallback({
     model: "claude-sonnet-4-6",
     max_tokens: 2048,
     messages: [{ role: "user", content: prompt }],

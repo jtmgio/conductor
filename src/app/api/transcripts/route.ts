@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createCompletion } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 async function generateAndSaveSummary(transcriptId: string, rawText: string, roleName: string, roleId: string) {
   try {
-    const response = await createCompletion({
+    const response = await createCompletionWithLocalFallback({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
       system: "You summarize meeting transcripts concisely. Include: key topics discussed, decisions made, action items with owners, open questions, and important context. Be thorough but concise — aim for 300-500 words. Use bullet points.",

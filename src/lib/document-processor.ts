@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { createCompletion } from "./ai-provider";
+import { createCompletionWithLocalFallback } from "./ai-provider";
 import { trackUsage } from "./ai-usage";
 
 /**
@@ -13,7 +13,7 @@ export async function summarizeAndSaveToNote(
   roleId: string
 ): Promise<void> {
   try {
-    const response = await createCompletion({
+    const response = await createCompletionWithLocalFallback({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 1024,
       system: "You summarize documents concisely. Focus on: key decisions, action items, people mentioned, and important facts. Keep under 500 words.",

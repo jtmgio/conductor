@@ -413,13 +413,13 @@ AI can return `:::artifact{title="..." type="html|react|mermaid"}` blocks. Rende
 
 ### Model selector
 
-Sonnet 4.6 (default), Haiku 4.5, Opus 4.6, GPT-5.4 family (if OpenAI key set), Qwen3 30B (local MLX). Dropdown in AI page header.
+Qwen3 30B (local MLX, current default), Sonnet 4.6, Haiku 4.5, Opus 4.6, GPT-5.4 family (if OpenAI key set). Dropdown in AI page header.
 
 ### Local AI (MLX) — read `docs/RUNBOOK_LOCAL_AI.md` before touching
 
 - Model ids prefixed `local/` route to Conductor's own MLX server on the macOS host: `com.conductor.mlx` LaunchAgent, `~/conductor-mlx-venv`, port 11436, Qwen3-30B-A3B (`LOCAL_AI_BASE_URL` via `host.docker.internal`).
 - **Port 11435 is the kosmos PRODUCTION server (`com.kosmos.mlx`, `~/mlx-venv`) — never touch it, never point Conductor at it.** `callLocal()` only ever sends `LOCAL_AI_MODEL` (an unknown id would make an mlx server try to load it — RAM spike).
-- `createCompletionWithLocalFallback()` in `src/lib/ai-provider.ts` retries any failed cloud call on local — used by calendar prep tasks so billing outages degrade to local instead of losing features. Local usage is tracked at $0, output capped by `LOCAL_AI_MAX_TOKENS` (2048), text-only (images dropped with a placeholder).
+- `createCompletionWithLocalFallback()` in `src/lib/ai-provider.ts` retries any failed cloud call on local — used by **all text-only AI routes** so billing outages degrade to local instead of losing features. Vision paths (`ai/extract` on images, calendar screenshot fallback) stay cloud-only. Local usage is tracked at $0, output capped by `LOCAL_AI_MAX_TOKENS` (2048), text-only (images dropped with a placeholder). Chat defaults to the local model.
 
 ## Integrations
 

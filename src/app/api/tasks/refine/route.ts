@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createCompletion } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export const dynamic = "force-dynamic";
@@ -60,7 +60,7 @@ CRITICAL RULES:
 6. Return ONLY the JSON object, no markdown fences`;
 
   try {
-    const result = await createCompletion({
+    const result = await createCompletionWithLocalFallback({
       model: "claude-haiku-4-5-20251001",
       system: "You are a task parser. Return only valid JSON.",
       messages: [{ role: "user", content: prompt }],

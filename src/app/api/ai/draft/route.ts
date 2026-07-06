@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { assembleContext } from "@/lib/ai-context";
 import { prisma } from "@/lib/prisma";
-import { createCompletion } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 import { ALLOWED_MODELS } from "@/lib/ai-provider";
 
@@ -45,7 +45,7 @@ Generate 2-3 variants with different tones (e.g., Direct, Softer, Formal).
 Return JSON: { variants: [{ label: string, text: string }] }
 Keep messages concise and platform-appropriate.`;
 
-  const response = await createCompletion({
+  const response = await createCompletionWithLocalFallback({
     model: selectedModel,
     max_tokens: 2048,
     system: `${systemPrompt}\n\nContext:\n${contextMessages}\n\nYou must respond with valid JSON only, no markdown fences.`,

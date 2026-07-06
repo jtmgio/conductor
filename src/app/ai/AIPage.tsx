@@ -49,7 +49,9 @@ export function AIPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [draftVariants, setDraftVariants] = useState<DraftVariant[] | null>(null);
-  const [selectedModel, setSelectedModel] = useState(ANTHROPIC_MODELS[0].id);
+  // Default to the local model while cloud credits are unreliable — free, private,
+  // ~3s replies on a warm thread. Switch back to ANTHROPIC_MODELS[0].id when desired.
+  const [selectedModel, setSelectedModel] = useState(LOCAL_MODELS[0].id);
   const [conductorData, setConductorData] = useState<ConductorContext | undefined>();
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [hasOpenAIKey, setHasOpenAIKey] = useState(false);

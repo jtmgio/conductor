@@ -65,10 +65,14 @@ Conductor-side wiring (all in `src/lib/ai-provider.ts`):
   - `LOCAL_AI_MAX_TOKENS` — output cap per local request (default 2048): keeps chat
     replies inside the 120s client timeout and bounds GPU occupancy per request
 - `createCompletionWithLocalFallback()` — tries the cloud model, falls back to local on
-  any error (credits exhausted, network, outage). Used by the **calendar prep-task
-  route**; adopt it for other background/structured jobs as needed.
-- Chat: "Qwen 2.5 32B (local)" appears in the AI page model selector (`LOCAL_MODELS`
-  in `src/app/ai/AIPage.tsx` — a static list; keep in sync with `LOCAL_AI_MODEL`).
+  any error (credits exhausted, network, outage). Used by **every text-only AI route**
+  (chat, drafts, briefing, calendar prep, extraction from text, summaries, etc.). The
+  only cloud-pinned paths are the vision ones: `ai/extract` on images and the calendar
+  *screenshot* fallback — a text model can't see, and silently degraded vision output
+  is worse than an error. On chat fallback, image attachments become a placeholder note.
+- Chat **defaults to the local model** ("Qwen3 30B (local)" — `LOCAL_MODELS[0]` in
+  `src/app/ai/AIPage.tsx`, a static list; keep in sync with `LOCAL_AI_MODEL`). Cloud
+  models remain selectable in the dropdown and auto-fall-back to local if they fail.
 - Local usage is tracked in AiUsage at $0 (`ai-usage.ts` zero-costs `local/*` models).
 - Images are dropped with a placeholder note — the local model is text-only. The
   calendar *screenshot* fallback and image uploads still require a cloud vision model.

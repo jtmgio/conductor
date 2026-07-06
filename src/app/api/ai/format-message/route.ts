@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { assembleContext } from "@/lib/ai-context";
-import { createCompletion } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export const dynamic = "force-dynamic";
@@ -73,7 +73,7 @@ RAW MESSAGE:
 ${rawMessage}`;
 
   try {
-    const result = await createCompletion({
+    const result = await createCompletionWithLocalFallback({
       model: "claude-sonnet-4-6",
       system: `${systemPrompt}\n\n[Context]\n${contextMessages}`,
       messages: [{ role: "user", content: prompt }],

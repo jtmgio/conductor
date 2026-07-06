@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createCompletion } from "@/lib/ai-provider";
+import { createCompletionWithLocalFallback } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export async function POST(req: NextRequest) {
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const response = await createCompletion({
+  const response = await createCompletionWithLocalFallback({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 1024,
     system: `Generate meeting prep for a busy engineer. Be direct and concise. Use markdown formatting.
