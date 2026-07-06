@@ -22,21 +22,20 @@ export interface AIResponse {
   usage: { input_tokens: number; output_tokens: number };
 }
 
-// --- Local MLX server (shared with the kosmos stack — see docs/RUNBOOK_LOCAL_AI.md) ---
+// --- Local MLX server (Conductor's own — see docs/RUNBOOK_LOCAL_AI.md) ---
 //
-// The server on port 11435 is owned by com.kosmos.mlx and serves PRODUCTION traffic.
-// Conductor is a guest: HTTP client only, exact loaded model id only, never manage
-// the server process. mlx_lm.server will try to LOAD a model it doesn't have if a
-// request names one — on a shared box that's a multi-GB RAM spike, so callLocal
-// hard-rejects any model other than LOCAL_AI_MODEL.
+// Conductor runs its own mlx_lm.server (com.conductor.mlx, port 11436). Port 11435
+// is the kosmos PRODUCTION server — never point these defaults back at it. An mlx
+// server will try to LOAD a model it doesn't have if a request names one (multi-GB
+// RAM spike), so callLocal hard-rejects any model other than LOCAL_AI_MODEL.
 
 export function getLocalModelId(): string {
-  return process.env.LOCAL_AI_MODEL || "mlx-community/Qwen2.5-32B-Instruct-4bit";
+  return process.env.LOCAL_AI_MODEL || "mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit";
 }
 
 function getLocalBaseUrl(): string {
   // host.docker.internal: the app runs in Docker, the MLX server on the macOS host
-  return process.env.LOCAL_AI_BASE_URL || "http://host.docker.internal:11435/v1";
+  return process.env.LOCAL_AI_BASE_URL || "http://host.docker.internal:11436/v1";
 }
 
 // --- Allowed models for user-selectable endpoints ---
@@ -50,7 +49,7 @@ export const ALLOWED_MODELS = [
   "gpt-5.4",
   "gpt-5.4-mini",
   "gpt-5.4-pro",
-  // Local MLX (shared kosmos server)
+  // Local MLX (Conductor's dedicated server)
   `local/${getLocalModelId()}`,
 ];
 
@@ -102,6 +101,16 @@ export async function createCompletionWithLocalFallback(params: {
   }
 }
 
+// Cloud cost guard: uploads/history may carry local-scale documents (100K+ tokens,
+// fine and free on the local server). Cloud providers get each text segment capped
+// so selecting Sonnet with a huge document in-thread can't produce a surprise bill.
+const CLOUD_MAX_TEXT_CHARS = Number(process.env.CLOUD_AI_MAX_TEXT_CHARS) || 60_000;
+
+function capForCloud(text: string): string {
+  if (text.length <= CLOUD_MAX_TEXT_CHARS) return text;
+  return text.slice(0, CLOUD_MAX_TEXT_CHARS) + "\n\n[…content truncated for cloud model — full text available to the local model]";
+}
+
 // --- Anthropic implementation ---
 
 async function callAnthropic(params: {
@@ -116,7 +125,7 @@ async function callAnthropic(params: {
   // Convert messages to Anthropic format
   const messages: Anthropic.MessageParam[] = params.messages.map((m) => {
     if (typeof m.content === "string") {
-      return { role: m.role, content: m.content };
+      return { role: m.role, content: capForCloud(m.content) };
     }
     // Convert content blocks
     const blocks: Anthropic.ContentBlockParam[] = m.content.map((block) => {
@@ -130,7 +139,7 @@ async function callAnthropic(params: {
           },
         };
       }
-      return { type: "text" as const, text: block.text || "" };
+      return { type: "text" as const, text: capForCloud(block.text || "") };
     });
     return { role: m.role, content: blocks };
   });
@@ -181,7 +190,7 @@ async function callOpenAI(params: {
   for (const m of params.messages) {
     if (m.role === "user") {
       if (typeof m.content === "string") {
-        messages.push({ role: "user", content: m.content });
+        messages.push({ role: "user", content: capForCloud(m.content) });
       } else {
         const parts: OpenAI.ChatCompletionContentPart[] = m.content.map((block) => {
           if (block.type === "image" && block.source) {
@@ -192,7 +201,7 @@ async function callOpenAI(params: {
               },
             };
           }
-          return { type: "text" as const, text: block.text || "" };
+          return { type: "text" as const, text: capForCloud(block.text || "") };
         });
         messages.push({ role: "user", content: parts });
       }
@@ -201,7 +210,7 @@ async function callOpenAI(params: {
       const text = typeof m.content === "string"
         ? m.content
         : m.content.map((b) => b.text || "").join("");
-      messages.push({ role: "assistant", content: text });
+      messages.push({ role: "assistant", content: capForCloud(text) });
     }
   }
 
@@ -261,6 +270,29 @@ async function callLocal(params: {
           .map((b) => (b.type === "image" ? "[image attachment omitted — local model is text-only]" : b.text || ""))
           .join("\n");
     messages.push({ role: m.role, content: text });
+  }
+
+  // Input guard: load-tested 2026-07-06 — beyond ~55K tokens of context, prompt
+  // processing trips the macOS Metal GPU watchdog ("Impacting Interactivity") and
+  // CRASHES the server. Cap total input well under that; trim the largest text
+  // blocks (documents) first, never the newest message.
+  const maxInputChars = Number(process.env.LOCAL_AI_MAX_INPUT_CHARS) || 160_000; // ≈40K tok
+  const textOf = (m: AIMessage) =>
+    typeof m.content === "string" ? m.content : m.content.map((b) => b.text || "").join("");
+  let totalChars = params.messages.reduce((n, m) => n + textOf(m).length, 0) + (params.system?.length || 0);
+  if (totalChars > maxInputChars) {
+    const marker = "\n[…document trimmed to fit the local model's safe context window]";
+    // Trim largest messages first (documents live in big blocks), excluding the final message
+    const trimmable = params.messages.slice(0, -1).sort((a, b) => textOf(b).length - textOf(a).length);
+    for (const m of trimmable) {
+      if (totalChars <= maxInputChars) break;
+      const text = textOf(m);
+      const excess = totalChars - maxInputChars;
+      const keep = Math.max(2_000, text.length - excess);
+      if (keep >= text.length) continue;
+      m.content = text.slice(0, keep) + marker;
+      totalChars -= text.length - (keep + marker.length);
+    }
   }
 
   // Cap local generations: keeps chat replies inside the 120s client timeout and

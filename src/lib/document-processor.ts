@@ -20,7 +20,10 @@ export async function summarizeAndSaveToNote(
       messages: [
         {
           role: "user",
-          content: `Summarize this document (${filename}):\n\n${text.slice(0, 30000)}`,
+          // 100K chars ≈ 25K tokens — a one-shot background read (~60s cold on the local
+          // model, safely inside the Metal-watchdog limit); cloud attempts see at most
+          // the per-block guard in ai-provider.ts
+          content: `Summarize this document (${filename}):\n\n${text.slice(0, Number(process.env.DOC_SUMMARY_MAX_CHARS) || 100_000)}`,
         },
       ],
     });

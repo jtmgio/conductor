@@ -141,6 +141,45 @@ any interleaved request — briefing, meeting prep, hourly calendar sync — evi
 the next chat message pays the cold cost (~10s). If that ever becomes a real annoyance,
 a second small server for background jobs is the fix; live with it first.
 
+## Context limits — load-tested 2026-07-06
+
+The model advertises 256K context; **the hardware does not deliver it.** Load-test ladder
+(cold-ish, 60-token replies, dedicated server):
+
+| Prompt tokens | Time to reply | Outcome |
+|---------------|---------------|---------|
+| 7K | 10.4s | ok |
+| 17.7K | 22.3s | ok |
+| ~22K (fresh server) | 39.6s | ok |
+| 35.4K | 55.7s | ok — practical ceiling |
+| ~71K | crashed at ~110s | **SERVER CRASH** |
+
+Findings:
+
+- **Hard limit ≈ 55K tokens of total context: the macOS Metal GPU watchdog kills the
+  process** (`[METAL] Command buffer execution failed: Impacting Interactivity`,
+  SIGABRT). Not graceful — the request dies with "Remote end closed connection" and
+  in-flight requests fail. `KeepAlive` restarts the server within seconds.
+- Prompt processing slows as context deepens (attention cost): ~680 tok/s at 7K,
+  ~480 at 18K, ~320 at 35K. Extrapolated, a cold ~35–40K request also brushes the app's
+  120s client timeout — so the timeout and the crash zone conveniently align.
+- Concurrency: 4 parallel ~1.5K-token requests all completed in 8.5s wall — the server
+  interleaves fine at small scale. Big requests still serialize.
+- Server RSS stays ~8GB regardless (weights live in Metal wired memory, not RSS).
+- The kosmos server was unaffected by our crash (separate process), but heavy prompt
+  processing hogs the shared GPU — the watchdog fired precisely because interactivity
+  suffered. Don't raise the caps below casually.
+
+Layered caps enforcing the safe zone (all env-tunable, defaults in parentheses):
+
+| Guard | Where | Default |
+|-------|-------|---------|
+| `UPLOAD_EXTRACT_MAX_CHARS` (120K chars ≈ 30K tok) | upload storage + note | keeps any one document inside one safe request |
+| `DOC_SUMMARY_MAX_CHARS` (100K chars ≈ 25K tok) | background summarize | one-shot ~60s cold read |
+| `LOCAL_AI_MAX_INPUT_CHARS` (160K chars ≈ 40K tok) | `callLocal()` hard guard | trims largest text blocks (never the newest message) with a visible marker — the crash-prevention backstop |
+| `LOCAL_AI_MAX_TOKENS` (2048) | `callLocal()` output cap | bounds reply time + GPU occupancy |
+| `CLOUD_AI_MAX_TEXT_CHARS` (60K chars/segment) | cloud providers only | cost guard: local-scale documents in history can't produce a surprise cloud bill |
+
 ## Choosing local chat models (MLX, this machine)
 
 Headroom math: 128GB total, ~18GB held by the kosmos Qwen server. A second model is

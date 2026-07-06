@@ -6,6 +6,11 @@ import { prisma } from "@/lib/prisma";
 import { summarizeAndSaveToNote } from "@/lib/document-processor";
 import fs from "fs/promises";
 
+// Extracted-text retention cap. Sized for the local model's context (Qwen3 256K ≈
+// 400K chars leaves headroom) — the old 50K-char cap predates local AI. Cloud calls
+// are protected separately by the per-block guard in ai-provider.ts.
+const EXTRACT_MAX_CHARS = Number(process.env.UPLOAD_EXTRACT_MAX_CHARS) || 120_000;
+
 export async function POST(req: NextRequest, { params }: { params: { roleId: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -36,7 +41,7 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
           mimeType: file.type || "application/octet-stream",
           size: file.size,
           storagePath,
-          extractedText: text?.slice(0, 50000) || null,
+          extractedText: text?.slice(0, EXTRACT_MAX_CHARS) || null,
         },
       });
       fileUploadId = upload.id;
@@ -51,7 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: { roleId: str
       const note = await prisma.note.create({
         data: {
           roleId: params.roleId,
-          content: `[Uploaded: ${file.name}]${fileUploadId ? `[FileID: ${fileUploadId}]` : ""}\n\n${text.slice(0, 50000)}`,
+          content: `[Uploaded: ${file.name}]${fileUploadId ? `[FileID: ${fileUploadId}]` : ""}\n\n${text.slice(0, EXTRACT_MAX_CHARS)}`,
           tags: ["upload", file.name.split(".").pop() || "file"],
         },
       });
