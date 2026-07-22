@@ -11,8 +11,10 @@ You are executing the **Conductor v2 rebuild** end to end. The direction is full
 Read these completely, in order:
 
 1. `CLAUDE.md` (repo root) — architecture, conventions, integrations, deployment
-2. `docs/SPEC_V2.md` — **the engineering source of truth.** Every feature, API shape, deletion list, build phase, and acceptance criterion is in there. When this prompt and the spec disagree, the spec wins.
+2. `docs/SPEC_V2.md` — **the engineering source of truth.** Every feature, API shape, deletion list, build phase, and acceptance criterion is in there. Note the **"Decisions locked" block at the top** — all task-lifecycle/capture/rollover/reminder/deletion calls are settled there; do not re-open them. When this prompt and the spec disagree, the spec wins.
 3. `docs/REDESIGN_BRIEF.md` — the visual/UX source of truth for the new screens
+4. `docs/ROLLOUT_V2.md` — **how to ship without breaking the daily driver. Follow it.** Phases 1–3 + the reminders system are already built and live (the 5402 container is a working hybrid). You are building **Track B** (Today rebuild, capture, rollover, formatter, nav, deletions, restyle) on a **parallel container (port 5403) from a git worktree**, dogfooded against the same DB, then cut over in one step. Do NOT rebuild the live 5402 container during the build — only ever rebuild the `conductor-v2` project on 5403.
+5. `docs/mockups/conductor-v2.html` — the interactive prototype; it IS the visual + interaction spec for Today, capture, transitions, reminders. Match it.
 
 Do not start until you've read all three. Do not re-litigate decisions recorded in them.
 
