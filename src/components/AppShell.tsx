@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar } from "./Sidebar";
@@ -10,16 +10,22 @@ import { GlobalSearch } from "./GlobalSearch";
 import { EodPlanningPrompt } from "./EodPlanningPrompt";
 import { MedicationReminders } from "./MedicationReminders";
 import { CommsCoverStrip } from "./CommsCoverStrip";
+import { BlockTransition, type TransitionBlock } from "./BlockTransition";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 import { cn } from "@/lib/utils";
 
 interface BlockInfo {
+  id?: string;
   label: string;
   timeLabel: string;
   roleId: string | null;
   roleName?: string;
   roleColor?: string;
   rolePlatform?: string;
+}
+
+function blockKey(b: BlockInfo): string {
+  return `${b.id ?? ""}|${b.roleId ?? ""}|${b.timeLabel}`;
 }
 
 interface AppShellProps {
@@ -58,6 +64,29 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
 
   const currentBlock = propBlock !== undefined ? propBlock : fetchedBlock;
   const nextBlocks = propNextBlocks !== undefined ? propNextBlocks : fetchedNextBlocks;
+
+  // Block-transition ritual: fire the full-screen reset when the current work block
+  // changes to a different one while the app is open. Mid-block opens don't fire
+  // (prev starts null); localStorage guards against re-showing the same transition.
+  const prevBlockRef = useRef<BlockInfo | null>(null);
+  const [transition, setTransition] = useState<{ from: TransitionBlock; to: TransitionBlock } | null>(null);
+
+  useEffect(() => {
+    const cb = currentBlock;
+    if (cb && cb.roleId) {
+      const prev = prevBlockRef.current;
+      if (prev && prev.roleId && blockKey(prev) !== blockKey(cb)) {
+        const key = blockKey(cb);
+        if (localStorage.getItem("conductor-transition-seen") !== key) {
+          localStorage.setItem("conductor-transition-seen", key);
+          setTransition({ from: prev, to: cb });
+        }
+      }
+      prevBlockRef.current = cb;
+    } else if (cb === null) {
+      prevBlockRef.current = null;
+    }
+  }, [currentBlock]);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
@@ -164,6 +193,17 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
 
       {/* Comms-cover — "next sweep at HH:MM" permission-not-to-check signal + sweep panel */}
       <CommsCoverStrip />
+
+      {/* Block-transition ritual — full-screen reset between company blocks */}
+      <AnimatePresence>
+        {transition && (
+          <BlockTransition
+            from={transition.from}
+            to={transition.to}
+            onClose={() => setTransition(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
