@@ -10,7 +10,7 @@ import { TaskSuggestionBox } from "@/components/TaskSuggestionBox";
 import { TaskBrainDump } from "@/components/TaskBrainDump";
 import { useFormatMessage } from "@/hooks/useFormatMessage";
 import { sanitizeHtml } from "@/lib/sanitize-html";
-import { todayISO } from "@/lib/dates";
+import { todayISO, tomorrowISO, parseDateOnly, formatDateOnly, nextWorkingDay } from "@/lib/dates";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -19,6 +19,23 @@ interface SearchResult {
   followUps: Array<{ id: string; title: string; waitingOn: string; role: { id: string; name: string; color: string } }>;
   notes: Array<{ id: string; content: string; createdAt: string; role: { id: string; name: string; color: string } }>;
   transcripts: Array<{ id: string; preview: string; createdAt: string; role: { id: string; name: string; color: string } }>;
+}
+
+// Slack mrkdwn → standard markdown, for the preview only. The API emits real
+// Slack syntax (*bold*, _italic_, ~strike~), but ReactMarkdown reads *x* as
+// italic — and Copy grabs the rendered preview HTML, so a misrender here would
+// paste wrong into Slack too. Code spans/blocks are left untouched.
+function mrkdwnToMarkdown(text: string): string {
+  return text
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/)
+    .map((seg) => {
+      if (seg.startsWith("`")) return seg;
+      return seg
+        .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s.,;:!?)]|$)/gm, "$1**$2**")
+        .replace(/(^|[\s(])_([^_\n]+)_(?=[\s.,;:!?)]|$)/gm, "$1*$2*")
+        .replace(/(^|[\s(])~([^~\n]+)~(?=[\s.,;:!?)]|$)/gm, "$1~~$2~~");
+    })
+    .join("");
 }
 
 interface QuickAction {
@@ -46,6 +63,7 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
   const [newTaskRoleId, setNewTaskRoleId] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<"normal" | "urgent">("normal");
   const [newTaskIsToday, setNewTaskIsToday] = useState(false);
+  const [newTaskScheduledFor, setNewTaskScheduledFor] = useState<string | null>(null);
   const [roles, setRoles] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [formatMessageMode, setFormatMessageMode] = useState(false);
   const [formatRoleId, setFormatRoleId] = useState("");
@@ -254,7 +272,7 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 100);
-    if (!open) { setQuery(""); setResults(null); setAiAnswer(null); setAddTaskMode(false); setNewTaskTitle(""); setFormatMessageMode(false); fmtHook.reset(); setFormatInput(""); setFormatRoleId(""); setFormatType("slack"); }
+    if (!open) { setQuery(""); setResults(null); setAiAnswer(null); setAddTaskMode(false); setNewTaskTitle(""); setNewTaskScheduledFor(null); setFormatMessageMode(false); fmtHook.reset(); setFormatInput(""); setFormatRoleId(""); setFormatType("slack"); }
   }, [open]);
 
   const doSearch = useCallback(async (q: string) => {
@@ -415,7 +433,9 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
                           ) : fmtHook.format === "sms" ? (
                             <pre className="whitespace-pre-wrap font-sans">{fmtHook.formatted}</pre>
                           ) : (
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{fmtHook.formatted}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {fmtHook.format === "slack" ? mrkdwnToMarkdown(fmtHook.formatted) : fmtHook.formatted}
+                            </ReactMarkdown>
                           )}
                         </div>
                       </motion.div>
@@ -448,12 +468,58 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
                     ))}
                   </select>
 
+                  {/* Schedule chips */}
+                  {newTaskRoleId && (() => {
+                    const today = todayISO();
+                    const tomorrow = tomorrowISO();
+                    const nwdDate = formatDateOnly(nextWorkingDay(parseDateOnly(today)!))!;
+                    const nwdLabel = parseDateOnly(nwdDate)!.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+                    const showNwdChip = nwdDate !== tomorrow;
+                    const options: Array<{ label: string; value: string | null }> = [
+                      { label: "Backlog", value: null },
+                      { label: "Today", value: today },
+                      { label: "Tomorrow", value: tomorrow },
+                    ];
+                    if (showNwdChip) options.push({ label: nwdLabel, value: nwdDate });
+                    const isPreset = newTaskScheduledFor === null || options.some((o) => o.value === newTaskScheduledFor);
+                    return (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mr-1">Schedule</span>
+                        {options.map((opt) => (
+                          <button
+                            key={opt.label}
+                            onClick={() => setNewTaskScheduledFor(opt.value)}
+                            className={`px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors ${
+                              newTaskScheduledFor === opt.value
+                                ? "bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]"
+                                : "bg-[var(--surface)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                        <input
+                          type="date"
+                          value={!isPreset && newTaskScheduledFor ? newTaskScheduledFor : ""}
+                          onChange={(e) => setNewTaskScheduledFor(e.target.value || null)}
+                          className={`bg-transparent border rounded-full px-2 py-0.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/30 ${
+                            !isPreset && newTaskScheduledFor
+                              ? "border-[var(--accent-blue)]/40 text-[var(--accent-blue)]"
+                              : "border-[var(--border-subtle)] text-[var(--text-tertiary)]"
+                          }`}
+                        />
+                      </div>
+                    );
+                  })()}
+
                   {/* Brain dump → AI refine → create */}
                   {newTaskRoleId && (
                     <TaskBrainDump
                       roleId={newTaskRoleId}
                       roleName={roles.find(r => r.id === newTaskRoleId)?.name}
                       roleColor={roles.find(r => r.id === newTaskRoleId)?.color}
+                      scheduledFor={newTaskScheduledFor}
+                      onScheduleParsed={(iso) => setNewTaskScheduledFor(iso)}
                       onTaskCreated={() => {
                         window.dispatchEvent(new CustomEvent("tasks-changed"));
                       }}

@@ -73,6 +73,62 @@ export function tomorrowISO(): string {
   return formatDateOnly(tomorrow())!;
 }
 
+const DOW_ALIASES: Record<string, number> = {
+  sun: 0, sunday: 0,
+  mon: 1, monday: 1,
+  tue: 2, tues: 2, tuesday: 2,
+  wed: 3, weds: 3, wednesday: 3,
+  thu: 4, thur: 4, thurs: 4, thursday: 4,
+  fri: 5, friday: 5,
+  sat: 6, saturday: 6,
+};
+
+/** Next occurrence (strictly after today) of the given weekday. */
+export function nextDayOfWeek(target: number, from: Date = today()): Date {
+  const cur = from.getUTCDay();
+  let delta = (target - cur + 7) % 7;
+  if (delta === 0) delta = 7;
+  return addDays(from, delta);
+}
+
+/**
+ * Scan free text for an @-tag scheduling shortcut: @today, @tomorrow, @thu,
+ * @thursday, @2026-05-15, @5/15, @5-15. Returns the resolved date plus the
+ * exact substring to strip from the input. Whichever tag appears first wins.
+ */
+export function parseScheduleTag(input: string): { iso: string; match: string } | null {
+  const re = /@([A-Za-z]+|\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[-/]\d{1,2})/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(input)) !== null) {
+    const token = m[1].toLowerCase();
+    if (token === "today") return { iso: todayISO(), match: m[0] };
+    if (token === "tomorrow" || token === "tmrw") return { iso: tomorrowISO(), match: m[0] };
+    if (token === "nextworkday" || token === "nwd") {
+      return { iso: formatDateOnly(nextWorkingDay())!, match: m[0] };
+    }
+    if (token in DOW_ALIASES) {
+      return { iso: formatDateOnly(nextDayOfWeek(DOW_ALIASES[token]))!, match: m[0] };
+    }
+    const iso = /^\d{4}-\d{1,2}-\d{1,2}$/.test(token)
+      ? token.replace(/^(\d{4})-(\d{1,2})-(\d{1,2})$/, (_, y, mo, d) => `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`)
+      : null;
+    if (iso && parseDateOnly(iso)) return { iso, match: m[0] };
+    const md = /^(\d{1,2})[-/](\d{1,2})$/.exec(token);
+    if (md) {
+      const mo = Number(md[1]);
+      const d = Number(md[2]);
+      if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+        const t = today();
+        let y = t.getUTCFullYear();
+        const candidate = new Date(Date.UTC(y, mo - 1, d));
+        if (candidate.getTime() < t.getTime()) y += 1;
+        return { iso: formatDateOnly(new Date(Date.UTC(y, mo - 1, d)))!, match: m[0] };
+      }
+    }
+  }
+  return null;
+}
+
 /** True if the given ISO date string is today or earlier (in the configured tz). */
 export function isScheduledForTodayOrPast(value: string | null | undefined): boolean {
   const d = parseDateOnly(value);

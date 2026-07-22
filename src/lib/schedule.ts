@@ -25,7 +25,7 @@ let cachedBlocks: TimeBlock[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL = 60_000; // 60 seconds
 
-export async function getScheduleBlocks(): Promise<TimeBlock[]> {
+async function getRawBlocks(): Promise<TimeBlock[]> {
   const now = Date.now();
   if (cachedBlocks && now - cacheTimestamp < CACHE_TTL) {
     return cachedBlocks;
@@ -49,6 +49,37 @@ export async function getScheduleBlocks(): Promise<TimeBlock[]> {
   return cachedBlocks;
 }
 
+function clampToDay(total: number): number {
+  if (total < 0) return 0;
+  if (total > 24 * 60 - 1) return 24 * 60 - 1;
+  return total;
+}
+
+function applyShift(blocks: TimeBlock[], shiftMinutes: number): TimeBlock[] {
+  if (!shiftMinutes) return blocks;
+  return blocks.map((b) => {
+    const start = clampToDay(timeToMinutes(b.startHour, b.startMinute) + shiftMinutes);
+    const end = clampToDay(timeToMinutes(b.endHour, b.endMinute) + shiftMinutes);
+    const s = minutesToTime(start);
+    const e = minutesToTime(end);
+    return { ...b, startHour: s.hour, startMinute: s.minute, endHour: e.hour, endMinute: e.minute };
+  });
+}
+
+export async function getScheduleBlocks(referenceDate?: Date): Promise<TimeBlock[]> {
+  const raw = await getRawBlocks();
+  const d = referenceDate || localNow();
+  const profile = await prisma.userProfile.findUnique({
+    where: { id: "default" },
+    select: { dayShiftDate: true, dayShiftMinutes: true },
+  });
+  if (!profile?.dayShiftDate || !profile.dayShiftMinutes) return raw;
+  const shiftIso = profile.dayShiftDate.toISOString().slice(0, 10);
+  const todayIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  if (shiftIso !== todayIso) return raw;
+  return applyShift(raw, profile.dayShiftMinutes);
+}
+
 export function invalidateScheduleCache() {
   cachedBlocks = null;
   cacheTimestamp = 0;
@@ -66,10 +97,10 @@ export async function getCurrentBlock(now?: Date): Promise<{
   block: TimeBlock;
   roleId: string;
 } | null> {
-  const blocks = await getScheduleBlocks();
+  const d = now || localNow();
+  const blocks = await getScheduleBlocks(d);
   if (blocks.length === 0) return null;
 
-  const d = now || localNow();
   const dayOfWeek = d.getDay(); // 0=Sun, 1=Mon, etc.
   const currentMinutes = timeToMinutes(d.getHours(), d.getMinutes());
 
@@ -98,10 +129,10 @@ export async function getNextBlocks(count: number = 3, now?: Date): Promise<
     roleId: string;
   }>
 > {
-  const blocks = await getScheduleBlocks();
+  const d = now || localNow();
+  const blocks = await getScheduleBlocks(d);
   if (blocks.length === 0) return [];
 
-  const d = now || localNow();
   const dayOfWeek = d.getDay();
   const currentMinutes = timeToMinutes(d.getHours(), d.getMinutes());
 

@@ -171,8 +171,10 @@ async function processStructuredEvents(
     }
   }
 
-  // Use text AI (Haiku — cheap) to generate prep tasks for non-ignored meetings
-  if (nonIgnored.length > 0) {
+  // Use text AI (Haiku — cheap) to generate prep tasks for non-ignored meetings.
+  // CALENDAR_PREP_TASKS=off disables the whole prep pipeline: no AI call here, and
+  // meetings without a prepTask never become Task rows in reconcileAndSave.
+  if (nonIgnored.length > 0 && process.env.CALENDAR_PREP_TASKS !== "off") {
     try {
       const meetingList = nonIgnored.map((m) => {
         const parts = [`- ${m.event.startTime}-${m.event.endTime}: ${m.event.title}`];
@@ -340,6 +342,12 @@ async function reconcileAndSave(
   trigger: SyncTrigger,
   syncStart: Date,
 ) {
+  // Prep tasks disabled → strip them before reconciliation so no path (structured
+  // sync, screenshot fallback, or backfill) creates Task rows for meetings.
+  if (process.env.CALENDAR_PREP_TASKS === "off") {
+    for (const m of parsed.meetings) m.prepTask = undefined;
+  }
+
   function normalize(s: string): string {
     return s.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 50);
   }
@@ -551,6 +559,8 @@ async function reconcileAndSave(
     meetingsIgnored,
     tasksCreated: createdTasks.length,
     conflicts: parsed.conflicts,
-    summary: parsed.summary,
+    // When prep tasks are disabled there is no AI summary by design — report that
+    // in the response so calendar-sync.sh caches the hash instead of retrying hourly
+    summary: parsed.summary ?? (process.env.CALENDAR_PREP_TASKS === "off" ? "prep tasks disabled" : undefined),
   });
 }

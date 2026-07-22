@@ -1,16 +1,11 @@
-"use client";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { SetupClient } from "./SetupClient";
 
-import { useRouter } from "next/navigation";
-import { SetupWizard } from "@/components/SetupWizard";
+export const dynamic = "force-dynamic";
 
-export default function SetupPage() {
-  const router = useRouter();
-
-  const handleComplete = async () => {
-    // After setup, sign in with the password they just set
-    // Then redirect to home
-    router.push("/login");
-  };
-
-  return <SetupWizard onComplete={handleComplete} />;
+export default async function SetupPage() {
+  const roleCount = await prisma.role.count();
+  if (roleCount > 0) redirect("/");
+  return <SetupClient />;
 }

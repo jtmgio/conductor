@@ -341,7 +341,31 @@ Based on the above, provide:`;
     } catch { toast("Failed to save", "error"); }
     setSavingCalendar(false);
   };
-  const resetToday = async () => { try { await fetch("/api/tasks/reset-today", { method: "POST" }); toast("Today's tasks reset", "success"); } catch { toast("Failed to reset", "error"); } };
+  const resetToday = async () => { try { await fetch("/api/tasks/reset-today", { method: "POST" }); window.dispatchEvent(new Event("tasks-changed")); toast("Today's plan cleared — rebuild from Focus", "success"); } catch { toast("Failed to reset", "error"); } };
+  const startDay = async () => {
+    try {
+      const res = await fetch("/api/schedule/start-day", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) { toast("Failed to start day", "error"); return; }
+      if (!data.planned) {
+        sessionStorage.setItem("conductor-open-planner", data.targetDate);
+        router.push("/");
+        return;
+      }
+      if (data.shifted) {
+        const mins = Math.abs(data.shiftMinutes);
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        const label = h > 0 ? `${h}h ${m}m` : `${m}m`;
+        toast(`Day started — schedule shifted ${label} earlier`, "success");
+      } else if (data.reason === "already-started") {
+        toast("You're already inside the first block", "default");
+      } else {
+        toast("No blocks scheduled for today", "default");
+      }
+      router.push("/");
+    } catch { toast("Failed to start day", "error"); }
+  };
   const createCompany = async () => {
     if (!newCompany.name || !newCompany.title) return;
     try {
@@ -1386,6 +1410,9 @@ Based on the above, provide:`;
                   <div className="border-t border-[var(--border-subtle)] pt-6 space-y-4">
                     <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium">Actions</p>
                     <div className="flex flex-col gap-3">
+                      <button onClick={startDay} className="text-left text-[15px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors py-2">
+                        Start day now
+                      </button>
                       <button onClick={resetToday} className="text-left text-[15px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors py-2">
                         Reset today&apos;s tasks
                       </button>

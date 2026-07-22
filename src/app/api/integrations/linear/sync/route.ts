@@ -137,8 +137,12 @@ export async function POST(req: NextRequest) {
     where: { type: "linear" },
   });
 
-  if (!integration?.enabled) {
-    return NextResponse.json({ error: "Linear integration not configured or disabled" }, { status: 404 });
+  if (!integration) {
+    return NextResponse.json({ error: "Linear integration not configured" }, { status: 404 });
+  }
+  if (!integration.enabled) {
+    // Paused, not broken — 200 so the cron log reads "disabled" instead of "failed"
+    return NextResponse.json({ success: true, skipped: true, summary: "integration disabled — sync skipped" });
   }
 
   const config = integration.config as { apiKey: string; teamId: string; userId: string; roleId: string };

@@ -442,6 +442,7 @@ Qwen3 30B (local MLX, current default), Sonnet 4.6, Haiku 4.5, Opus 4.6, GPT-5.4
 - Reads events directly from macOS Calendar via **EventKit** (`cron/calendar-events.swift`) — no screenshots needed
 - Maps calendar accounts to roles (e.g., `you@acme-corp.com → Acme Corp`) configured in Settings > Integrations > Calendar
 - Generates prep tasks for each non-ignored meeting via Claude Haiku (text, not vision — cheap)
+- **`CALENDAR_PREP_TASKS="off"`** (env, currently set) disables prep tasks entirely: meetings still sync to the AgendaStrip but no Task rows are created and the AI call is skipped (sync response reports `summary: "prep tasks disabled"` so hash caching still works). Remove the env var + rebuild to re-enable.
 - 3-phase reconciliation: upsert new/changed meetings, remove deleted meetings, preserve completed prep tasks
 - Dedup: `sourceType="calendar"`, `sourceId="cal-{date}-{normalizedTitle}"`
 - Hash-based change detection: hashes event data, skips API call if calendar unchanged
@@ -496,6 +497,17 @@ Qwen3 30B (local MLX, current default), Sonnet 4.6, Haiku 4.5, Opus 4.6, GPT-5.4
 - `src/app/api/calendar/last-sync/route.ts` — Returns last sync timestamp (polled by AgendaStrip)
 - `src/app/api/calendar/accounts/route.ts` — Discovers calendar accounts (macOS only, not in Docker)
 - `src/components/AgendaStrip.tsx` — Displays today's meetings, polls for sync updates
+
+## MCP server (external agents)
+
+Conductor exposes an MCP endpoint at `/api/mcp/[transport]` (`src/app/api/mcp/[transport]/route.ts`, built on `mcp-handler`) so external agents — Claude Code on any Tailscale device — can work the task system.
+
+- **URL**: `http://joshuas-mac-pro.tail842fd4.ts.net:5402/api/mcp/mcp` (streamable HTTP)
+- **Auth**: `Authorization: Bearer $MCP_API_TOKEN` (env var; fails closed if unset). NextAuth does not apply here.
+- **Tools**: `get_context`, `list_tasks`, `create_task`, `update_task`, `create_followup`, `add_note`, `search`, `format_message`
+- Tools resolve roles by (partial) name, tasks created get `sourceType: "mcp"` and default to backlog (not today)
+- `create_task` AI-refines raw text by default via `src/lib/task-refine.ts` (shared with `/api/tasks/refine`): short title, notes, checklist, resolved dueDate. When no role is given, local AI infers it from the role directory + staff names and must quote its evidence; `evidenceMatchesRole()` verifies the quote in code (topic overlap like "dashboard" doesn't pass). Unverifiable → the tool returns `needsClarification` (task NOT created) with role options + bestGuess + currentBlockRole so the client asks the user. `refine: false` saves verbatim. `update_task` accepts `role` to move a misfiled task.
+- Registered in Claude Code user scope: `claude mcp add --scope user --transport http conductor <url> --header "Authorization: Bearer <token>"`
 
 ## Conversations
 

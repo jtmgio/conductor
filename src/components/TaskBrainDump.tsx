@@ -5,18 +5,21 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, Sparkles, X, Plus, Check } from "lucide-react";
 import { useTaskRefine, type RefinedTask } from "@/hooks/useTaskRefine";
 import { useToast } from "@/components/ui/toast";
+import { parseScheduleTag } from "@/lib/dates";
 
 interface TaskBrainDumpProps {
   roleId: string;
   roleName?: string;
   roleColor?: string;
   scheduledFor?: string | null;
+  /** Called when an inline @schedule tag was parsed out of the input. */
+  onScheduleParsed?: (iso: string) => void;
   onTaskCreated: () => void;
   onCancel: () => void;
   compact?: boolean;
 }
 
-export function TaskBrainDump({ roleId, roleName, roleColor, scheduledFor = null, onTaskCreated, onCancel, compact = false }: TaskBrainDumpProps) {
+export function TaskBrainDump({ roleId, roleName, roleColor, scheduledFor = null, onScheduleParsed, onTaskCreated, onCancel, compact = false }: TaskBrainDumpProps) {
   const { state, refined, refine, updateField, reset } = useTaskRefine();
   const [inputText, setInputText] = useState("");
   const [saving, setSaving] = useState(false);
@@ -43,7 +46,13 @@ export function TaskBrainDump({ roleId, roleName, roleColor, scheduledFor = null
   }, [state]);
 
   const handleSubmit = () => {
-    const text = inputText.trim();
+    let text = inputText.trim();
+    if (!text) return;
+    const tag = parseScheduleTag(text);
+    if (tag) {
+      text = text.replace(tag.match, "").replace(/\s{2,}/g, " ").trim();
+      if (onScheduleParsed) onScheduleParsed(tag.iso);
+    }
     if (!text) return;
     refine(text, roleId);
   };
@@ -134,7 +143,7 @@ export function TaskBrainDump({ roleId, roleName, roleColor, scheduledFor = null
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="What do you need to do? Just dump your thoughts..."
+              placeholder="What do you need to do? Just dump your thoughts… add @today, @tomorrow, @thu, or @5/15 to schedule"
               rows={compact ? 2 : 3}
               className="w-full bg-transparent border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[15px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent-blue)] resize-none"
             />
