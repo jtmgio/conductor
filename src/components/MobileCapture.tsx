@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Check, Mic, X } from "lucide-react";
+import { Check, Mic, X, ChevronDown } from "lucide-react";
 
 interface Role {
   id: string;
@@ -113,24 +113,23 @@ export function MobileCapture({ currentBlock }: { currentBlock?: { roleId: strin
         </button>
       </div>
 
-      {/* Company chips */}
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-        {roles.map((r) => {
-          const on = r.id === roleId;
-          return (
-            <button
-              key={r.id}
-              onClick={() => setRoleId(r.id)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-[13px] font-medium transition-colors ${
-                on ? "bg-[var(--surface-raised)]" : "border-[var(--border-subtle)] text-[var(--text-tertiary)]"
-              }`}
-              style={on ? { borderColor: r.color, color: r.color } : undefined}
-            >
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: r.color }} />
+      {/* Company selector */}
+      <div
+        className="relative mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)]"
+        style={{ borderLeft: `3px solid ${roles.find((r) => r.id === roleId)?.color || "var(--border-strong)"}` }}
+      >
+        <select
+          value={roleId}
+          onChange={(e) => setRoleId(e.target.value)}
+          className="w-full appearance-none bg-transparent px-4 py-3.5 pr-10 text-[15px] font-medium text-[var(--text-primary)] outline-none"
+        >
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
               {r.name}
-            </button>
-          );
-        })}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
       </div>
 
       {/* Big add button */}
