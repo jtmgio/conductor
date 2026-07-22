@@ -95,6 +95,9 @@
   .one .lbl{font-weight:600}
   .one .row{display:flex;align-items:flex-start;gap:14px;margin-top:10px}
   .checkbox{width:26px;height:26px;border-radius:8px;border:1.75px solid var(--border-strong);margin-top:2px;cursor:pointer;flex:0 0 auto;transition:.15s}
+  .checkbox:hover{background:color-mix(in srgb,var(--quiet) 30%,transparent);border-color:var(--quiet)}
+  .rest li .mini{cursor:pointer;transition:.15s}
+  .rest li .mini:hover{background:color-mix(in srgb,var(--quiet) 30%,transparent);border-color:var(--quiet)}
   .one h2{margin:0;font-size:18px;line-height:1.3;font-weight:600;letter-spacing:-.01em}
   .tmeta{margin-top:9px;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
   .chip{font-size:11.5px;padding:3px 9px;border-radius:99px;font-weight:600;background:var(--raised-2);color:var(--text-2);border:1px solid var(--border)}
@@ -302,31 +305,36 @@ const BOUNDS = SCHED.map(b=>b[1]);
 // tasks per company: {t,status,due}
 const TASKS = {
   zeta:[
-    {t:'Review the LISTers UX-modernization migration plan',status:'in review',due:true,src:'Linear'},
-    {t:'Reply to Dana re: SailThru benchmark scores',status:'in progress'},
-    {t:'Draft Tuesday-call positioning notes',status:'backlog'},
-    {t:'Confirm decomposition owner for the auth service',status:'backlog'},
+    {id:'z1',t:'Review the LISTers UX-modernization migration plan',status:'in review',due:true,src:'Linear',done:false},
+    {id:'z2',t:'Reply to Dana re: SailThru benchmark scores',status:'in progress',done:false},
+    {id:'z3',t:'Draft Tuesday-call positioning notes',status:'backlog',done:false},
   ],
   vquip:[
-    {t:'Triage the QA bug queue before standup',status:'in progress',due:true,src:'Linear'},
-    {t:'Cut the v0.9 release branch',status:'backlog'},
-    {t:'Approve Priya’s onboarding-flow PR',status:'in review'},
+    {id:'v1',t:'Triage the QA bug queue before standup',status:'in progress',due:true,src:'Linear',done:false},
+    {id:'v2',t:'Cut the v0.9 release branch',status:'backlog',done:false},
+    {id:'v3',t:'Approve Priya’s onboarding-flow PR',status:'in review',done:false},
+    {id:'v4',t:'Write migration notes for the config change',status:'backlog',done:false},
   ],
   healthme:[
-    {t:'Finish the FHIR ingestion spike write-up',status:'in progress',due:true},
-    {t:'Sketch the care-gap dashboard states',status:'backlog'},
+    {id:'hm1',t:'Finish the FHIR ingestion spike write-up',status:'in progress',due:true,done:false},
+    {id:'hm2',t:'Sketch the care-gap dashboard states',status:'backlog',done:false},
   ],
   healthmap:[
-    {t:'Reconcile the provider-directory dedupe rules',status:'in progress'},
-    {t:'Prep the Thursday data-quality review',status:'backlog'},
+    {id:'h1',t:'Reconcile the provider-directory dedupe rules',status:'in progress',due:true,done:false},
+    {id:'h2',t:'Answer Rafael’s schema question on dedupe',status:'in progress',done:false},
+    {id:'h3',t:'Prep the Thursday data-quality review',status:'backlog',done:false},
+    {id:'h4',t:'Review the ingestion retry logic',status:'backlog',done:false},
+    {id:'h5',t:'Update the SLA dashboard queries',status:'backlog',done:false},
   ],
-  xen:[{t:'Sign off on the SSO cutover window',status:'blocked'}],
+  xen:[{id:'x1',t:'Sign off on the SSO cutover window',status:'blocked',done:false}],
   trainbet:[
-    {t:'Wire the workout-streak model to the home screen',status:'in progress',due:true},
-    {t:'Design the "rest day" empty state',status:'backlog'},
-    {t:'Draft the TestFlight release notes',status:'backlog'},
+    {id:'t1',t:'Wire the workout-streak model to the home screen',status:'in progress',due:true,done:false},
+    {id:'t2',t:'Design the "rest day" empty state',status:'backlog',done:false},
+    {id:'t3',t:'Draft the TestFlight release notes',status:'backlog',done:false},
   ],
 };
+function findTask(id){for(const k in TASKS){const t=TASKS[k].find(x=>x.id===id);if(t)return t;}return null;}
+function liveTasks(key){return (TASKS[key]||[]).filter(t=>!t.done);}
 const MEET = [
   {min:660,co:'vquip',n:'vQuip standup'},
   {min:750,co:'healthmap',n:'Data-quality review'},
@@ -388,14 +396,15 @@ function renderToday(){
     <p style="margin-top:8px;font-size:13.5px">Nothing scheduled. Comms sweeps pause outside 9:00–3:45 — nobody expects you now.</p></div>`;
     return;
   }
-  const key=cb[2], co=CO[key], tasks=TASKS[key]||[], one=tasks[0];
+  const key=cb[2], co=CO[key];
+  const live=liveTasks(key), one=live[0], rest=live.slice(1);
   const pct=Math.round(((min-cb[0])/(cb[1]-cb[0]))*100);
   const left=cb[1]-min, into=min-cb[0];
 
   // all-clear: every active company except current
   const others=Object.keys(CO).filter(k=>k!==key && k!=='xen');
   const clear=others.map(k=>{
-    const hasDue=(TASKS[k]||[]).some(t=>t.due);
+    const hasDue=(TASKS[k]||[]).some(t=>t.due && !t.done);
     const stale=FOLLOWUPS.some(f=>f.co===k && f.stale);
     if(!hasDue && !stale) return `<span class="co"><span class="cd" style="background:${CO[k].c}"></span>${CO[k].n} ${I.check} quiet</span>`;
     const bits=[]; if(hasDue)bits.push('1 due today'); if(stale)bits.push('1 waiting');
@@ -404,7 +413,6 @@ function renderToday(){
 
   const meets=MEET.map(m=>`<div class="mtg ${min>=m.min-15&&min<m.min?'now':''}"><div class="t"><span class="cd" style="background:${CO[m.co].c}"></span><span class="num">${fmt(m.min)}</span></div><div class="n">${m.n}</div></div>`).join('');
 
-  const rest=tasks.slice(1);
   el.innerHTML=`
   <div class="phead"><div class="date">Tuesday, July 22</div><div class="clock num">${fmt(min)}</div></div>
   <section class="block">
@@ -413,11 +421,11 @@ function renderToday(){
     <div class="progress"><i style="width:${pct}%;background:color-mix(in srgb,${co.c} 78%,transparent)"></i></div>
     <div class="meta"><span class="num">${into} min in</span><span>·</span><span class="num">${left} min left</span></div>
   </section>
-  ${one?`<section class="one" style="--a:${co.c}"><span class="eyebrow lbl" style="color:${co.c}">Your one thing</span>
-    <div class="row"><div class="checkbox" style="border-color:${co.c}44"></div>
+  ${one?`<section class="one" data-task="${one.id}" style="--a:${co.c}"><span class="eyebrow lbl" style="color:${co.c}">Your one thing</span>
+    <div class="row"><div class="checkbox" style="border-color:${co.c}77" title="Mark done" onclick="complete('${one.id}')"></div>
     <div><h2>${one.t}</h2><div class="tmeta"><span class="chip">${one.status}</span>${one.due?'<span class="chip due">Due today</span>':''}${one.src?`<span class="chip">${one.src}</span>`:''}</div></div></div></section>
-    <style>.one::before{background:${co.c}}</style>`:`<section class="one"><p style="color:var(--text-3);font-size:14px">Nothing queued for ${co.n} — capture your first thing below.</p></section>`}
-  ${rest.length?`<details class="rest"><summary>${I.chev}${rest.length} more for ${co.n} today</summary><ul>${rest.map(r=>`<li><span class="mini"></span>${r.t}</li>`).join('')}</ul></details>`:''}
+    <style>.one::before{background:${co.c}}</style>`:`<section class="one"><span class="eyebrow lbl" style="color:${co.c}">${co.n} — clear</span><p style="color:var(--text-2);font-size:14px;margin-top:9px">Nothing left queued for ${co.n} today. Coast to the block change, or pull your next thing from the Board.</p></section>`}
+  ${rest.length?`<details class="rest" open><summary>${I.chev}${rest.length} more for ${co.n} today</summary><ul>${rest.map(r=>`<li data-task="${r.id}"><span class="mini" title="Mark done" onclick="complete('${r.id}')"></span>${r.t}${r.due?' <span class="chip due" style="margin-left:6px">Due today</span>':''}</li>`).join('')}</ul></details>`:''}
 
   <div class="comms ${cs.due?'due':''}" ${cs.due?'onclick="openSweep()"':''}>
     <span class="ic" style="background:color-mix(in srgb,${cs.due?'var(--amber)':'var(--quiet)'} 16%,transparent)">
@@ -436,7 +444,7 @@ function renderToday(){
 function renderBoard(){
   const cb=curBlock(S.now); const key=cb?cb[2]:'zeta'; const co=CO[key];
   const cols=[['backlog','Backlog'],['in progress','In progress'],['in review','In review'],['blocked','Blocked']];
-  const tasks=TASKS[key]||[];
+  const tasks=liveTasks(key);
   document.getElementById('panel').innerHTML=`
   <h2 class="screen-h">Board</h2><p class="screen-s">Showing <b style="color:${co.c}">${co.n}</b> — your current block. No counts, no totals; done cards slide away and are gone.</p>
   <div class="cols">${cols.map(([st,lb])=>`<div class="col"><h3>${lb}</h3>${
@@ -497,6 +505,14 @@ function render(){
   document.getElementById('nowLabel').textContent=fmt(S.now);
 }
 function go(k){S.screen=k;render();}
+
+// complete a task: slide it away, then promote the next one into "your one thing"
+function complete(id){
+  const t=findTask(id); if(!t||t.done)return;
+  const card=document.querySelector(`[data-task="${id}"]`);
+  if(card){card.style.transition='opacity .3s, transform .3s';card.style.opacity='0';card.style.transform='translateX(26px)';}
+  setTimeout(()=>{t.done=true;render();},300);
+}
 
 // ---------- meds banner ----------
 function renderMeds(){
@@ -573,7 +589,14 @@ const JUMPS=[
   [886,'2:46 · TrainBetter'],
   [948,'3:48 · done'],
 ];
-document.getElementById('jumps').innerHTML=JUMPS.map(([m,l])=>`<button onclick="jump(${m})">${l}</button>`).join('');
+document.getElementById('jumps').innerHTML=
+  `<button onclick="resetDay()" style="border-color:var(--border-strong)">↺ reset</button>`+
+  JUMPS.map(([m,l])=>`<button onclick="jump(${m})">${l}</button>`).join('');
+function resetDay(){
+  for(const k in TASKS) TASKS[k].forEach(t=>t.done=false);
+  S.lastSweep=null; S.ackedMeds=new Set(); S.transitionShownFor=null;
+  pause(); setNow(570,false); S.screen='today'; render();
+}
 function jump(m){S.transitionShownFor=null;pause();setNow(m,false);
   // if the jump lands right after a boundary and nothing swept, the strip shows due automatically
 }
