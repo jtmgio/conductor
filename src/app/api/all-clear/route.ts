@@ -5,6 +5,16 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentBlock } from "@/lib/schedule";
 import { today, addDays } from "@/lib/dates";
 
+// Fixed list of the companies the user actively works — the all-clear only reassures
+// about these (dormant/automated companies as "quiet" is meaningless noise). Matched
+// as a lowercased substring so "Zeta Global" / "Healthmap Solutions" still match.
+// Edit here if the active roster changes.
+const ACTIVE_COMPANIES = ["vquip", "zeta", "healthmap", "healthme"];
+function isActiveCompany(name: string): boolean {
+  const n = name.toLowerCase();
+  return ACTIVE_COMPANIES.some((a) => n.includes(a));
+}
+
 // GET — per-company "all clear" facts for every active company EXCEPT the current
 // block's. `quiet` = nothing due today and no stale follow-ups. Numeric fields are
 // omitted when quiet so nothing tempts the UI to render a count.
@@ -31,6 +41,7 @@ export async function GET() {
   const out = [];
   for (const role of roles) {
     if (role.id === currentRoleId) continue;
+    if (!isActiveCompany(role.name)) continue;
 
     const dueToday = await prisma.task.count({
       where: { roleId: role.id, done: false, dueDate: { gte: start, lt: end } },
