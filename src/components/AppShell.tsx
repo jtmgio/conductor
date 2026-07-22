@@ -111,16 +111,11 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
   }, []);
 
   useEffect(() => {
-    const today = new Date().toDateString();
-
-    // Daily reset — move incomplete today-tasks back to backlog
-    const lastResetKey = "conductor-last-reset";
-    const lastReset = localStorage.getItem(lastResetKey);
-    if (lastReset !== today) {
-      fetch("/api/tasks/reset-today", { method: "POST" })
-        .then(() => localStorage.setItem(lastResetKey, today))
-        .catch(() => {});
-    }
+    // NOTE: the old per-device "daily reset" (POST /api/tasks/reset-today) was removed
+    // for v2. It unscheduled every undone task on first app open of a new day, gated by
+    // per-device localStorage — which meant opening a second machine wiped the plan you'd
+    // made on the first. In v2, scheduledFor IS the persistent plan (shared DB) and undone
+    // tasks stay until dealt with. Proper end-of-day carry-over is the queued rollover phase.
 
     // Calendar sync — trigger if last sync was more than 65 minutes ago
     // (LaunchAgent runs hourly on the hour, 7 AM - 4 PM weekdays; 65 min gives a 5 min buffer)
