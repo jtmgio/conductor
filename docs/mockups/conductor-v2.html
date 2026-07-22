@@ -214,6 +214,24 @@
   .meet .x{border:none;background:none;color:var(--text-3);cursor:pointer;padding:2px 4px;font-size:15px;line-height:1;flex:0 0 auto}
   .meet .x:hover{color:var(--text)}
 
+  /* meeting takeover — the loudest signal, impossible to miss */
+  .meetover{position:fixed;inset:0;z-index:85;background:color-mix(in srgb,var(--ground) 82%,transparent);backdrop-filter:blur(18px);display:grid;place-items:center;padding:22px;opacity:0;pointer-events:none;transition:opacity .3s}
+  .meetover.show{opacity:1;pointer-events:auto}
+  .mo-card{width:100%;max-width:430px;background:var(--surface);border:1px solid var(--border-strong);border-radius:26px;box-shadow:var(--shadow);padding:32px 30px 26px;text-align:center;transform:scale(.955);transition:transform .35s cubic-bezier(.22,1,.36,1);overflow:hidden}
+  .meetover.show .mo-card{transform:none}
+  .mo-card .bell{width:58px;height:58px;border-radius:18px;display:grid;place-items:center;margin:0 auto 17px}
+  .mo-card .bell svg{width:27px;height:27px}
+  .mo-card .eyebrow{margin-bottom:9px}
+  .mo-card h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em;text-wrap:balance}
+  .mo-card .when{margin-top:7px;font-size:15px;color:var(--text-2);font-weight:500}
+  .mo-card .prepbox{margin-top:18px;padding:12px 15px;border-radius:13px;background:var(--raised);border:1px solid var(--border);font-size:13.5px;color:var(--text-2);text-align:left;display:flex;gap:8px;align-items:flex-start}
+  .mo-card .prepbox b{color:var(--text)}
+  .mo-card .acts{margin-top:22px;display:flex;gap:10px;justify-content:center}
+  .mo-card .acts .ghost{background:none;border:1px solid var(--border-strong);color:var(--text-2);border-radius:12px;padding:13px 18px;font-size:14px;font-weight:600;cursor:pointer}
+  .mo-card .acts .ghost:hover{color:var(--text)}
+  .mo-card .acts .go{border:none;border-radius:12px;padding:13px 22px;font-size:15px;font-weight:700;color:var(--surface);cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  .mo-card .acts .go svg{width:16px;height:16px;flex:0 0 auto}
+
   /* transition overlay */
   .overlay{position:fixed;inset:0;z-index:70;background:color-mix(in srgb,var(--ground) 84%,transparent);backdrop-filter:blur(16px);display:grid;place-items:center;padding:22px;opacity:0;pointer-events:none;transition:opacity .35s}
   .overlay.show{opacity:1;pointer-events:auto}
@@ -271,6 +289,7 @@
 
 <div class="medwrap" id="medwrap"></div>
 <div class="meetwrap" id="meetwrap"></div>
+<div class="meetover" id="meetover"></div>
 <div class="overlay" id="overlay"></div>
 
 <div class="timebar">
@@ -373,6 +392,7 @@ const S = {
   lastSweep:null,            // minutes-of-day of last sweep, or null
   ackedMeds:new Set(),
   ackedMeetings:new Set(),
+  meetShown:new Set(),       // meeting takeovers already popped
   transitionShownFor:null,   // boundary min we already ritualized
 };
 const MEETLEAD=5;            // configurable in the real app (conductor-notif-lead-minutes)
@@ -540,6 +560,24 @@ function renderMeetAlerts(){
 }
 function ackMeeting(n){S.ackedMeetings.add(n);renderMeetAlerts();}
 
+// full-screen meeting takeover — pops once when a meeting enters its lead window
+function checkMeetTakeover(){
+  const m=MEET.find(m=>S.now>=m.min-MEETLEAD && S.now<m.min && !S.meetShown.has(m.n) && !S.ackedMeetings.has(m.n));
+  if(m){S.meetShown.add(m.n);showMeetOver(m);}
+}
+function showMeetOver(m){
+  const co=CO[m.co], mins=m.min-S.now, nm=m.n.replace(/'/g,"\\'");
+  document.getElementById('meetover').innerHTML=`<div class="mo-card" style="border-top:3px solid ${co.c}">
+    <div class="bell" style="background:color-mix(in srgb,${co.c} 18%,transparent);color:${co.c}">${I.bell}</div>
+    <div class="eyebrow" style="color:${co.c}">Meeting starting soon</div>
+    <h1>${m.n}</h1><div class="when num">in ${mins} min · ${fmt(m.min)} · ${co.n}</div>
+    ${m.prep?`<div class="prepbox"><b>Prep</b> ${m.prep}</div>`:''}
+    <div class="acts"><button class="ghost" onclick="ackMeeting('${nm}');closeMeetOver()">Dismiss</button>
+    <button class="go" style="background:${co.c}" onclick="closeMeetOver()">Got it ${I.arrow}</button></div></div>`;
+  const o=document.getElementById('meetover');o.classList.add('show');o.onclick=e=>{if(e.target===o)closeMeetOver();};
+}
+function closeMeetOver(){document.getElementById('meetover').classList.remove('show');}
+
 // complete a task: slide it away, then promote the next one into "your one thing"
 function complete(id){
   const t=findTask(id); if(!t||t.done)return;
@@ -596,7 +634,7 @@ function showTransition(fromB,toB,early){
 }
 function showOverlay(){const o=document.getElementById('overlay');o.classList.add('show');o.onclick=hideOverlay;}
 function hideOverlay(){document.getElementById('overlay').classList.remove('show');}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')hideOverlay();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideOverlay();closeMeetOver();}});
 
 // ---------- time control ----------
 function setNow(min,fireRitual){
@@ -613,6 +651,7 @@ function setNow(min,fireRitual){
   }
   document.getElementById('slider').value=min;
   render();
+  checkMeetTakeover();
 }
 function pause(){S.playing=false;if(S.timer){clearInterval(S.timer);S.timer=null;}document.getElementById('play').innerHTML=I.play;}
 function play(){
@@ -638,7 +677,7 @@ document.getElementById('jumps').innerHTML=
   JUMPS.map(([m,l])=>`<button onclick="jump(${m})">${l}</button>`).join('');
 function resetDay(){
   for(const k in TASKS) TASKS[k].forEach(t=>t.done=false);
-  S.lastSweep=null; S.ackedMeds=new Set(); S.ackedMeetings=new Set(); S.transitionShownFor=null; S.override=null;
+  S.lastSweep=null; S.ackedMeds=new Set(); S.ackedMeetings=new Set(); S.meetShown=new Set(); S.transitionShownFor=null; S.override=null;
   pause(); setNow(570,false); S.screen='today'; render();
 }
 function jump(m){S.transitionShownFor=null;pause();setNow(m,false);
