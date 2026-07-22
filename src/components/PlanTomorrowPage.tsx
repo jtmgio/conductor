@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "./AppShell";
-import { Check, Plus, ArrowLeft } from "lucide-react";
+import { Check, Plus, ArrowLeft, Trash2 } from "lucide-react";
 
 interface Role {
   id: string;
@@ -96,6 +96,13 @@ export function PlanTomorrowPage() {
     [drafts, tomorrowIso, load]
   );
 
+  const remove = useCallback(async (id: string) => {
+    setTasks((prev) => prev.filter((x) => x.id !== id));
+    try {
+      await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+    } catch {}
+  }, []);
+
   const pickedCount = tasks.filter(isOnTomorrow).length;
 
   return (
@@ -128,22 +135,30 @@ export function PlanTomorrowPage() {
                   {items.map((t) => {
                     const on = isOnTomorrow(t);
                     return (
-                      <button
+                      <div
                         key={t.id}
-                        onClick={() => toggle(t)}
-                        className="flex min-h-[44px] items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3.5 py-2.5 text-left transition-colors hover:border-[var(--border-strong)]"
+                        className="group flex min-h-[44px] items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3.5 py-2.5 transition-colors hover:border-[var(--border-strong)]"
                       >
-                        <span
-                          className={
-                            on
-                              ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-emerald-500/60 bg-emerald-500/15"
-                              : "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-[var(--border-strong)]"
-                          }
+                        <button onClick={() => toggle(t)} className="flex flex-1 items-center gap-3 text-left">
+                          <span
+                            className={
+                              on
+                                ? "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-emerald-500/60 bg-emerald-500/15"
+                                : "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-[var(--border-strong)]"
+                            }
+                          >
+                            <Check className={on ? "h-3 w-3 text-emerald-400" : "h-3 w-3 text-transparent"} />
+                          </span>
+                          <span className={`flex-1 text-[14px] ${on ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}`}>{t.title}</span>
+                        </button>
+                        <button
+                          onClick={() => remove(t.id)}
+                          aria-label="Delete task"
+                          className="shrink-0 rounded-md p-1.5 text-[var(--text-tertiary)] opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
                         >
-                          <Check className={on ? "h-3 w-3 text-emerald-400" : "h-3 w-3 text-transparent"} />
-                        </span>
-                        <span className={`flex-1 text-[14px] ${on ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}`}>{t.title}</span>
-                      </button>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     );
                   })}
 
