@@ -388,7 +388,10 @@ function renderNav(){
 
 // ---------- render: Today ----------
 function renderToday(){
-  const min=S.now, cb=curBlock(min), cs=commsState(min);
+  const min=S.now, cs=commsState(min);
+  if(S.override && min>=S.override[0]) S.override=null; // schedule caught up
+  let cb=curBlock(min), early=false;
+  if(S.override && min<S.override[0]){ cb=S.override; early=true; }
   const el=document.getElementById('panel');
   if(!cb){
     el.innerHTML=`<div class="phead"><div class="date">Tuesday, July 22</div><div class="clock num">${fmt(min)}</div></div>
@@ -398,8 +401,8 @@ function renderToday(){
   }
   const key=cb[2], co=CO[key];
   const live=liveTasks(key), one=live[0], rest=live.slice(1);
-  const pct=Math.round(((min-cb[0])/(cb[1]-cb[0]))*100);
-  const left=cb[1]-min, into=min-cb[0];
+  const pct=early?0:Math.round(((min-cb[0])/(cb[1]-cb[0]))*100);
+  const left=early?0:cb[1]-min, into=early?0:min-cb[0];
 
   // all-clear: every active company except current
   const others=Object.keys(CO).filter(k=>k!==key && k!=='xen');
@@ -419,12 +422,12 @@ function renderToday(){
     <div class="top"><span class="dot" style="background:${co.c};box-shadow:0 0 0 4px color-mix(in srgb,${co.c} 20%,transparent)"></span>
       <h1 style="color:${co.c}">${co.n}</h1><span class="range num">${fmt(cb[0])} – ${fmt(cb[1])}</span></div>
     <div class="progress"><i style="width:${pct}%;background:color-mix(in srgb,${co.c} 78%,transparent)"></i></div>
-    <div class="meta"><span class="num">${into} min in</span><span>·</span><span class="num">${left} min left</span></div>
+    <div class="meta">${early?`<span style="color:${co.c}">Early start</span><span>·</span><span>${co.n}’s block is ${fmt(cb[0])}–${fmt(cb[1])}</span>`:`<span class="num">${into} min in</span><span>·</span><span class="num">${left} min left</span>`}</div>
   </section>
   ${one?`<section class="one" data-task="${one.id}" style="--a:${co.c}"><span class="eyebrow lbl" style="color:${co.c}">Your one thing</span>
     <div class="row"><div class="checkbox" style="border-color:${co.c}77" title="Mark done" onclick="complete('${one.id}')"></div>
     <div><h2>${one.t}</h2><div class="tmeta"><span class="chip">${one.status}</span>${one.due?'<span class="chip due">Due today</span>':''}${one.src?`<span class="chip">${one.src}</span>`:''}</div></div></div></section>
-    <style>.one::before{background:${co.c}}</style>`:`<section class="one"><span class="eyebrow lbl" style="color:${co.c}">${co.n} — clear</span><p style="color:var(--text-2);font-size:14px;margin-top:9px">Nothing left queued for ${co.n} today. Coast to the block change, or pull your next thing from the Board.</p></section>`}
+    <style>.one::before{background:${co.c}}</style>`:(()=>{const nb=nextBlock(cb[0]);return `<section class="one"><span class="eyebrow lbl" style="color:${co.c}">${co.n} — clear</span><p style="color:var(--text-2);font-size:14px;margin-top:9px">Nothing left queued for ${co.n} today.</p>${nb?`<button class="btn" style="margin-top:14px;background:${CO[nb[2]].c};color:var(--surface);display:inline-flex;align-items:center;gap:7px" onclick="startNext()">Start ${CO[nb[2]].n} early ${I.arrow}</button>`:''}<p style="color:var(--text-3);font-size:12.5px;margin-top:12px">…or pull your next thing from the Board — it doesn’t have to be the next block.</p></section>`})()}
   ${rest.length?`<details class="rest" open><summary>${I.chev}${rest.length} more for ${co.n} today</summary><ul>${rest.map(r=>`<li data-task="${r.id}"><span class="mini" title="Mark done" onclick="complete('${r.id}')"></span>${r.t}${r.due?' <span class="chip due" style="margin-left:6px">Due today</span>':''}</li>`).join('')}</ul></details>`:''}
 
   <div class="comms ${cs.due?'due':''}" ${cs.due?'onclick="openSweep()"':''}>
@@ -536,7 +539,16 @@ function openSweep(){
 function doSweep(){S.lastSweep=S.now;hideOverlay();render();}
 
 // ---------- transition ritual ----------
-function showTransition(fromB,toB){
+function startNext(){
+  const cb=(S.override && S.now<S.override[0])?S.override:curBlock(S.now);
+  if(!cb)return;
+  const nb=nextBlock(cb[0]);
+  if(!nb)return;
+  showTransition(cb,nb,true);
+}
+function finishTransition(){ if(S._pendingTo){ S.override=S._pendingTo; S._pendingTo=null; } doSweep(); }
+function showTransition(fromB,toB,early){
+  S._pendingTo = early?toB:null;
   const from=CO[fromB[2]], to=CO[toB[2]];
   const one=(TASKS[toB[2]]||[])[0];
   const co=Object.keys(CO).filter(k=>CO[k].pf!=='—');
@@ -548,7 +560,7 @@ function showTransition(fromB,toB){
     ${co.map(k=>`<div class="swrow" onclick="this.classList.toggle('on')"><span class="cd" style="background:${CO[k].c}"></span><span class="n">${CO[k].n}</span><span class="pf">${CO[k].pf}</span><span class="tk">${I.chk2}</span></div>`).join('')}
     <hr><div class="nextup"><div class="h"><span class="cd" style="background:${to.c};box-shadow:0 0 0 4px color-mix(in srgb,${to.c} 18%,transparent)"></span><b style="color:${to.c}">${to.n}</b><span class="r num">${fmt(toB[0])} – ${fmt(toB[1])}</span></div>
       <div class="nl">Your one thing</div><div class="nt">${one?one.t:'Pick your first thing when you land.'}</div></div>
-    <button class="start" style="background:${to.c};color:var(--surface)" onclick="doSweep()">Start ${to.n} ${I.arrow}</button></div>`;
+    <button class="start" style="background:${to.c};color:var(--surface)" onclick="finishTransition()">Start ${to.n} ${I.arrow}</button></div>`;
   showOverlay();
 }
 function showOverlay(){const o=document.getElementById('overlay');o.classList.add('show');o.onclick=hideOverlay;}
