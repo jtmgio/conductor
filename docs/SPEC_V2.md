@@ -24,9 +24,13 @@
 **Other locked calls:**
 - **Priority:** no P1/P2/P3, no ranking. Keep the existing binary urgent flag **AI-set only, and hide the red "URGENT" label** — urgent just biases the one-thing order, invisibly. User never sets priority.
 - **Refine:** make it **async** — capture lands verbatim instantly, refine updates the card a few seconds later; if company was ambiguous, a quiet "which company?" chip appears on the card afterward (never a blocking spinner/modal).
-- **Rollover:** keep today's silent unschedule-to-backlog, but **add a breadcrumb** so a rolled task is distinguishable from never-scheduled, and **resurface unfinished items per-company** on re-entry with a one-tap "today / a day / drop." Per-company prep, not the global `lastPlannedFor` singleton.
-- **Completion:** add a brief **undo** on complete.
-- **EOD prompt:** retime 4:45pm → **3:45pm** (new schedule end).
+- **Rollover (fully specced, user-confirmed 2026-07-22):**
+  - Keep today's silent unschedule-to-backlog (no overdue, no red), but **add a breadcrumb** so a carried-over task is distinguishable from a never-scheduled one. Implementation: on the daily reset, when an undone task's `scheduledFor` is cleared, record that it was carried over — e.g. a `carriedOverAt DateTime?` (or preserve `lastScheduledFor`). Additive migration.
+  - **Resurface in-context, per company:** when the user enters a company's block, show a small "N unfinished from before" affordance at the top of that company's tasks (NOT a global pile, NOT a morning digest). Query: `roleId == current && done == false && scheduledFor == null && carriedOverAt != null`.
+  - **One-tap triage per item: today / push a day / drop.** *Today* → set `scheduledFor = today`, clear `carriedOverAt` (it re-enters the one-thing flow). *Push a day* → set `scheduledFor = next working day` (resurfaces then). *Drop* → `status = "icebox"` (out of the active flow, still searchable), clear `carriedOverAt`. Making this micro-decision is the load-bearing behavioral mechanism (Zeigarnik release / implementation intention).
+  - **No auto-fade:** items keep gently resurfacing until acted on. This is safe *because* "drop" is one tap — nothing rots silently in backlog (graveyard fear) and nothing nags against the user's will.
+  - **No planning ritual — just-in-time only.** Day prep is NOT a step. Therefore **remove `EodPlanningPrompt` and `MorningPick`/`MorningBriefing` planning flows entirely** (supersedes the earlier "retime EOD to 3:45" note — the prompt is deleted, not retimed). The global `lastPlannedFor` gate is no longer used for prompting. Getting tasks onto "today" happens via: entering a block (one-thing flow pulls that company's tasks), the carry-over triage, and quick capture — no dedicated planning screen.
+- **Completion:** add a brief **undo** on complete (mitigates "did I check the wrong one?" anxiety).
 
 ---
 
