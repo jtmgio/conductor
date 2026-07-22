@@ -14,7 +14,6 @@ import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 import { MorningBriefing } from "./MorningBriefing";
 import { AgendaStrip } from "./AgendaStrip";
 import { RoleHandoff } from "./RoleHandoff";
-import { useCheckInTimer } from "@/hooks/useCheckInTimer";
 import { useBlockTimer } from "@/hooks/useBlockTimer";
 import { TaskBrainDump } from "@/components/TaskBrainDump";
 import { playSound } from "@/lib/sounds";
@@ -209,9 +208,6 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
   ], [activeIdx, allBlocks.length, dayReview.loading]); // eslint-disable-line react-hooks/exhaustive-deps
   useHotkeys(focusShortcuts);
 
-  // Communication check-in timer (30-min intervals)
-  const checkIn = useCheckInTimer(activeBlock?.roleId);
-
   // Block countdown timer
   const blockTimer = useBlockTimer(
     !isOverridden && currentBlock ? { endHour: currentBlock.endHour, endMinute: currentBlock.endMinute } : null
@@ -295,6 +291,16 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
     };
     window.addEventListener("eod-plan-day", handler);
     return () => window.removeEventListener("eod-plan-day", handler);
+  }, []);
+
+  useEffect(() => {
+    // "Start day now" in Settings stashes a target date here when the user hasn't planned yet.
+    if (typeof window === "undefined") return;
+    const pending = sessionStorage.getItem("conductor-open-planner");
+    if (pending) {
+      sessionStorage.removeItem("conductor-open-planner");
+      setPickerTarget(pending);
+    }
   }, []);
 
   useEffect(() => {
@@ -789,12 +795,6 @@ export function FocusView({ currentBlock, nextBlocks, allBlocks = [], offClockMe
           </div>
           {activeBlock.roleTitle && (
             <p className="text-[17px] text-[var(--text-secondary)] mt-0.5">{activeBlock.roleTitle}</p>
-          )}
-          {activeBlock.roleId && !checkIn.isExpired && (
-            <p className="text-[13px] text-[var(--text-tertiary)] mt-1.5 flex items-center gap-1.5">
-              <MessageSquare className="h-3.5 w-3.5" />
-              Check Slack / Teams in {checkIn.formattedTime}
-            </p>
           )}
           {viewMode === "board" && (
             <p className="text-[13px] text-[var(--text-tertiary)] mt-2">Today&apos;s tasks by status</p>

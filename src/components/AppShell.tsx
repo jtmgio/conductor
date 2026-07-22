@@ -8,11 +8,10 @@ import { MobileDrawer } from "./MobileDrawer";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { GlobalSearch } from "./GlobalSearch";
 import { EodPlanningPrompt } from "./EodPlanningPrompt";
+import { MedicationReminders } from "./MedicationReminders";
+import { CommsCoverStrip } from "./CommsCoverStrip";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 import { cn } from "@/lib/utils";
-import { useCheckInTimer } from "@/hooks/useCheckInTimer";
-import { playSound } from "@/lib/sounds";
-import { MessageSquare, Clock, Check } from "lucide-react";
 
 interface BlockInfo {
   label: string;
@@ -133,16 +132,6 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
 
   useHotkeys(shortcuts);
 
-  // Communication check-in timer (30-min intervals)
-  const checkIn = useCheckInTimer(currentBlock?.roleId);
-
-  // Play sound when check-in expires
-  useEffect(() => {
-    if (checkIn.isExpired && currentBlock?.roleId) {
-      playSound("checkin");
-    }
-  }, [checkIn.isExpired, currentBlock?.roleId]);
-
   return (
     <div className="min-h-screen bg-[var(--surface)] text-[var(--text-primary)]" data-sidebar-collapsed={sidebarCollapsed}>
       <Sidebar currentBlock={currentBlock} nextBlocks={nextBlocks} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
@@ -170,69 +159,11 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
       {/* End-of-day planning prompt — fires at 4:45pm Mon-Fri if not yet planned */}
       <EodPlanningPrompt />
 
-      {/* Communication check-in dialog */}
-      <AnimatePresence>
-        {checkIn.isExpired && currentBlock?.roleId && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
-            >
-              <div className="px-6 pt-6 pb-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: `${currentBlock.roleColor || "#706c65"}20` }}
-                  >
-                    <MessageSquare className="h-5 w-5" style={{ color: currentBlock.roleColor || "#706c65" }} />
-                  </div>
-                  <div>
-                    <p className="text-[13px] text-[var(--text-tertiary)]">Time to check</p>
-                    <h2 className="text-[20px] font-bold leading-tight" style={{ color: currentBlock.roleColor || "#e8e6e1" }}>
-                      Slack / Teams
-                    </h2>
-                  </div>
-                </div>
-                <p className="text-[13px] text-[var(--text-tertiary)]">
-                  Quick triage — 2-3 minutes. Reply or flag, then come back.
-                </p>
-              </div>
+      {/* Mandatory medication reminders — banner at/after each reminder's time on its days */}
+      <MedicationReminders />
 
-              <div className="mx-6 border-t border-[var(--border-subtle)]" />
-
-              <div className="px-6 py-4 flex items-center gap-3">
-                <button
-                  onClick={() => checkIn.snooze(5)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 text-[13px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-raised)] rounded-lg transition-colors"
-                >
-                  <Clock className="h-3.5 w-3.5" />
-                  Delay 5 min
-                </button>
-                <div className="flex-1" />
-                <button
-                  onClick={() => checkIn.markChecked()}
-                  className="flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-medium rounded-lg transition-colors"
-                  style={{
-                    backgroundColor: `${currentBlock.roleColor || "#706c65"}20`,
-                    color: currentBlock.roleColor || "#e8e6e1",
-                  }}
-                >
-                  <Check className="h-3.5 w-3.5" />
-                  I checked
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Comms-cover — "next sweep at HH:MM" permission-not-to-check signal + sweep panel */}
+      <CommsCoverStrip />
     </div>
   );
 }
