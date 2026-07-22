@@ -201,6 +201,19 @@
   .med button{border:none;background:var(--amber-soft);color:var(--amber);border-radius:9px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px}
   .med button svg{width:13px;height:13px}
 
+  /* meeting alert — top-right, OS-notification style (interrupts on purpose) */
+  .meetwrap{position:fixed;top:16px;right:16px;z-index:55;display:flex;flex-direction:column;gap:9px;width:100%;max-width:326px;padding-left:12px;pointer-events:none}
+  .meet{pointer-events:auto;display:flex;gap:11px;align-items:flex-start;background:var(--raised);border:1px solid var(--border-strong);border-radius:14px;padding:12px 12px 12px 13px;box-shadow:var(--shadow)}
+  .meet .ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:0 0 auto}
+  .meet .ic svg{width:17px;height:17px}
+  .meet .b{flex:1;min-width:0}
+  .meet .b .t{font-size:13.5px;font-weight:650;line-height:1.3}
+  .meet .b .s{font-size:12px;color:var(--text-3);margin-top:2px}
+  .meet .b .prep{font-size:11.5px;color:var(--text-3);margin-top:5px;display:flex;align-items:center;gap:5px}
+  .meet .b .prep::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--amber)}
+  .meet .x{border:none;background:none;color:var(--text-3);cursor:pointer;padding:2px 4px;font-size:15px;line-height:1;flex:0 0 auto}
+  .meet .x:hover{color:var(--text)}
+
   /* transition overlay */
   .overlay{position:fixed;inset:0;z-index:70;background:color-mix(in srgb,var(--ground) 84%,transparent);backdrop-filter:blur(16px);display:grid;place-items:center;padding:22px;opacity:0;pointer-events:none;transition:opacity .35s}
   .overlay.show{opacity:1;pointer-events:auto}
@@ -257,6 +270,7 @@
 </div>
 
 <div class="medwrap" id="medwrap"></div>
+<div class="meetwrap" id="meetwrap"></div>
 <div class="overlay" id="overlay"></div>
 
 <div class="timebar">
@@ -337,9 +351,9 @@ const TASKS = {
 function findTask(id){for(const k in TASKS){const t=TASKS[k].find(x=>x.id===id);if(t)return t;}return null;}
 function liveTasks(key){return (TASKS[key]||[]).filter(t=>!t.done);}
 const MEET = [
-  {min:660,co:'vquip',n:'vQuip standup'},
+  {min:660,co:'vquip',n:'vQuip standup',prep:'Pull the QA bug counts'},
   {min:750,co:'healthmap',n:'Data-quality review'},
-  {min:810,co:'zeta',n:'LISTers sync'},
+  {min:810,co:'zeta',n:'LISTers sync',prep:'Bring the migration plan + benchmark scores'},
   {min:900,co:'healthme',n:'HealthMe 1:1'},
 ];
 const FOLLOWUPS = [
@@ -358,8 +372,10 @@ const S = {
   now:600, screen:'today', playing:false, timer:null,
   lastSweep:null,            // minutes-of-day of last sweep, or null
   ackedMeds:new Set(),
+  ackedMeetings:new Set(),
   transitionShownFor:null,   // boundary min we already ritualized
 };
+const MEETLEAD=5;            // configurable in the real app (conductor-notif-lead-minutes)
 
 // ---------- helpers ----------
 function fmt(min){let h=Math.floor(min/60),m=min%60,p=h>=12?'PM':'AM',hr=h>12?h-12:(h===0?12:h);return m===0?`${hr} ${p}`:`${hr}:${String(m).padStart(2,'0')} ${p}`;}
@@ -374,6 +390,7 @@ function commsState(min){
   return {off, due:!off&&due, nextLabel:next!=null?fmt(next):null, nextIn:next!=null?next-min:null};
 }
 function dueMeds(min){return REMIND.filter(r=>min>=r.min && !S.ackedMeds.has(r.t));}
+function dueMeetings(min){return MEET.filter(m=>min>=m.min-MEETLEAD && min<m.min && !S.ackedMeetings.has(m.n));}
 
 // ---------- render: nav + sidebar ----------
 function renderNav(){
@@ -506,9 +523,22 @@ function render(){
   else if(S.screen==='formatter')renderFormatter();
   else if(S.screen==='settings')renderSettings();
   renderMeds();
+  renderMeetAlerts();
   document.getElementById('nowLabel').textContent=fmt(S.now);
 }
 function go(k){S.screen=k;render();}
+
+// meeting alerts — OS-notification style, fire MEETLEAD min before, interrupt on purpose
+function renderMeetAlerts(){
+  const due=dueMeetings(S.now);
+  document.getElementById('meetwrap').innerHTML=due.map(m=>{
+    const co=CO[m.co], mins=m.min-S.now;
+    return `<div class="meet"><span class="ic" style="background:color-mix(in srgb,${co.c} 18%,transparent);color:${co.c}">${I.bell}</span>
+      <div class="b"><div class="t">${m.n} in ${mins} min</div><div class="s">${fmt(m.min)} · ${co.n}</div>${m.prep?`<div class="prep">Prep: ${m.prep}</div>`:''}</div>
+      <button class="x" onclick="ackMeeting('${m.n.replace(/'/g,"\\'")}')">✕</button></div>`;
+  }).join('');
+}
+function ackMeeting(n){S.ackedMeetings.add(n);renderMeetAlerts();}
 
 // complete a task: slide it away, then promote the next one into "your one thing"
 function complete(id){
@@ -598,6 +628,7 @@ const JUMPS=[
   [586,'9:45 · vitamins'],
   [628,'10:28 · sweep coming'],
   [631,'10:31 · block change'],
+  [656,'10:56 · meeting in 4'],
   [700,'11:40 · Healthmap'],
   [886,'2:46 · TrainBetter'],
   [948,'3:48 · done'],
@@ -607,7 +638,7 @@ document.getElementById('jumps').innerHTML=
   JUMPS.map(([m,l])=>`<button onclick="jump(${m})">${l}</button>`).join('');
 function resetDay(){
   for(const k in TASKS) TASKS[k].forEach(t=>t.done=false);
-  S.lastSweep=null; S.ackedMeds=new Set(); S.transitionShownFor=null;
+  S.lastSweep=null; S.ackedMeds=new Set(); S.ackedMeetings=new Set(); S.transitionShownFor=null; S.override=null;
   pause(); setNow(570,false); S.screen='today'; render();
 }
 function jump(m){S.transitionShownFor=null;pause();setNow(m,false);
