@@ -9,7 +9,6 @@ import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { GlobalSearch } from "./GlobalSearch";
 import { EodPlanningPrompt } from "./EodPlanningPrompt";
 import { Reminders } from "./Reminders";
-import { CommsCoverStrip } from "./CommsCoverStrip";
 import { BlockTransition, type TransitionBlock } from "./BlockTransition";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 import { cn } from "@/lib/utils";
@@ -190,9 +189,6 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
 
       {/* Mandatory health/routine reminders — banner at/after each reminder's time on its days */}
       <Reminders />
-
-      {/* Comms-cover — "next sweep at HH:MM" permission-not-to-check signal + sweep panel */}
-      <CommsCoverStrip />
 
       {/* Block-transition ritual — full-screen reset between company blocks */}
       <AnimatePresence>

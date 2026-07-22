@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Plus, ChevronRight, Moon } from "lucide-react";
 import { AgendaStrip } from "./AgendaStrip";
+import { CommsCoverStrip } from "./CommsCoverStrip";
 
 interface BlockInfo {
   id: string;
@@ -45,10 +46,9 @@ function isToday(dateStr: string | null, now: Date): boolean {
 }
 
 /**
- * The v2 Today cockpit — one company, one thing at a time. Replaces the old
- * board/list FocusView. The comms strip, reminders, and transition ritual are
- * mounted globally by AppShell; this screen is: block header → your one thing →
- * the rest (collapsed) → all-clear for the other companies → agenda → capture.
+ * The v2 Today cockpit — one company, one thing at a time. Two columns:
+ * meetings pinned left (1/3), the one-thing flow right (2/3). Reminders + the
+ * transition ritual are mounted globally by AppShell; the comms bar is inline here.
  */
 export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: BlockInfo | null; nextBlocks?: BlockInfo[]; offClockMessage?: string | null }) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -91,19 +91,16 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     return () => clearInterval(i);
   }, []);
 
-  const complete = useCallback(
-    async (id: string) => {
-      setTasks((prev) => prev.filter((t) => t.id !== id));
-      try {
-        await fetch(`/api/tasks/${id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ done: true }),
-        });
-      } catch {}
-    },
-    []
-  );
+  const complete = useCallback(async (id: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+    try {
+      await fetch(`/api/tasks/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ done: true }),
+      });
+    } catch {}
+  }, []);
 
   const submitCapture = useCallback(
     async (e: React.FormEvent) => {
@@ -150,9 +147,9 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
   const others = clear.filter((c) => c.id !== roleId);
 
   return (
-    <div className="mx-auto max-w-2xl pt-2">
-      {/* Block header */}
-      <section className="mb-6">
+    <div className="mx-auto max-w-5xl pt-2">
+      {/* Block header — full width */}
+      <section className="mb-5">
         <div className="mb-3 flex items-center gap-3">
           <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 0 4px ${color}22` }} />
           <h1 className="text-[30px] font-bold leading-none tracking-tight" style={{ color }}>
@@ -170,126 +167,135 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
         </div>
       </section>
 
-      {/* Your one thing */}
-      <AnimatePresence mode="popLayout">
-        {one ? (
-          <motion.section
-            key={one.id}
-            layout
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, x: 60, scale: 0.97 }}
-            transition={{ type: "spring", damping: 26, stiffness: 320 }}
-            className="relative overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-5 py-5"
-          >
-            <span className="absolute inset-y-0 left-0 w-[3px]" style={{ backgroundColor: color, opacity: 0.85 }} />
-            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color }}>
-              Your one thing
-            </p>
-            <div className="mt-2.5 flex items-start gap-4">
-              <button
-                onClick={() => complete(one.id)}
-                aria-label="Mark done"
-                className="mt-0.5 h-6 w-6 shrink-0 rounded-lg border-[1.75px] transition-colors hover:bg-[color:var(--surface)]"
-                style={{ borderColor: `${color}88` }}
-              />
-              <div className="min-w-0 flex-1">
-                <h2 className="text-[19px] font-semibold leading-snug tracking-tight text-[var(--text-primary)]">{one.title}</h2>
-                <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold capitalize text-[var(--text-secondary)]">
-                    {one.status.replace("_", " ")}
-                  </span>
-                  {isToday(one.dueDate, now) && (
-                    <span className="rounded-full border border-amber-500/30 bg-amber-500/[0.13] px-2.5 py-1 text-[11.5px] font-semibold text-amber-400">Due today</span>
-                  )}
-                  {one.sourceType && SOURCE_LABEL[one.sourceType] && (
-                    <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold text-[var(--text-tertiary)]">
-                      {SOURCE_LABEL[one.sourceType]}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </motion.section>
-        ) : (
-          <motion.section
-            key="clear"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-5 py-5"
-          >
-            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color }}>
-              {currentBlock.roleName} — clear
-            </p>
-            <p className="mt-2 text-[14px] text-[var(--text-secondary)]">Nothing left queued for {currentBlock.roleName}. Coast to the block change, or capture your next thing below.</p>
-          </motion.section>
-        )}
-      </AnimatePresence>
-
-      {/* The rest — collapsed */}
-      {rest.length > 0 && (
-        <div className="mt-3">
-          <button onClick={() => setRestOpen((v) => !v)} className="flex items-center gap-1.5 px-1 py-1.5 text-[12.5px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
-            <ChevronRight className={`h-3.5 w-3.5 transition-transform ${restOpen ? "rotate-90" : ""}`} />
-            {rest.length} more for {currentBlock.roleName}
-          </button>
-          <AnimatePresence initial={false}>
-            {restOpen && (
-              <motion.ul initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                {rest.map((t) => (
-                  <li key={t.id} className="flex items-center gap-3 border-t border-[var(--border-subtle)] px-1 py-2.5">
-                    <button
-                      onClick={() => complete(t.id)}
-                      aria-label="Mark done"
-                      className="h-4 w-4 shrink-0 rounded border-[1.5px] border-[var(--border-strong)] transition-colors hover:border-[color:var(--text-secondary)]"
-                    />
-                    <span className="flex-1 truncate text-[14px] text-[var(--text-secondary)]">{t.title}</span>
-                    {isToday(t.dueDate, now) && <span className="shrink-0 text-[11px] font-semibold text-amber-400">Due today</span>}
-                  </li>
-                ))}
-              </motion.ul>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
-
-      {/* All-clear for the other companies */}
-      {others.length > 0 && (
-        <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 px-1">
-          {others.map((c) => (
-            <span key={c.id} className="flex items-center gap-1.5 text-[12.5px]">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: c.color, opacity: c.quiet ? 0.5 : 1 }} />
-              {c.quiet ? (
-                <span className="flex items-center gap-1 text-[var(--text-tertiary)]">
-                  {c.name}
-                  <Check className="h-3 w-3 text-emerald-500" />
-                  quiet
-                </span>
-              ) : (
-                <span className="text-[var(--text-secondary)]">
-                  {c.name} · <b className="font-semibold text-[var(--text-primary)]">{c.dueToday ? `${c.dueToday} due today` : `${c.staleFollowups} waiting`}</b>
-                </span>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Agenda (keeps meeting alerts alive) */}
-      <div className="mt-6">
-        <AgendaStrip mode="strip" />
+      {/* Comms bar — inline, prominent, full width */}
+      <div className="mb-6">
+        <CommsCoverStrip />
       </div>
 
-      {/* Quick capture */}
-      <form onSubmit={submitCapture} className="mt-6 flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-1">
-        <Plus className="h-4 w-4 shrink-0 text-[var(--text-tertiary)]" />
-        <input
-          value={capture}
-          onChange={(e) => setCapture(e.target.value)}
-          placeholder={`Capture a thought for ${currentBlock.roleName}…`}
-          className="flex-1 bg-transparent py-3 text-[14px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
-        />
-      </form>
+      {/* Two columns: meetings (1/3, sticky) · one-thing flow (2/3) */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <aside className="order-2 lg:order-1 lg:col-span-1 lg:sticky lg:top-4 lg:self-start">
+          <AgendaStrip mode="strip" />
+        </aside>
+
+        <div className="order-1 lg:order-2 lg:col-span-2">
+          {/* Your one thing */}
+          <AnimatePresence mode="popLayout">
+            {one ? (
+              <motion.section
+                key={one.id}
+                layout
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, x: 60, scale: 0.97 }}
+                transition={{ type: "spring", damping: 26, stiffness: 320 }}
+                className="relative overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-5 py-5"
+              >
+                <span className="absolute inset-y-0 left-0 w-[3px]" style={{ backgroundColor: color, opacity: 0.85 }} />
+                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color }}>
+                  Your one thing
+                </p>
+                <div className="mt-2.5 flex items-start gap-4">
+                  <button
+                    onClick={() => complete(one.id)}
+                    aria-label="Mark done"
+                    className="mt-0.5 h-6 w-6 shrink-0 rounded-lg border-[1.75px] transition-colors hover:bg-[color:var(--surface)]"
+                    style={{ borderColor: `${color}88` }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-[19px] font-semibold leading-snug tracking-tight text-[var(--text-primary)]">{one.title}</h2>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold capitalize text-[var(--text-secondary)]">
+                        {one.status.replace("_", " ")}
+                      </span>
+                      {isToday(one.dueDate, now) && (
+                        <span className="rounded-full border border-amber-500/30 bg-amber-500/[0.13] px-2.5 py-1 text-[11.5px] font-semibold text-amber-400">Due today</span>
+                      )}
+                      {one.sourceType && SOURCE_LABEL[one.sourceType] && (
+                        <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold text-[var(--text-tertiary)]">
+                          {SOURCE_LABEL[one.sourceType]}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </motion.section>
+            ) : (
+              <motion.section
+                key="clear"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-5 py-5"
+              >
+                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color }}>
+                  {currentBlock.roleName} — clear
+                </p>
+                <p className="mt-2 text-[14px] text-[var(--text-secondary)]">Nothing left queued for {currentBlock.roleName}. Coast to the block change, or capture your next thing below.</p>
+              </motion.section>
+            )}
+          </AnimatePresence>
+
+          {/* The rest — collapsed */}
+          {rest.length > 0 && (
+            <div className="mt-3">
+              <button onClick={() => setRestOpen((v) => !v)} className="flex items-center gap-1.5 px-1 py-1.5 text-[12.5px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
+                <ChevronRight className={`h-3.5 w-3.5 transition-transform ${restOpen ? "rotate-90" : ""}`} />
+                {rest.length} more for {currentBlock.roleName}
+              </button>
+              <AnimatePresence initial={false}>
+                {restOpen && (
+                  <motion.ul initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                    {rest.map((t) => (
+                      <li key={t.id} className="flex items-center gap-3 border-t border-[var(--border-subtle)] px-1 py-2.5">
+                        <button
+                          onClick={() => complete(t.id)}
+                          aria-label="Mark done"
+                          className="h-4 w-4 shrink-0 rounded border-[1.5px] border-[var(--border-strong)] transition-colors hover:border-[color:var(--text-secondary)]"
+                        />
+                        <span className="flex-1 truncate text-[14px] text-[var(--text-secondary)]">{t.title}</span>
+                        {isToday(t.dueDate, now) && <span className="shrink-0 text-[11px] font-semibold text-amber-400">Due today</span>}
+                      </li>
+                    ))}
+                  </motion.ul>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* All-clear for the other companies */}
+          {others.length > 0 && (
+            <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 px-1">
+              {others.map((c) => (
+                <span key={c.id} className="flex items-center gap-1.5 text-[12.5px]">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: c.color, opacity: c.quiet ? 0.5 : 1 }} />
+                  {c.quiet ? (
+                    <span className="flex items-center gap-1 text-[var(--text-tertiary)]">
+                      {c.name}
+                      <Check className="h-3 w-3 text-emerald-500" />
+                      quiet
+                    </span>
+                  ) : (
+                    <span className="text-[var(--text-secondary)]">
+                      {c.name} · <b className="font-semibold text-[var(--text-primary)]">{c.dueToday ? `${c.dueToday} due today` : `${c.staleFollowups} waiting`}</b>
+                    </span>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Quick capture */}
+          <form onSubmit={submitCapture} className="mt-6 flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-1">
+            <Plus className="h-4 w-4 shrink-0 text-[var(--text-tertiary)]" />
+            <input
+              value={capture}
+              onChange={(e) => setCapture(e.target.value)}
+              placeholder={`Capture a thought for ${currentBlock.roleName}…`}
+              className="flex-1 bg-transparent py-3 text-[14px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
+            />
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

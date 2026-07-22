@@ -87,13 +87,13 @@ export function CommsCoverStrip() {
 
   return (
     <>
-      <div className="fixed bottom-4 left-4 z-40 hidden lg:block">
+      <div className="w-full">
         <button
           onClick={() => due && setPanelOpen(true)}
           className={
             due
-              ? "flex items-center gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/[0.13] px-3.5 py-2.5 text-[13px] shadow-lg transition-colors hover:bg-amber-500/20"
-              : "flex items-center gap-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3.5 py-2.5 text-[13px] cursor-default"
+              ? "flex w-full items-center gap-3 rounded-xl border border-amber-500/40 bg-amber-500/[0.14] px-4 py-3 text-[13.5px] transition-colors hover:bg-amber-500/20"
+              : "flex w-full items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-4 py-3 text-[13.5px] cursor-default"
           }
         >
           {due ? (
