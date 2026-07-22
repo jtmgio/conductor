@@ -9,14 +9,9 @@ import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
-  { href: "/", label: "Focus", icon: Crosshair },
-  { href: "/meetings", label: "Meetings", icon: CalendarDays },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/tracker", label: "Tracker", icon: ListChecks },
+  { href: "/", label: "Today", icon: Crosshair },
   { href: "/board", label: "Board", icon: Columns3 },
-  { href: "/ai", label: "AI", icon: Sparkles },
-  { href: "/documents", label: "Notes", icon: FileText },
-  { href: "/drafts", label: "Drafts", icon: Send },
+  { href: "/tracker", label: "Tracker", icon: ListChecks },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

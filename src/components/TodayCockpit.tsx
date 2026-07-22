@@ -202,19 +202,19 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     <div className="mx-auto max-w-5xl pt-2">
       {/* Block header — full width */}
       <section className="mb-5">
-        <div className="mb-3 flex items-center gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 0 4px ${color}22` }} />
-          <h1 className="text-[30px] font-bold leading-none tracking-tight" style={{ color }}>
+          <h1 className="text-[24px] font-bold leading-none tracking-tight sm:text-[30px]" style={{ color }}>
             {currentBlock.roleName}
           </h1>
+          <span className="text-[13px] font-medium text-[var(--text-secondary)] tabular-nums">{currentBlock.timeLabel}</span>
           <button
             onClick={() => router.push("/plan")}
-            className="ml-auto flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-tertiary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
+            className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-tertiary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
           >
             <Moon className="h-3.5 w-3.5" />
             Plan tomorrow
           </button>
-          <span className="text-[13px] font-medium text-[var(--text-secondary)] tabular-nums">{currentBlock.timeLabel}</span>
         </div>
         <div className="h-1 overflow-hidden rounded-full bg-[var(--surface-raised)]">
           <motion.div className="h-full rounded-full" style={{ backgroundColor: color, opacity: 0.8 }} initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8, ease: "easeOut" }} />
