@@ -1,0 +1,406 @@
+<title>Conductor v2 — Today &amp; Block Transition</title>
+
+<style>
+  :root {
+    /* warm-dark ground, biased toward the amber accent so the neutral reads chosen */
+    --ground: #16140f;
+    --surface: #1c1a14;
+    --raised: #211e17;
+    --raised-2: #2a271f;
+    --border: rgba(255,255,255,.07);
+    --border-strong: rgba(255,255,255,.12);
+    --text: #ece9e2;
+    --text-2: #aca79c;
+    --text-3: #746f66;
+    --amber: #f4b74e;
+    --amber-soft: rgba(244,183,78,.13);
+    --amber-line: rgba(244,183,78,.32);
+    --quiet: #6f9c7e;           /* safety = calm green, never a count */
+    --shadow: 0 24px 60px -20px rgba(0,0,0,.65);
+
+    /* per-company accents (dark-ground tuned) */
+    --c-zeta:      #b09cf0;
+    --c-vquip:     #46b3a5;
+    --c-healthmap: #6cbf90;
+    --c-healthme:  #7ba3d9;
+    --c-trainbet:  #d99a4e;
+
+    --now: var(--c-zeta);       /* current block's accent */
+
+    --radius: 18px;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --ground: #efece4;
+      --surface: #f5f2ea;
+      --raised: #fffdf8;
+      --raised-2: #fbf8f1;
+      --border: rgba(40,33,20,.10);
+      --border-strong: rgba(40,33,20,.16);
+      --text: #2a2620;
+      --text-2: #67625a;
+      --text-3: #97918685;
+      --amber: #a9720f;
+      --amber-soft: rgba(184,121,26,.12);
+      --amber-line: rgba(184,121,26,.34);
+      --quiet: #4f7a5f;
+      --shadow: 0 24px 60px -24px rgba(40,30,10,.28);
+      --c-zeta:#6b4fc2; --c-vquip:#1f8578; --c-healthmap:#2f8a58; --c-healthme:#3d6ba8; --c-trainbet:#a5691f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#16140f; --surface:#1c1a14; --raised:#211e17; --raised-2:#2a271f;
+    --border:rgba(255,255,255,.07); --border-strong:rgba(255,255,255,.12);
+    --text:#ece9e2; --text-2:#aca79c; --text-3:#746f66;
+    --amber:#f4b74e; --amber-soft:rgba(244,183,78,.13); --amber-line:rgba(244,183,78,.32);
+    --quiet:#6f9c7e; --shadow:0 24px 60px -20px rgba(0,0,0,.65);
+    --c-zeta:#b09cf0; --c-vquip:#46b3a5; --c-healthmap:#6cbf90; --c-healthme:#7ba3d9; --c-trainbet:#d99a4e;
+  }
+  :root[data-theme="light"] {
+    --ground:#efece4; --surface:#f5f2ea; --raised:#fffdf8; --raised-2:#fbf8f1;
+    --border:rgba(40,33,20,.10); --border-strong:rgba(40,33,20,.16);
+    --text:#2a2620; --text-2:#67625a; --text-3:#97918685;
+    --amber:#a9720f; --amber-soft:rgba(184,121,26,.12); --amber-line:rgba(184,121,26,.34);
+    --quiet:#4f7a5f; --shadow:0 24px 60px -24px rgba(40,30,10,.28);
+    --c-zeta:#6b4fc2; --c-vquip:#1f8578; --c-healthmap:#2f8a58; --c-healthme:#3d6ba8; --c-trainbet:#a5691f;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: var(--font); background: var(--ground); color: var(--text);
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    font-feature-settings: "cv11", "ss01"; line-height: 1.45;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+  .eyebrow { font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: var(--text-3); font-weight: 600; }
+
+  /* ---------- app frame ---------- */
+  .app {
+    min-height: 100vh; display: grid; grid-template-columns: 232px 1fr;
+    max-width: 1180px; margin: 0 auto;
+  }
+  @media (max-width: 780px){ .app { grid-template-columns: 1fr; } .sidebar { display:none; } }
+
+  .sidebar {
+    border-right: 1px solid var(--border); padding: 22px 16px; display: flex; flex-direction: column; gap: 4px;
+    position: sticky; top: 0; height: 100vh;
+  }
+  .brand { display:flex; align-items:center; gap:10px; padding: 4px 8px 22px; }
+  .brand .mark { width: 26px; height: 26px; border-radius: 8px;
+    background: linear-gradient(150deg, var(--c-zeta), var(--c-vquip)); flex:0 0 auto; }
+  .brand b { font-size: 15px; letter-spacing: -.01em; font-weight: 650; }
+  .brand span { color: var(--text-3); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; margin-left:auto; }
+
+  .nav { display:flex; flex-direction:column; gap:2px; }
+  .nav a {
+    display:flex; align-items:center; gap:11px; padding: 10px 12px; border-radius: 11px;
+    color: var(--text-2); text-decoration:none; font-size: 14px; font-weight: 500;
+    min-height: 44px; transition: background .15s, color .15s;
+  }
+  .nav a svg { width:18px; height:18px; opacity:.85; }
+  .nav a:hover { background: var(--raised); color: var(--text); }
+  .nav a.active { background: var(--raised-2); color: var(--text); font-weight:600; }
+  .nav a.active svg { opacity:1; }
+  .nav .spacer { flex:1; }
+
+  .side-comms {
+    margin-top: auto; padding: 12px 12px 4px; border-top: 1px solid var(--border);
+    display:flex; align-items:center; gap:8px; color: var(--text-3); font-size: 12px;
+  }
+  .side-comms svg { width:14px; height:14px; color: var(--quiet); }
+
+  /* ---------- today panel ---------- */
+  .main { padding: 30px 40px 60px; max-width: 720px; }
+  @media (max-width: 780px){ .main { padding: 24px 20px 80px; } }
+  .today-head { display:flex; align-items:baseline; justify-content:space-between; margin-bottom: 26px; }
+  .today-head .date { font-size: 14px; color: var(--text-2); font-weight: 500; }
+  .today-head .clock { font-size: 13px; color: var(--text-3); font-weight: 500; }
+
+  /* block header */
+  .block { margin-bottom: 26px; }
+  .block .top { display:flex; align-items:center; gap:11px; margin-bottom: 12px; }
+  .dot { width: 9px; height:9px; border-radius: 50%; flex:0 0 auto; background: var(--now); box-shadow: 0 0 0 4px color-mix(in srgb, var(--now) 18%, transparent); }
+  .block h1 { margin:0; font-size: 30px; font-weight: 650; letter-spacing: -.02em; color: var(--now); text-wrap: balance; }
+  .block .range { margin-left: auto; font-size: 13px; color: var(--text-2); font-weight:500; }
+  .progress { height: 4px; border-radius: 99px; background: var(--border); overflow:hidden; }
+  .progress > i { display:block; height:100%; width:0; border-radius:99px;
+    background: color-mix(in srgb, var(--now) 78%, transparent); transition: width 1.1s cubic-bezier(.22,1,.36,1); }
+  .block .meta { margin-top: 8px; font-size: 12px; color: var(--text-3); display:flex; gap:6px; }
+
+  /* the one task */
+  .one {
+    background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px 20px 18px; position: relative; overflow:hidden;
+    box-shadow: 0 1px 0 rgba(255,255,255,.02) inset;
+  }
+  .one::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background: var(--now); opacity:.8; }
+  .one .lbl { color: var(--now); font-weight:600; }
+  .one .row { display:flex; align-items:flex-start; gap:14px; margin-top: 10px; }
+  .checkbox { width: 26px; height:26px; border-radius: 8px; border: 1.75px solid var(--border-strong);
+    flex:0 0 auto; margin-top: 2px; cursor:pointer; transition: border-color .15s, background .15s; }
+  .checkbox:hover { border-color: var(--now); }
+  .one h2 { margin:0; font-size: 19px; line-height: 1.3; font-weight: 600; letter-spacing:-.01em; }
+  .one .task-meta { margin-top: 8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .chip { font-size: 11.5px; padding: 3px 9px; border-radius: 99px; font-weight:600;
+    background: var(--raised-2); color: var(--text-2); border:1px solid var(--border); }
+  .chip.due { color: var(--amber); background: var(--amber-soft); border-color: var(--amber-line); }
+
+  /* rest of today */
+  .rest { margin-top: 14px; }
+  .rest summary { list-style:none; cursor:pointer; color: var(--text-3); font-size: 12.5px;
+    display:flex; align-items:center; gap:7px; padding: 6px 2px; }
+  .rest summary::-webkit-details-marker { display:none; }
+  .rest summary svg { width:13px; height:13px; transition: transform .2s; }
+  .rest[open] summary svg { transform: rotate(90deg); }
+  .rest ul { list-style:none; margin: 4px 0 0; padding: 0; display:flex; flex-direction:column; gap:2px; }
+  .rest li { display:flex; align-items:center; gap:12px; padding: 9px 4px; color: var(--text-2); font-size: 14px; border-top:1px solid var(--border); }
+  .rest li .mini { width:15px; height:15px; border-radius:5px; border:1.5px solid var(--border-strong); flex:0 0 auto; }
+
+  /* comms strip */
+  .comms {
+    margin-top: 26px; display:flex; align-items:center; gap:11px; padding: 13px 15px;
+    border: 1px solid var(--border); border-radius: 13px; background: var(--surface); font-size: 13.5px;
+  }
+  .comms .ic { width:26px; height:26px; border-radius:8px; display:grid; place-items:center; flex:0 0 auto;
+    background: color-mix(in srgb, var(--quiet) 16%, transparent); }
+  .comms .ic svg { width:15px; height:15px; color: var(--quiet); }
+  .comms b { font-weight:600; }
+  .comms .when { margin-left:auto; color: var(--text-3); font-size:12.5px; }
+  .comms.due { border-color: var(--amber-line); background: var(--amber-soft); }
+  .comms.due .ic { background: color-mix(in srgb, var(--amber) 18%, transparent); }
+  .comms.due .ic svg { color: var(--amber); }
+
+  /* all-clear */
+  .clear { margin-top: 12px; display:flex; flex-wrap:wrap; gap: 6px 18px; padding: 2px 4px; }
+  .clear .co { display:flex; align-items:center; gap:7px; font-size:12.5px; color: var(--text-3); }
+  .clear .co .cd { width:7px;height:7px;border-radius:50%; opacity:.55; }
+  .clear .co.ok svg { width:12px;height:12px; color: var(--quiet); }
+  .clear .co.fact { color: var(--text-2); }
+  .clear .co.fact b { color: var(--text); font-weight:600; }
+
+  /* agenda */
+  .agenda { margin-top: 26px; }
+  .agenda .eyebrow { margin-bottom: 10px; }
+  .agenda .strip { display:flex; gap:10px; overflow-x:auto; padding-bottom: 4px; }
+  .agenda .mtg { flex:0 0 auto; min-width: 150px; padding: 11px 13px; border-radius: 12px;
+    background: var(--raised); border:1px solid var(--border); }
+  .agenda .mtg .t { font-size: 12px; color: var(--text-3); font-weight:600; display:flex; align-items:center; gap:6px; }
+  .agenda .mtg .t .cd { width:7px;height:7px;border-radius:50%; }
+  .agenda .mtg .n { font-size: 13.5px; margin-top: 5px; font-weight:500; letter-spacing:-.01em; }
+
+  /* capture */
+  .capture { margin-top: 26px; display:flex; align-items:center; gap:11px; padding: 4px 5px 4px 16px;
+    border: 1px solid var(--border); border-radius: 13px; background: var(--surface); }
+  .capture svg { width:16px; height:16px; color: var(--text-3); flex:0 0 auto; }
+  .capture input { flex:1; background:none; border:none; outline:none; color: var(--text); font: inherit; font-size: 14px; padding: 11px 0; }
+  .capture input::placeholder { color: var(--text-3); }
+  .capture kbd { font: inherit; font-size: 11px; color: var(--text-3); background: var(--raised-2);
+    border:1px solid var(--border); border-radius: 6px; padding: 4px 7px; margin-right: 8px; }
+
+  /* ---------- block transition overlay ---------- */
+  .overlay { position: fixed; inset:0; z-index: 50; background: color-mix(in srgb, var(--ground) 82%, transparent);
+    backdrop-filter: blur(14px); display:grid; place-items:center; padding: 24px; opacity:0; pointer-events:none;
+    transition: opacity .35s ease; }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .ritual { width: 100%; max-width: 480px; background: var(--surface); border:1px solid var(--border-strong);
+    border-radius: 24px; box-shadow: var(--shadow); padding: 28px 28px 24px; transform: translateY(14px) scale(.985);
+    transition: transform .4s cubic-bezier(.22,1,.36,1); }
+  .overlay.show .ritual { transform: none; }
+  .ritual .closure { font-size: 21px; font-weight: 650; letter-spacing:-.01em; color: var(--c-zeta); }
+  .ritual .closure + p { margin: 4px 0 0; color: var(--text-3); font-size: 13px; }
+  .ritual hr { border:none; border-top:1px solid var(--border); margin: 20px 0; }
+  .ritual .q { font-size: 14px; font-weight:600; margin-bottom: 9px; }
+  .ritual textarea { width:100%; resize:none; background: var(--raised); border:1px solid var(--border);
+    border-radius: 12px; color: var(--text); font: inherit; font-size: 13.5px; padding: 11px 13px; min-height: 58px; outline:none; }
+  .ritual textarea:focus-visible { border-color: var(--border-strong); }
+  .sweep { display:flex; flex-direction:column; gap: 6px; }
+  .sweep .row { display:flex; align-items:center; gap:11px; padding: 10px 12px; border-radius: 11px;
+    background: var(--raised); border:1px solid var(--border); cursor:pointer; min-height:44px; transition: border-color .15s; }
+  .sweep .row:hover { border-color: var(--border-strong); }
+  .sweep .row .cd { width:8px;height:8px;border-radius:50%; flex:0 0 auto; }
+  .sweep .row .co { font-size: 13.5px; font-weight:500; }
+  .sweep .row .pf { margin-left:auto; font-size:11px; color: var(--text-3); text-transform:uppercase; letter-spacing:.08em; }
+  .sweep .row .tick { width:20px;height:20px;border-radius:6px; border:1.5px solid var(--border-strong); display:grid; place-items:center; }
+  .sweep .row .tick svg { width:12px;height:12px; color: var(--quiet); opacity:0; transition:opacity .15s; }
+  .sweep .row.done { border-color: color-mix(in srgb, var(--quiet) 40%, var(--border)); }
+  .sweep .row.done .tick { border-color: var(--quiet); background: color-mix(in srgb, var(--quiet) 16%, transparent); }
+  .sweep .row.done .tick svg { opacity:1; }
+
+  .next-up { margin-top: 4px; padding: 15px; border-radius: 14px; background: var(--raised-2); border:1px solid var(--border); }
+  .next-up .h { display:flex; align-items:center; gap:9px; }
+  .next-up .h .dot2 { width:8px;height:8px;border-radius:50%; background: var(--c-vquip); box-shadow:0 0 0 4px color-mix(in srgb, var(--c-vquip) 18%, transparent); }
+  .next-up .h b { font-size: 15px; color: var(--c-vquip); font-weight:650; }
+  .next-up .h .r { margin-left:auto; font-size:12px; color: var(--text-3); }
+  .next-up .nt { margin-top: 9px; font-size: 14px; color: var(--text); font-weight:500; }
+  .next-up .nl { font-size:11px; color: var(--text-3); text-transform:uppercase; letter-spacing:.1em; font-weight:600; }
+  .start { margin-top: 18px; width:100%; border:none; cursor:pointer; font: inherit; font-size: 15px; font-weight:600;
+    padding: 14px; border-radius: 13px; color: #16140f; background: var(--c-vquip);
+    display:flex; align-items:center; justify-content:center; gap:8px; transition: filter .15s; }
+  .start:hover { filter: brightness(1.06); }
+  .start svg { width:17px; height:17px; }
+
+  /* ---------- mockup controls (not part of app) ---------- */
+  .controls { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 80;
+    display:flex; align-items:center; gap:6px; padding: 6px; border-radius: 99px;
+    background: var(--raised); border:1px solid var(--border-strong); box-shadow: var(--shadow); }
+  .controls .tag { font-size:10px; letter-spacing:.1em; text-transform:uppercase; color: var(--text-3); padding: 0 8px 0 10px; }
+  .controls button { font: inherit; font-size: 12.5px; font-weight:600; cursor:pointer; color: var(--text);
+    background: var(--raised-2); border:1px solid var(--border); border-radius: 99px; padding: 8px 14px; display:flex; align-items:center; gap:7px; }
+  .controls button:hover { border-color: var(--border-strong); }
+  .controls button svg { width:14px; height:14px; }
+
+  :focus-visible { outline: 2px solid var(--now); outline-offset: 2px; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce){ * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="mark"></span><b>Conductor</b><span>v2</span></div>
+    <nav class="nav">
+      <a href="#" class="active" aria-current="page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/></svg>
+        Today</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="4.5" width="5" height="15" rx="1.5"/><rect x="10" y="4.5" width="5" height="10" rx="1.5"/><rect x="16.5" y="4.5" width="4" height="7" rx="1.5"/></svg>Board</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg>Tracker</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14.5 4.5l5 5L9 20l-5.5.5L4 15z"/><path d="M12.5 6.5l5 5"/></svg>Formatter</a>
+      <div class="spacer"></div>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M4.2 7.5l2.2 1.3M17.6 15.2l2.2 1.3M4.2 16.5l2.2-1.3M17.6 8.8l2.2-1.3"/></svg>Settings</a>
+    </nav>
+    <div class="side-comms">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12.5l4.5 4.5L20 6"/></svg>
+      <span>Comms covered · 10:30</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="today-head">
+      <div class="date">Tuesday, July 21</div>
+      <div class="clock num">10:12 AM</div>
+    </div>
+
+    <section class="block">
+      <div class="top">
+        <span class="dot"></span>
+        <h1>Zeta</h1>
+        <span class="range num">9:30 – 10:30</span>
+      </div>
+      <div class="progress"><i id="prog"></i></div>
+      <div class="meta"><span class="num">42 min in</span><span>·</span><span class="num">18 min left</span></div>
+    </section>
+
+    <section class="one">
+      <span class="eyebrow lbl">Your one thing</span>
+      <div class="row">
+        <div class="checkbox" role="checkbox" aria-checked="false" tabindex="0" aria-label="Complete task"></div>
+        <div>
+          <h2>Review the LISTers UX-modernization migration plan</h2>
+          <div class="task-meta">
+            <span class="chip">In review</span>
+            <span class="chip due">Due today</span>
+            <span class="chip">Linear</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <details class="rest">
+      <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>3 more for Zeta today</summary>
+      <ul>
+        <li><span class="mini"></span>Reply to Dana re: SailThru benchmark scores</li>
+        <li><span class="mini"></span>Draft Tuesday-call positioning notes</li>
+        <li><span class="mini"></span>Confirm decomposition owner for the auth service</li>
+      </ul>
+    </details>
+
+    <div class="comms" id="commsStrip">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12.5l4.5 4.5L20 6"/></svg></span>
+      <div><b>Comms covered.</b> <span style="color:var(--text-2)">Next sweep at the block change.</span></div>
+      <span class="when num">in 18 min · 10:30</span>
+    </div>
+
+    <div class="clear">
+      <span class="co ok"><span class="cd" style="background:var(--c-vquip)"></span>vQuip <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12.5l4 4L19 7"/></svg> quiet</span>
+      <span class="co ok"><span class="cd" style="background:var(--c-healthmap)"></span>Healthmap <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12.5l4 4L19 7"/></svg> quiet</span>
+      <span class="co fact"><span class="cd" style="background:var(--c-healthme)"></span>HealthMe · <b>1 due today</b></span>
+    </div>
+
+    <section class="agenda">
+      <div class="eyebrow">Today's meetings</div>
+      <div class="strip">
+        <div class="mtg"><div class="t"><span class="cd" style="background:var(--c-vquip)"></span><span class="num">11:00</span></div><div class="n">vQuip standup</div></div>
+        <div class="mtg"><div class="t"><span class="cd" style="background:var(--c-zeta)"></span><span class="num">1:30</span></div><div class="n">LISTers sync</div></div>
+        <div class="mtg"><div class="t"><span class="cd" style="background:var(--c-healthme)"></span><span class="num">3:00</span></div><div class="n">HealthMe 1:1</div></div>
+      </div>
+    </section>
+
+    <label class="capture">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+      <input placeholder="Dump a thought — it files itself to the right company…" aria-label="Quick capture" />
+      <kbd>⌘N</kbd>
+    </label>
+  </main>
+</div>
+
+<!-- Block transition ritual -->
+<div class="overlay" id="overlay" aria-hidden="true">
+  <div class="ritual" role="dialog" aria-label="Block transition">
+    <div class="closure">Zeta block complete.</div>
+    <p>Nothing to tally. Just close the tab in your head.</p>
+    <hr />
+    <div class="q">Anything still open up there?</div>
+    <textarea placeholder="Park it here — files itself, so you don't have to carry it into the next block."></textarea>
+    <hr />
+    <div class="q">Sweep comms — about 5 minutes</div>
+    <div class="sweep">
+      <div class="row" onclick="this.classList.toggle('done')"><span class="cd" style="background:var(--c-vquip)"></span><span class="co">vQuip</span><span class="pf">Slack</span><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12.5l4 4L19 7"/></svg></span></div>
+      <div class="row done" onclick="this.classList.toggle('done')"><span class="cd" style="background:var(--c-zeta)"></span><span class="co">Zeta</span><span class="pf">Slack</span><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12.5l4 4L19 7"/></svg></span></div>
+      <div class="row" onclick="this.classList.toggle('done')"><span class="cd" style="background:var(--c-healthmap)"></span><span class="co">Healthmap</span><span class="pf">Teams</span><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12.5l4 4L19 7"/></svg></span></div>
+      <div class="row" onclick="this.classList.toggle('done')"><span class="cd" style="background:var(--c-healthme)"></span><span class="co">HealthMe</span><span class="pf">Slack</span><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12.5l4 4L19 7"/></svg></span></div>
+    </div>
+    <hr />
+    <div class="next-up">
+      <div class="h"><span class="dot2"></span><b>vQuip</b><span class="r num">10:30 – 11:30</span></div>
+      <div class="nl" style="margin-top:10px">Your one thing</div>
+      <div class="nt">Triage the QA bug queue before the standup</div>
+    </div>
+    <button class="start" onclick="closeRitual()">Start vQuip
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="controls">
+  <span class="tag">Mockup</span>
+  <button onclick="openRitual()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5l11 7-11 7z"/></svg>Block transition</button>
+  <button onclick="toggleTheme()" id="themeBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.4 1.4M17.6 17.6L19 19M5 19l1.4-1.4M17.6 6.4L19 5"/></svg>Theme</button>
+</div>
+
+<script>
+  // ease the block-progress bar to 70% (42 of 60 min) on load — calm, not ticking
+  requestAnimationFrame(function(){ setTimeout(function(){ document.getElementById('prog').style.width = '70%'; }, 220); });
+
+  function openRitual(){ document.getElementById('overlay').classList.add('show'); document.getElementById('overlay').setAttribute('aria-hidden','false'); }
+  function closeRitual(){ document.getElementById('overlay').classList.remove('show'); document.getElementById('overlay').setAttribute('aria-hidden','true'); }
+  document.getElementById('overlay').addEventListener('click', function(e){ if(e.target===this) closeRitual(); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeRitual(); });
+
+  // complete-task affordance (demo): check + fade out, mirroring "completed tasks are gone"
+  var cb = document.querySelector('.checkbox');
+  cb.addEventListener('click', function(){
+    var card = document.querySelector('.one');
+    this.style.background = 'var(--now)'; this.style.borderColor = 'var(--now)';
+    card.style.transition = 'opacity .5s, transform .5s'; card.style.opacity = '.35';
+  });
+
+  // theme toggle (light <-> dark), overriding the OS media query
+  function currentTheme(){
+    var t = document.documentElement.getAttribute('data-theme');
+    if(t) return t;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function toggleTheme(){
+    var next = currentTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+  }
+</script>
