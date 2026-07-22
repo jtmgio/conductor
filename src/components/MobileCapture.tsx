@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Check, Mic, X, ChevronDown } from "lucide-react";
+import { Check, X, ChevronDown } from "lucide-react";
 
 interface Role {
   id: string;
@@ -28,7 +28,6 @@ export function MobileCapture({ currentBlock }: { currentBlock?: { roleId: strin
   const [text, setText] = useState("");
   const [roleId, setRoleId] = useState("");
   const [added, setAdded] = useState<Added[]>([]);
-  const [listening, setListening] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -69,48 +68,21 @@ export function MobileCapture({ currentBlock }: { currentBlock?: { roleId: strin
     } catch {}
   }, []);
 
-  const startVoice = useCallback(() => {
-    const SR = (window as unknown as { webkitSpeechRecognition?: new () => any; SpeechRecognition?: new () => any }).webkitSpeechRecognition ||
-      (window as unknown as { SpeechRecognition?: new () => any }).SpeechRecognition;
-    if (!SR) {
-      inputRef.current?.focus(); // fall back to keyboard dictation
-      return;
-    }
-    const rec = new SR();
-    rec.lang = "en-US";
-    rec.interimResults = false;
-    setListening(true);
-    rec.onresult = (e: any) => {
-      const t = e.results[0][0].transcript;
-      setText((prev) => (prev ? prev + " " : "") + t);
-    };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
-    rec.start();
-  }, []);
-
   return (
     <div className="mx-auto max-w-md px-1 pt-4">
       <h1 className="text-[26px] font-bold tracking-tight text-[var(--text-primary)]">Capture</h1>
-      <p className="mt-1 text-[14px] text-[var(--text-tertiary)]">Dump a task — pick the company, add it, move on.</p>
+      <p className="mt-1 text-[14px] text-[var(--text-tertiary)]">Type it, or tap the field and use your keyboard&apos;s 🎤 to dictate.</p>
 
-      {/* Input + voice */}
-      <div className="mt-5 flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-4 py-1">
+      {/* Input */}
+      <div className="mt-5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-4">
         <input
           ref={inputRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && add()}
           placeholder="What needs doing?"
-          className="flex-1 bg-transparent py-3.5 text-[16px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
+          className="w-full bg-transparent py-4 text-[16px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
         />
-        <button
-          onClick={startVoice}
-          aria-label="Dictate"
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${listening ? "bg-red-500/15 text-red-400" : "bg-[var(--surface)] text-[var(--text-tertiary)]"}`}
-        >
-          <Mic className="h-4 w-4" />
-        </button>
       </div>
 
       {/* Company selector */}
