@@ -31,6 +31,12 @@
   - **No auto-fade:** items keep gently resurfacing until acted on. This is safe *because* "drop" is one tap — nothing rots silently in backlog (graveyard fear) and nothing nags against the user's will.
   - **No planning ritual — just-in-time only.** Day prep is NOT a step. Therefore **remove `EodPlanningPrompt` and `MorningPick`/`MorningBriefing` planning flows entirely** (supersedes the earlier "retime EOD to 3:45" note — the prompt is deleted, not retimed). The global `lastPlannedFor` gate is no longer used for prompting. Getting tasks onto "today" happens via: entering a block (one-thing flow pulls that company's tasks), the carry-over triage, and quick capture — no dedicated planning screen.
 - **Completion:** add a brief **undo** on complete (mitigates "did I check the wrong one?" anxiety).
+- **Mobile capture (user-confirmed 2026-07-22):**
+  - **Floating + button** in the thumb zone (bottom-right), on every screen. Mount a proper FAB in the mobile shell (the existing `QuickEntry` FAB isn't mounted — wire a real one).
+  - **Prominent voice.** A large mic in the capture sheet: tap → speak → transcribe → file. Prefer native keyboard dictation on iOS Safari (Web Speech API is flaky in the iOS PWA); a big mic that focuses the field + invites dictation is the reliable path. Design it as the primary affordance, not a tiny icon.
+  - **Fire-and-forget + undo** — no confirm step on mobile. Capture posts verbatim immediately → toast "Filed to {company} · undo". Async refine + company inference update the task afterward (same pipeline as MCP `create_task`). Chosen over "stop if unsure": even when company inference is uncertain, do NOT block — file to the **current block's company** as best guess and rely on the undo chip / later recategorize. Lowest friction wins on mobile.
+  - **Extra doors: Siri voice-shortcut + home-screen widget**, both via iOS Shortcuts → the **existing MCP endpoint** (`/api/mcp`, reachable over Tailscale). No new backend — the Shortcut POSTs raw text to `create_task`, which already refines + infers company. NOT building: share-sheet-from-other-apps, offline queue (user deprioritized both).
+  - **Known risk (deferred, user-deprioritized):** with no offline queue, a fire-and-forget capture on no signal (subway) can fail silently. Acceptable for now; revisit if it bites — a small local queue + retry is the fix.
 
 ---
 
