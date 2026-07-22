@@ -25,6 +25,7 @@ interface Task {
   status: string;
   priority: string;
   dueDate: string | null;
+  scheduledFor: string | null;
   sourceType: string | null;
 }
 
@@ -55,6 +56,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
   const [clear, setClear] = useState<ClearRole[]>([]);
   const [now, setNow] = useState(() => new Date());
   const [restOpen, setRestOpen] = useState(true);
+  const [backlogOpen, setBacklogOpen] = useState(false);
   const [capture, setCapture] = useState("");
 
   const roleId = currentBlock?.roleId ?? null;
@@ -102,17 +104,34 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     } catch {}
   }, []);
 
+  const setSchedule = useCallback(
+    async (id: string, iso: string | null) => {
+      try {
+        await fetch(`/api/tasks/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scheduledFor: iso }),
+        });
+      } catch {}
+      fetchTasks();
+    },
+    [fetchTasks]
+  );
+
   const submitCapture = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       const text = capture.trim();
       if (!text || !roleId) return;
       setCapture("");
+      const now2 = new Date();
+      const iso = `${now2.getFullYear()}-${String(now2.getMonth() + 1).padStart(2, "0")}-${String(now2.getDate()).padStart(2, "0")}`;
       try {
         await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ roleId, title: text, status: "backlog" }),
+          // captured while working this company -> lands on today, not the deep backlog
+          body: JSON.stringify({ roleId, title: text, status: "backlog", scheduledFor: iso }),
         });
       } catch {}
       fetchTasks();
@@ -133,8 +152,19 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     );
   }
 
-  const one = tasks[0];
-  const rest = tasks.slice(1);
+  // "Today" = scheduled for today/past, or actively in-flight. Deep backlog stays on the Board.
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const isForToday = (t: Task) => {
+    if (t.status === "in_progress" || t.status === "in_review" || t.status === "blocked") return true;
+    if (!t.scheduledFor) return false;
+    const d = new Date(t.scheduledFor);
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` <= todayStr;
+  };
+  const todayTasks = tasks.filter(isForToday);
+  const backlog = tasks.filter((t) => !isForToday(t));
+  const one = todayTasks[0];
+  const rest = todayTasks.slice(1);
 
   const startMin = currentBlock.startHour * 60 + currentBlock.startMinute;
   const endMin = currentBlock.endHour * 60 + currentBlock.endMinute;
@@ -230,7 +260,9 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                 <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color }}>
                   {currentBlock.roleName} — clear
                 </p>
-                <p className="mt-2 text-[14px] text-[var(--text-secondary)]">Nothing left queued for {currentBlock.roleName}. Coast to the block change, or capture your next thing below.</p>
+                <p className="mt-2 text-[14px] text-[var(--text-secondary)]">
+                  Nothing on today for {currentBlock.roleName}. {backlog.length > 0 ? "Pull something from the backlog below, or coast." : "Coast to the block change, or capture a thought below."}
+                </p>
               </motion.section>
             )}
           </AnimatePresence>
@@ -254,6 +286,34 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                         />
                         <span className="flex-1 truncate text-[14px] text-[var(--text-secondary)]">{t.title}</span>
                         {isToday(t.dueDate, now) && <span className="shrink-0 text-[11px] font-semibold text-amber-400">Due today</span>}
+                      </li>
+                    ))}
+                  </motion.ul>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Pull from backlog — deep backlog lives here + on the Board, not in the one-thing flow */}
+          {backlog.length > 0 && (
+            <div className="mt-3">
+              <button onClick={() => setBacklogOpen((v) => !v)} className="flex items-center gap-1.5 px-1 py-1.5 text-[12.5px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
+                <ChevronRight className={`h-3.5 w-3.5 transition-transform ${backlogOpen ? "rotate-90" : ""}`} />
+                Pull from {currentBlock.roleName} backlog · {backlog.length}
+              </button>
+              <AnimatePresence initial={false}>
+                {backlogOpen && (
+                  <motion.ul initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                    {backlog.map((t) => (
+                      <li key={t.id} className="flex items-center gap-3 border-t border-[var(--border-subtle)] px-1 py-2.5">
+                        <button
+                          onClick={() => setSchedule(t.id, todayStr)}
+                          aria-label="Pull into today"
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-[var(--border-strong)] text-[var(--text-tertiary)] transition-colors hover:border-[color:var(--text-secondary)] hover:text-[var(--text-secondary)]"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                        <span className="flex-1 truncate text-[14px] text-[var(--text-tertiary)]">{t.title}</span>
                       </li>
                     ))}
                   </motion.ul>
