@@ -377,7 +377,20 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
   }
 
   // ── Strip mode (original stacked layout for mobile) ──
-  if (upcomingMeetings.length === 0) return null;
+  // Had meetings today, all now finished — calm closure instead of a vanished panel.
+  if (upcomingMeetings.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6 flex items-center gap-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-5 py-4"
+      >
+        <Calendar className="h-4 w-4 text-[var(--text-tertiary)]" />
+        <span className="text-[13.5px] font-medium text-[var(--text-secondary)]">All meetings done for the day</span>
+        <Check className="h-4 w-4 text-emerald-500" />
+      </motion.div>
+    );
+  }
   return (
     <>
     <motion.div
