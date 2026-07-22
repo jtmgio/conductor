@@ -12,12 +12,12 @@
 - **Cut `/ai` entirely** — the whole chat page: per-role chat, artifacts, image analysis, **and the slash-command generators** (`/standup-prep` etc.). User does AI work in Claude Code + command centers; slash commands are not used. Delete `ChatThread`, `ThreadSidebar`, `DraftVariants`, `/api/conversations/*`, `/api/skills/*`, `skill-resolver.ts`; `Skill`/`Conversation` models stay in DB (additive rule).
 - **Cut `/documents` (notes)** — notes live in the user's command-center apps. Delete `NoteEditor`, `DocumentViewer`, notes/documents pages + API. `Note` model stays in DB; AI context assembly degrades gracefully without pinned notes.
 - **Cut `/drafts` + `/docs`** — formatter→clipboard replaces the drafts queue; CLAUDE.md replaces in-app help. Delete pages, `/api/drafts/*`, `docs-content.ts`.
-- **Meetings: cut the history page, KEEP a slimmed meeting-prep panel.** This is the one nuance — see below.
+- **Cut ALL of meetings** — the history page AND `MeetingPrepPanel` (user never used the manual prep/extract flow; per-meeting depth lives in command-center apps now). Delete `/meetings`, `MeetingPrepPanel`, the manual calendar-screenshot upload UI, and `/api/ai/meeting-prep`.
 
-**Meeting-prep keep (important, coupled to the meeting alert):** The 15-min in-app meeting alert opens `MeetingPrepPanel`, and the user relies on its **Granola transcript → task/follow-up extraction**. So:
-- Delete the `/meetings` history-browser page and manual calendar screenshot upload UI.
-- **Keep `MeetingPrepPanel`, but slim it:** it currently has 6 tabs (AI prep, notes, transcript, chat, tasks, files). The chat tab embeds `ChatThread` (being deleted), the notes tab uses `NoteEditor` (deleted), the files tab uses `DocumentViewer` (deleted). **Refactor to keep: AI prep, transcript (Granola import + extract-to-tasks), and tasks. Drop the chat/notes/files tabs** so it no longer depends on any deleted component. Keep it reachable from `AgendaStrip` + the meeting alert.
-- `/api/ai/meeting-prep` and `/api/ai/extract` stay (extract is also used by Granola/calendar sync). `Transcript` model + Granola sync stay.
+**Why cutting the meeting-prep panel loses nothing real:**
+- The **Granola hourly sync stays** and *already* auto-extracts tasks/follow-ups from meeting transcripts in the background — the panel was just a redundant manual version of that. `Transcript` model, Granola sync, and `/api/ai/extract` (also used by Granola/calendar sync) all stay.
+- **Meeting alerts / the takeover stay** — sourced from calendar sync + `AgendaStrip`, not the panel. The 15-min in-app alert should no longer open a panel; drop that behavior (the takeover + corner banner are the alert now). Any prep note shown comes from the calendar prep task, not the panel.
+- Removing the panel also removes its embedded `ChatThread`/`NoteEditor`/`DocumentViewer` dependencies cleanly — no slimming refactor needed.
 
 **Formatter survives the `/ai` cut** — it lives in `format-message.ts`, invoked from ⌘K GlobalSearch and the MCP tool, independent of the chat page. Becomes its own `/formatter` page (§7.5).
 
