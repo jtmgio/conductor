@@ -6,6 +6,30 @@
 
 ---
 
+## Decisions locked (2026-07-22, after code audit — see `CURRENT_VS_V2.md`)
+
+**Deletions (user-confirmed, informed by the audit of what each page actually contains):**
+- **Cut `/ai` entirely** — the whole chat page: per-role chat, artifacts, image analysis, **and the slash-command generators** (`/standup-prep` etc.). User does AI work in Claude Code + command centers; slash commands are not used. Delete `ChatThread`, `ThreadSidebar`, `DraftVariants`, `/api/conversations/*`, `/api/skills/*`, `skill-resolver.ts`; `Skill`/`Conversation` models stay in DB (additive rule).
+- **Cut `/documents` (notes)** — notes live in the user's command-center apps. Delete `NoteEditor`, `DocumentViewer`, notes/documents pages + API. `Note` model stays in DB; AI context assembly degrades gracefully without pinned notes.
+- **Cut `/drafts` + `/docs`** — formatter→clipboard replaces the drafts queue; CLAUDE.md replaces in-app help. Delete pages, `/api/drafts/*`, `docs-content.ts`.
+- **Meetings: cut the history page, KEEP a slimmed meeting-prep panel.** This is the one nuance — see below.
+
+**Meeting-prep keep (important, coupled to the meeting alert):** The 15-min in-app meeting alert opens `MeetingPrepPanel`, and the user relies on its **Granola transcript → task/follow-up extraction**. So:
+- Delete the `/meetings` history-browser page and manual calendar screenshot upload UI.
+- **Keep `MeetingPrepPanel`, but slim it:** it currently has 6 tabs (AI prep, notes, transcript, chat, tasks, files). The chat tab embeds `ChatThread` (being deleted), the notes tab uses `NoteEditor` (deleted), the files tab uses `DocumentViewer` (deleted). **Refactor to keep: AI prep, transcript (Granola import + extract-to-tasks), and tasks. Drop the chat/notes/files tabs** so it no longer depends on any deleted component. Keep it reachable from `AgendaStrip` + the meeting alert.
+- `/api/ai/meeting-prep` and `/api/ai/extract` stay (extract is also used by Granola/calendar sync). `Transcript` model + Granola sync stay.
+
+**Formatter survives the `/ai` cut** — it lives in `format-message.ts`, invoked from ⌘K GlobalSearch and the MCP tool, independent of the chat page. Becomes its own `/formatter` page (§7.5).
+
+**Other locked calls:**
+- **Priority:** no P1/P2/P3, no ranking. Keep the existing binary urgent flag **AI-set only, and hide the red "URGENT" label** — urgent just biases the one-thing order, invisibly. User never sets priority.
+- **Refine:** make it **async** — capture lands verbatim instantly, refine updates the card a few seconds later; if company was ambiguous, a quiet "which company?" chip appears on the card afterward (never a blocking spinner/modal).
+- **Rollover:** keep today's silent unschedule-to-backlog, but **add a breadcrumb** so a rolled task is distinguishable from never-scheduled, and **resurface unfinished items per-company** on re-entry with a one-tap "today / a day / drop." Per-company prep, not the global `lastPlannedFor` singleton.
+- **Completion:** add a brief **undo** on complete.
+- **EOD prompt:** retime 4:45pm → **3:45pm** (new schedule end).
+
+---
+
 ## 0. Why (do not skip — this shapes every decision)
 
 The user holds 7 concurrent engineering jobs (4 active: vQuip, Zeta, Healthmap, HealthMe; 2 automated: Wris, Xen; 1 dormant: React Health; 1 personal project: TrainBetter). He is neurodivergent and operates on fear/anxiety: he compulsively checks Slack/Teams across all companies (~every 5 minutes) driven by a feeling of being "behind" or "in trouble" — a feeling with no external evidence (no one expects instant responses; deliverables are flexible).
