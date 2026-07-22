@@ -260,6 +260,7 @@ model Reminder {
   sortOrder   Int       @default(0)
   icon        String?   // lucide key: pill | syringe | shake | stretch
   durationMin Int?      // if set, the reminder runs an N-minute countdown timer
+  tier        String    @default("normal") // "critical" escalates to a takeover if ignored; "normal" stays a gentle banner
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }

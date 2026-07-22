@@ -24,6 +24,7 @@ export async function GET() {
       days: r.days,
       icon: r.icon,
       durationMin: r.durationMin,
+      tier: r.tier,
       ackedToday: r.lastAckOn ? r.lastAckOn.getTime() === todayTime : false,
     }))
   );
