@@ -273,6 +273,10 @@
   .cap-ex button:hover{color:var(--text-2)}
   .cap-ex button::before{content:"› ";opacity:.6}
   .cap-title{font-size:18px;font-weight:600;letter-spacing:-.01em;line-height:1.3}
+  .cap-notes{margin:8px 0 0;font-size:13.5px;color:var(--text-2);line-height:1.5}
+  .cap-check{margin:12px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px}
+  .cap-check li{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text-2)}
+  .cap-check li::before{content:"";width:14px;height:14px;border-radius:4px;border:1.6px solid var(--border-strong);flex:0 0 auto}
   .cap-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}
   .cap-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-strong);border-radius:99px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;background:var(--raised);color:var(--text)}
   .cap-chip svg{width:12px;height:12px;opacity:.6}
@@ -631,6 +635,7 @@ function ackMed(t){S.ackedMeds.add(t);renderMeds();}
 // ---------- quick capture: type like you talk, AI pulls out company + date ----------
 const CAP={open:false,step:'input',text:'',parsed:{title:'',co:null,due:null},editing:null};
 let NEWID=1;
+function cap(s){s=(s||'').trim();return s.charAt(0).toUpperCase()+s.slice(1);}
 function parseCapture(text){
   const t=text.toLowerCase();
   let co=null;
@@ -646,11 +651,24 @@ function parseCapture(text){
   if(/\btoday\b/.test(t))due='Today';
   else if(/\btomorrow\b|\btmrw\b/.test(t))due='Tomorrow';
   else{const days=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];for(const d of days){if(t.includes(d)){due=d[0].toUpperCase()+d.slice(1);break;}}}
-  let title=text.replace(/\bfor\s+(zeta|vquip|healthmap|healthme|xenegrade|xen|trainbetter)\b/ig,'')
+  // strip company + date phrases, keep the substance
+  let body=text.replace(/\bfor\s+(zeta|vquip|healthmap|healthme|xenegrade|xen|trainbetter)\b/ig,'')
     .replace(/\bby\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/ig,'')
     .replace(/\b(today|tomorrow|tmrw)\b/ig,'').replace(/\s{2,}/g,' ').trim();
-  title=title.charAt(0).toUpperCase()+title.slice(1);
-  return {title,co,due};
+  // checklist from an explicit ":" list of steps
+  let checklist=null, notes=null;
+  const colon=body.match(/:\s*(.+)$/);
+  if(colon){
+    checklist=colon[1].split(/\s*(?:,|;| and )\s*/).map(s=>s.trim()).filter(s=>s.length>1).map(s=>({text:cap(s)}));
+    body=body.slice(0,colon.index).trim();
+  }
+  // notes from a trailing "— …" aside, or leftover comma detail
+  const dash=body.match(/\s[—–-]\s(.+)$/);
+  if(dash){ notes=cap(dash[1]); body=body.slice(0,dash.index).trim(); }
+  else if(!checklist){ const ci=body.indexOf(','); if(ci>-1){ notes=cap(body.slice(ci+1)); body=body.slice(0,ci).trim(); } }
+  let title=cap(body);
+  const w=title.split(' '); if(w.length>10) title=w.slice(0,9).join(' ')+'…';
+  return {title,co,due,notes,checklist};
 }
 function openCapture(){CAP.open=true;CAP.step='input';CAP.text='';CAP.parsed={title:'',co:null,due:null};CAP.editing=null;renderCapture();}
 function closeCapture(){CAP.open=false;renderCapture();}
@@ -661,7 +679,7 @@ function capEdit(f){CAP.editing=CAP.editing===f?null:f;renderCapture();}
 function capSet(f,v){if(f==='co')CAP.parsed.co=v;else CAP.parsed.due=(v==='No date')?null:v;CAP.editing=null;renderCapture();}
 function capAdd(){
   const p=CAP.parsed; if(!p.co)return;
-  (TASKS[p.co]=TASKS[p.co]||[]).push({id:'n'+(NEWID++),t:p.title||'(untitled)',status:'backlog',due:p.due==='Today',done:false});
+  (TASKS[p.co]=TASKS[p.co]||[]).push({id:'n'+(NEWID++),t:p.title||'(untitled)',status:'backlog',due:p.due==='Today',done:false,notes:p.notes,checklist:p.checklist});
   const co=CO[p.co];
   closeCapture();
   showToast(`Filed to ${co.n} backlog`,co.c);
@@ -684,9 +702,9 @@ function renderCapture(){
       <div class="eyebrow" style="margin-bottom:11px">Quick capture</div>
       <textarea id="capInput" placeholder="Type it like you'd say it…">${CAP.text||''}</textarea>
       <div class="cap-ex"><span style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.1em;font-weight:700">Try one</span>
-        <button onclick="capFill(this)">reply to dana about the sailthru scores</button>
-        <button onclick="capFill(this)">fix the auth bug for zeta by friday</button>
-        <button onclick="capFill(this)">prep the board deck tomorrow</button></div>
+        <button onclick="capFill(this)">fix the auth bug for zeta by friday — repro's in the ticket, likely the token refresh</button>
+        <button onclick="capFill(this)">prep the board deck tomorrow: pull q3 metrics, update the roadmap slide, rehearse the intro</button>
+        <button onclick="capFill(this)">reply to dana about the sailthru scores, include the benchmark numbers and cc the eng lead</button></div>
       <div class="cap-actions"><button class="ghost" onclick="closeCapture()">Cancel</button>
         <button class="go" onclick="capParse()">Read it ${I.arrow}</button></div></div>`;
   } else {
@@ -694,6 +712,8 @@ function renderCapture(){
     inner=`<div class="cap-card">
       <div class="eyebrow" style="margin-bottom:11px">Here’s what I got — tap to fix</div>
       <div class="cap-title">${p.title||'(add a title)'}</div>
+      ${p.notes?`<p class="cap-notes">${p.notes}</p>`:''}
+      ${p.checklist&&p.checklist.length?`<ul class="cap-check">${p.checklist.map(c=>`<li>${c.text}</li>`).join('')}</ul>`:''}
       <div class="cap-chips">
         ${co?`<span class="cap-chip" onclick="capEdit('co')"><span style="width:8px;height:8px;border-radius:50%;background:${co.c}"></span>${co.n} ${I.chev}</span>`
              :`<span class="cap-chip warn" onclick="capEdit('co')">Which company? ${I.chev}</span>`}
