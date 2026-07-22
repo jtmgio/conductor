@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import { FocusView } from "@/components/FocusView";
+import { TodayCockpit } from "@/components/TodayCockpit";
 
 interface BlockInfo {
   id: string;
@@ -50,7 +50,7 @@ export function FocusPage() {
       currentBlock={currentBlock}
       nextBlocks={nextBlocks}
     >
-      <FocusView currentBlock={currentBlock} nextBlocks={nextBlocks} allBlocks={allBlocks} offClockMessage={offClockMessage} />
+      <TodayCockpit currentBlock={currentBlock} nextBlocks={nextBlocks} offClockMessage={offClockMessage} />
     </AppShell>
   );
 }
