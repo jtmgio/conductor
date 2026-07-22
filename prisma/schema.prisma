@@ -27,6 +27,9 @@ model UserProfile {
   aiTranscriptChunkSize      Int?
   aiPinnedNoteChunkSize      Int?
   lastPlannedFor         DateTime? @db.Date
+  dayShiftDate           DateTime? @db.Date
+  dayShiftMinutes        Int?
+  lastSweepAt            DateTime? // last completed comms sweep (UTC instant)
   updatedAt              DateTime @updatedAt
 }
 
@@ -244,6 +247,26 @@ model ScheduleOverride {
   day     String
   roleId  String
   weekOf  DateTime
+}
+
+model Reminder {
+  id        String    @id @default(cuid())
+  label     String
+  hour      Int
+  minute    Int
+  days      Int[]     // weekdays: 0=Sun .. 6=Sat
+  active    Boolean   @default(true)
+  lastAckOn DateTime? @db.Date // last date acknowledged (local tz)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model SweepLog {
+  id        String   @id @default(cuid())
+  sweptAt   DateTime @default(now())
+  blockId   String?  // ScheduleBlock id the sweep closed out (null = manual sweep)
+  createdAt DateTime @default(now())
 }
 
 model Skill {
