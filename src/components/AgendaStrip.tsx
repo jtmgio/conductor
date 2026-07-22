@@ -172,6 +172,9 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
 
   if (!loaded || meetings.length === 0) return null;
 
+  // Only surface meetings that haven't ended yet — passed ones drop off the list.
+  const upcomingMeetings = meetings.filter((m) => getMeetingStatus(m) !== "past");
+
   const currentOrNext = meetings.find((m) => {
     const status = getMeetingStatus(m);
     return status === "current" || status === "upcoming";
@@ -374,6 +377,7 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
   }
 
   // ── Strip mode (original stacked layout for mobile) ──
+  if (upcomingMeetings.length === 0) return null;
   return (
     <>
     <motion.div
@@ -392,7 +396,7 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
             Today&apos;s Meetings
           </span>
           <span className="text-[13px] text-[var(--text-tertiary)]">
-            {formatTime(meetings[0].startTime)} – {formatTime(meetings[meetings.length - 1].endTime)}
+            {formatTime(upcomingMeetings[0].startTime)} – {formatTime(upcomingMeetings[upcomingMeetings.length - 1].endTime)}
           </span>
         </div>
         {collapsed ? (
@@ -413,7 +417,7 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 flex flex-col gap-1.5">
-              {meetings.map((meeting) => {
+              {upcomingMeetings.map((meeting) => {
                 const status = getMeetingStatus(meeting);
                 const isCurrent = status === "current";
                 const isPast = status === "past";
@@ -447,7 +451,7 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                           className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: meeting.role.color }}
                         />
-                        <span className="text-[14px] font-medium text-[var(--text-primary)] truncate">
+                        <span className="text-[14px] font-medium text-[var(--text-primary)] leading-snug">
                           {meeting.title}
                         </span>
                         {isCurrent && (
@@ -459,14 +463,6 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
 
                       <div className="flex items-center gap-3 text-[12px] text-[var(--text-tertiary)]">
                         <span>{meeting.role.name}</span>
-                        {meeting.attendees.length > 0 && (
-                          <span className="flex items-center gap-1">
-                            <Users className="h-3 w-3" />
-                            {meeting.attendees.length <= 3
-                              ? meeting.attendees.join(", ")
-                              : `${meeting.attendees.slice(0, 2).join(", ")} +${meeting.attendees.length - 2}`}
-                          </span>
-                        )}
                       </div>
 
                       {/* Prep task */}
