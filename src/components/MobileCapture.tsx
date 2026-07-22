@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Check, X, ChevronDown } from "lucide-react";
+import { Check, X, ChevronDown, Loader2 } from "lucide-react";
+import { refineTaskInBackground } from "@/lib/capture-refine";
 
 interface Role {
   id: string;
@@ -15,6 +16,7 @@ interface Added {
   title: string;
   roleName: string;
   roleColor: string;
+  refining?: boolean;
 }
 
 /**
@@ -55,7 +57,11 @@ export function MobileCapture({ currentBlock }: { currentBlock?: { roleId: strin
       });
       if (res.ok) {
         const t = await res.json();
-        setAdded((a) => [{ id: t.id, title, roleName: role?.name || "", roleColor: role?.color || "#888" }, ...a].slice(0, 8));
+        setAdded((a) => [{ id: t.id, title, roleName: role?.name || "", roleColor: role?.color || "#888", refining: true }, ...a].slice(0, 8));
+        // MLX tidies the title/date in the background; swap it in when it lands.
+        refineTaskInBackground(t.id, title, roleId, (r) => {
+          setAdded((a) => a.map((x) => (x.id === t.id ? { ...x, title: r.title, refining: false } : x)));
+        });
       }
     } catch {}
     inputRef.current?.focus();
@@ -120,7 +126,11 @@ export function MobileCapture({ currentBlock }: { currentBlock?: { roleId: strin
           <div className="flex flex-col gap-1.5">
             {added.map((a) => (
               <div key={a.id} className="flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3.5 py-3">
-                <Check className="h-4 w-4 shrink-0 text-emerald-500" />
+                {a.refining ? (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[var(--text-tertiary)]" />
+                ) : (
+                  <Check className="h-4 w-4 shrink-0 text-emerald-500" />
+                )}
                 <span className="min-w-0 flex-1 truncate text-[14px] text-[var(--text-primary)]">{a.title}</span>
                 <span className="flex shrink-0 items-center gap-1.5 text-[11.5px]" style={{ color: a.roleColor }}>
                   <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: a.roleColor }} />

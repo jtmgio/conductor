@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Check, Plus, ChevronRight, Moon, X } from "lucide-react";
 import { AgendaStrip } from "./AgendaStrip";
 import { CommsCoverStrip } from "./CommsCoverStrip";
+import { refineTaskInBackground } from "@/lib/capture-refine";
 
 interface BlockInfo {
   id: string;
@@ -149,12 +150,16 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
       const now2 = new Date();
       const iso = `${now2.getFullYear()}-${String(now2.getMonth() + 1).padStart(2, "0")}-${String(now2.getDate()).padStart(2, "0")}`;
       try {
-        await fetch("/api/tasks", {
+        const res = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           // captured while working this company -> lands on today, not the deep backlog
           body: JSON.stringify({ roleId, title: text, status: "backlog", scheduledFor: iso }),
         });
+        if (res.ok) {
+          const t = await res.json();
+          refineTaskInBackground(t.id, text, roleId, () => fetchTasks()); // MLX tidies it, then refresh
+        }
       } catch {}
       fetchTasks();
     },
