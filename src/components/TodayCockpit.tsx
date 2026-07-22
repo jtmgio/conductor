@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
 import { Check, Plus, ChevronRight, Moon, X } from "lucide-react";
 import { AgendaStrip } from "./AgendaStrip";
 import { CommsCoverStrip } from "./CommsCoverStrip";
-import { PlanTomorrow } from "./PlanTomorrow";
 
 interface BlockInfo {
   id: string;
@@ -57,9 +57,9 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
   const [clear, setClear] = useState<ClearRole[]>([]);
   const [now, setNow] = useState(() => new Date());
   const [restOpen, setRestOpen] = useState(true);
+  const router = useRouter();
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [capture, setCapture] = useState("");
-  const [planOpen, setPlanOpen] = useState(false);
   const [showEod, setShowEod] = useState(false);
 
   const roleId = currentBlock?.roleId ?? null;
@@ -208,7 +208,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
             {currentBlock.roleName}
           </h1>
           <button
-            onClick={() => setPlanOpen(true)}
+            onClick={() => router.push("/plan")}
             className="ml-auto flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-tertiary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
           >
             <Moon className="h-3.5 w-3.5" />
@@ -236,7 +236,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
         <div className="mb-6 flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-4 py-3">
           <Moon className="h-4 w-4 shrink-0 text-[var(--text-tertiary)]" />
           <span className="flex-1 text-[13.5px] text-[var(--text-secondary)]">Winding down — want to line up tomorrow&apos;s stack?</span>
-          <button onClick={() => setPlanOpen(true)} className="rounded-lg bg-[var(--text-primary)] px-3.5 py-2 text-[12.5px] font-semibold text-[var(--surface)] transition-opacity hover:opacity-90">
+          <button onClick={() => router.push("/plan")} className="rounded-lg bg-[var(--text-primary)] px-3.5 py-2 text-[12.5px] font-semibold text-[var(--surface)] transition-opacity hover:opacity-90">
             Plan tomorrow
           </button>
           <button onClick={dismissEod} aria-label="Dismiss" className="rounded-lg p-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
@@ -399,8 +399,6 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
           </form>
         </div>
       </div>
-
-      <PlanTomorrow open={planOpen} onClose={() => setPlanOpen(false)} />
     </div>
   );
 }
