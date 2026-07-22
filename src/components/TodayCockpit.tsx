@@ -161,15 +161,24 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     [capture, roleId, fetchTasks]
   );
 
-  // Off the clock — calm, no tasks
+  // Off the clock — calm, but offer the natural end-of-day move: line up tomorrow.
   if (!currentBlock || !roleId) {
     return (
-      <div className="mx-auto max-w-2xl pt-10 text-center">
+      <div className="mx-auto max-w-md px-2 pt-16 text-center">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--surface-raised)]">
           <Moon className="h-6 w-6 text-[var(--text-tertiary)]" />
         </div>
         <h1 className="text-[22px] font-semibold text-[var(--text-secondary)]">{offClockMessage || "Off the clock"}</h1>
         <p className="mt-2 text-[14px] text-[var(--text-tertiary)]">Nothing scheduled right now — nobody expects you. Comms sweeps pause too.</p>
+        <div className="mt-7 flex justify-center">
+          <button
+            onClick={() => router.push("/plan")}
+            className="flex items-center gap-2 rounded-xl bg-[var(--text-primary)] px-5 py-3 text-[14px] font-semibold text-[var(--surface)] transition-opacity hover:opacity-90"
+          >
+            <Moon className="h-4 w-4" />
+            Line up tomorrow
+          </button>
+        </div>
       </div>
     );
   }
