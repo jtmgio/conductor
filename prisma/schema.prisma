@@ -250,16 +250,18 @@ model ScheduleOverride {
 }
 
 model Reminder {
-  id        String    @id @default(cuid())
-  label     String
-  hour      Int
-  minute    Int
-  days      Int[]     // weekdays: 0=Sun .. 6=Sat
-  active    Boolean   @default(true)
-  lastAckOn DateTime? @db.Date // last date acknowledged (local tz)
-  sortOrder Int       @default(0)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  label       String
+  hour        Int
+  minute      Int
+  days        Int[]     // weekdays: 0=Sun .. 6=Sat
+  active      Boolean   @default(true)
+  lastAckOn   DateTime? @db.Date // last date acknowledged (local tz)
+  sortOrder   Int       @default(0)
+  icon        String?   // lucide key: pill | syringe | shake | stretch
+  durationMin Int?      // if set, the reminder runs an N-minute countdown timer
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model SweepLog {

@@ -8,7 +8,7 @@ import { MobileDrawer } from "./MobileDrawer";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { GlobalSearch } from "./GlobalSearch";
 import { EodPlanningPrompt } from "./EodPlanningPrompt";
-import { MedicationReminders } from "./MedicationReminders";
+import { Reminders } from "./Reminders";
 import { CommsCoverStrip } from "./CommsCoverStrip";
 import { BlockTransition, type TransitionBlock } from "./BlockTransition";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
@@ -188,8 +188,8 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
       {/* End-of-day planning prompt — fires at 4:45pm Mon-Fri if not yet planned */}
       <EodPlanningPrompt />
 
-      {/* Mandatory medication reminders — banner at/after each reminder's time on its days */}
-      <MedicationReminders />
+      {/* Mandatory health/routine reminders — banner at/after each reminder's time on its days */}
+      <Reminders />
 
       {/* Comms-cover — "next sweep at HH:MM" permission-not-to-check signal + sweep panel */}
       <CommsCoverStrip />

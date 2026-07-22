@@ -22,6 +22,8 @@ export async function GET() {
       hour: r.hour,
       minute: r.minute,
       days: r.days,
+      icon: r.icon,
+      durationMin: r.durationMin,
       ackedToday: r.lastAckOn ? r.lastAckOn.getTime() === todayTime : false,
     }))
   );
@@ -42,9 +44,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "label, hour (0-23), minute (0-59), and at least one day are required" }, { status: 400 });
   }
 
+  const icon = typeof body?.icon === "string" ? body.icon : null;
+  const durationMin = Number.isInteger(body?.durationMin) && body.durationMin > 0 ? body.durationMin : null;
+
   const count = await prisma.reminder.count();
   const reminder = await prisma.reminder.create({
-    data: { label, hour, minute, days, sortOrder: count },
+    data: { label, hour, minute, days, sortOrder: count, icon, durationMin },
   });
   return NextResponse.json(reminder, { status: 201 });
 }
