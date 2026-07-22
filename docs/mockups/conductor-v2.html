@@ -261,6 +261,37 @@
   .start{margin-top:16px;width:100%;border:none;cursor:pointer;font-size:15px;font-weight:650;padding:14px;border-radius:13px;color:var(--surface);display:flex;align-items:center;justify-content:center;gap:8px}
   .start svg{width:17px;height:17px}
 
+  /* quick capture overlay */
+  .capover{position:fixed;inset:0;z-index:78;background:color-mix(in srgb,var(--ground) 80%,transparent);backdrop-filter:blur(14px);display:grid;place-items:start center;padding:12vh 22px 22px;opacity:0;pointer-events:none;transition:opacity .25s}
+  .capover.show{opacity:1;pointer-events:auto}
+  .cap-card{width:100%;max-width:470px;background:var(--surface);border:1px solid var(--border-strong);border-radius:22px;box-shadow:var(--shadow);padding:22px 22px 18px;transform:translateY(-10px);transition:transform .3s cubic-bezier(.22,1,.36,1)}
+  .capover.show .cap-card{transform:none}
+  .cap-card textarea{width:100%;min-height:64px;resize:none;background:var(--raised);border:1px solid var(--border);border-radius:13px;color:var(--text);font:inherit;font-size:15px;padding:13px;outline:none}
+  .cap-card textarea:focus-visible{border-color:var(--border-strong)}
+  .cap-ex{margin-top:11px;display:flex;flex-direction:column;gap:6px}
+  .cap-ex button{text-align:left;background:none;border:none;color:var(--text-3);font:inherit;font-size:12.5px;cursor:pointer;padding:3px 2px}
+  .cap-ex button:hover{color:var(--text-2)}
+  .cap-ex button::before{content:"› ";opacity:.6}
+  .cap-title{font-size:18px;font-weight:600;letter-spacing:-.01em;line-height:1.3}
+  .cap-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}
+  .cap-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-strong);border-radius:99px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;background:var(--raised);color:var(--text)}
+  .cap-chip svg{width:12px;height:12px;opacity:.6}
+  .cap-chip.warn{border-color:var(--amber-line);color:var(--amber);background:var(--amber-soft)}
+  .cap-chip.static{cursor:default;color:var(--text-3);border-style:dashed}
+  .cap-opts{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+  .cap-opts button{background:var(--raised-2);border:1px solid var(--border);border-radius:99px;padding:8px 12px;font:inherit;font-size:12.5px;font-weight:600;color:var(--text-2);cursor:pointer;display:inline-flex;align-items:center}
+  .cap-opts button:hover{border-color:var(--border-strong);color:var(--text)}
+  .cap-actions{display:flex;justify-content:space-between;align-items:center;margin-top:20px}
+  .cap-actions .ghost{background:none;border:none;color:var(--text-3);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .cap-actions .ghost:hover{color:var(--text-2)}
+  .cap-actions .go{border:none;border-radius:11px;padding:11px 17px;font:inherit;font-size:14px;font-weight:700;color:var(--surface);background:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  .cap-actions .go svg{width:15px;height:15px}
+
+  /* toast */
+  .toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%) translateY(20px);z-index:90;background:var(--raised-2);border:1px solid var(--border-strong);border-radius:12px;padding:11px 16px;font-size:13px;font-weight:600;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;display:flex;align-items:center;gap:9px}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast .cd{width:8px;height:8px;border-radius:50%}
+
   /* time control */
   .timebar{position:fixed;left:0;right:0;bottom:0;z-index:80;background:var(--raised);border-top:1px solid var(--border-strong);padding:11px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
   .timebar .lab{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--text-3);font-weight:700}
@@ -290,6 +321,8 @@
 <div class="medwrap" id="medwrap"></div>
 <div class="meetwrap" id="meetwrap"></div>
 <div class="meetover" id="meetover"></div>
+<div class="capover" id="capover"></div>
+<div class="toast" id="toast"></div>
 <div class="overlay" id="overlay"></div>
 
 <div class="timebar">
@@ -478,7 +511,7 @@ function renderToday(){
   <div class="clear">${clear}</div>
 
   <section class="agenda"><div class="eyebrow">Today’s meetings</div><div class="strip">${meets}</div></section>
-  <label class="capture">${I.plus}<input placeholder="Dump a thought — it files itself to the right company…"><kbd>⌘N</kbd></label>`;
+  <div class="capture" onclick="openCapture()" style="cursor:text">${I.plus}<input readonly placeholder="Dump a thought — it files itself to the right company…" style="cursor:text"><kbd>⌘N</kbd></div>`;
 }
 
 // ---------- render: Board ----------
@@ -595,6 +628,87 @@ function renderMeds(){
 }
 function ackMed(t){S.ackedMeds.add(t);renderMeds();}
 
+// ---------- quick capture: type like you talk, AI pulls out company + date ----------
+const CAP={open:false,step:'input',text:'',parsed:{title:'',co:null,due:null},editing:null};
+let NEWID=1;
+function parseCapture(text){
+  const t=text.toLowerCase();
+  let co=null;
+  for(const k in CO){ if(t.includes(CO[k].n.toLowerCase())||new RegExp('\\b'+k+'\\b').test(t)){co=k;break;} }
+  if(!co){ // fuzzy hints from names/topics
+    if(/(listers|sailthru|dana|migration)/.test(t))co='zeta';
+    else if(/(priya|qa bug|release|onboarding)/.test(t))co='vquip';
+    else if(/(fhir|care-gap|care gap|ingestion)/.test(t))co='healthme';
+    else if(/(provider|dedupe|rafael|sla)/.test(t))co='healthmap';
+    else if(/(workout|testflight|streak)/.test(t))co='trainbet';
+  }
+  let due=null;
+  if(/\btoday\b/.test(t))due='Today';
+  else if(/\btomorrow\b|\btmrw\b/.test(t))due='Tomorrow';
+  else{const days=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];for(const d of days){if(t.includes(d)){due=d[0].toUpperCase()+d.slice(1);break;}}}
+  let title=text.replace(/\bfor\s+(zeta|vquip|healthmap|healthme|xenegrade|xen|trainbetter)\b/ig,'')
+    .replace(/\bby\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/ig,'')
+    .replace(/\b(today|tomorrow|tmrw)\b/ig,'').replace(/\s{2,}/g,' ').trim();
+  title=title.charAt(0).toUpperCase()+title.slice(1);
+  return {title,co,due};
+}
+function openCapture(){CAP.open=true;CAP.step='input';CAP.text='';CAP.parsed={title:'',co:null,due:null};CAP.editing=null;renderCapture();}
+function closeCapture(){CAP.open=false;renderCapture();}
+function capFill(el){CAP.text=el.textContent;renderCapture();setTimeout(()=>{const ta=document.getElementById('capInput');if(ta)ta.focus();},0);}
+function capParse(){const ta=document.getElementById('capInput');CAP.text=ta?ta.value:CAP.text;if(!CAP.text.trim())return;CAP.parsed=parseCapture(CAP.text);CAP.step='parsed';CAP.editing=null;renderCapture();}
+function capBack(){CAP.step='input';renderCapture();}
+function capEdit(f){CAP.editing=CAP.editing===f?null:f;renderCapture();}
+function capSet(f,v){if(f==='co')CAP.parsed.co=v;else CAP.parsed.due=(v==='No date')?null:v;CAP.editing=null;renderCapture();}
+function capAdd(){
+  const p=CAP.parsed; if(!p.co)return;
+  (TASKS[p.co]=TASKS[p.co]||[]).push({id:'n'+(NEWID++),t:p.title||'(untitled)',status:'backlog',due:p.due==='Today',done:false});
+  const co=CO[p.co];
+  closeCapture();
+  showToast(`Filed to ${co.n} backlog`,co.c);
+  render();
+}
+let toastTimer=null;
+function showToast(msg,color){
+  const el=document.getElementById('toast');
+  el.innerHTML=`<span class="cd" style="background:${color||'var(--quiet)'}"></span>${msg}`;
+  el.classList.add('show');
+  if(toastTimer)clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2600);
+}
+function renderCapture(){
+  const el=document.getElementById('capover');
+  if(!CAP.open){el.classList.remove('show');return;}
+  let inner;
+  if(CAP.step==='input'){
+    inner=`<div class="cap-card">
+      <div class="eyebrow" style="margin-bottom:11px">Quick capture</div>
+      <textarea id="capInput" placeholder="Type it like you'd say it…">${CAP.text||''}</textarea>
+      <div class="cap-ex"><span style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.1em;font-weight:700">Try one</span>
+        <button onclick="capFill(this)">reply to dana about the sailthru scores</button>
+        <button onclick="capFill(this)">fix the auth bug for zeta by friday</button>
+        <button onclick="capFill(this)">prep the board deck tomorrow</button></div>
+      <div class="cap-actions"><button class="ghost" onclick="closeCapture()">Cancel</button>
+        <button class="go" onclick="capParse()">Read it ${I.arrow}</button></div></div>`;
+  } else {
+    const p=CAP.parsed, co=p.co?CO[p.co]:null;
+    inner=`<div class="cap-card">
+      <div class="eyebrow" style="margin-bottom:11px">Here’s what I got — tap to fix</div>
+      <div class="cap-title">${p.title||'(add a title)'}</div>
+      <div class="cap-chips">
+        ${co?`<span class="cap-chip" onclick="capEdit('co')"><span style="width:8px;height:8px;border-radius:50%;background:${co.c}"></span>${co.n} ${I.chev}</span>`
+             :`<span class="cap-chip warn" onclick="capEdit('co')">Which company? ${I.chev}</span>`}
+        <span class="cap-chip" onclick="capEdit('due')">${p.due?('Due '+p.due):'No date'} ${I.chev}</span>
+        <span class="cap-chip static">Backlog</span>
+      </div>
+      ${CAP.editing==='co'?`<div class="cap-opts">${Object.keys(CO).map(k=>`<button onclick="capSet('co','${k}')"><span style="width:7px;height:7px;border-radius:50%;background:${CO[k].c};display:inline-block;margin-right:6px"></span>${CO[k].n}</button>`).join('')}</div>`:''}
+      ${CAP.editing==='due'?`<div class="cap-opts">${['Today','Tomorrow','Friday','No date'].map(d=>`<button onclick="capSet('due','${d}')">${d}</button>`).join('')}</div>`:''}
+      <div class="cap-actions"><button class="ghost" onclick="capBack()">← edit text</button>
+        <button class="go" ${p.co?'':'disabled style="opacity:.45;cursor:not-allowed"'} onclick="capAdd()">Add${co?' to '+co.n:''} ${I.check}</button></div></div>`;
+  }
+  el.innerHTML=inner;el.classList.add('show');el.onclick=e=>{if(e.target===el)closeCapture();};
+  if(CAP.step==='input'){const ta=document.getElementById('capInput');if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}}
+}
+
 // ---------- sweep panel (reuses overlay) ----------
 function openSweep(){
   const co=Object.keys(CO).filter(k=>CO[k].pf!=='—');
@@ -634,7 +748,10 @@ function showTransition(fromB,toB,early){
 }
 function showOverlay(){const o=document.getElementById('overlay');o.classList.add('show');o.onclick=hideOverlay;}
 function hideOverlay(){document.getElementById('overlay').classList.remove('show');}
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideOverlay();closeMeetOver();}});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){hideOverlay();closeMeetOver();closeCapture();}
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='n'){e.preventDefault();openCapture();}
+});
 
 // ---------- time control ----------
 function setNow(min,fireRitual){
