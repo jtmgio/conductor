@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Plus, ChevronRight, Moon } from "lucide-react";
+import { Check, Plus, ChevronRight, Moon, X } from "lucide-react";
 import { AgendaStrip } from "./AgendaStrip";
 import { CommsCoverStrip } from "./CommsCoverStrip";
+import { PlanTomorrow } from "./PlanTomorrow";
 
 interface BlockInfo {
   id: string;
@@ -58,6 +59,8 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
   const [restOpen, setRestOpen] = useState(true);
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [capture, setCapture] = useState("");
+  const [planOpen, setPlanOpen] = useState(false);
+  const [showEod, setShowEod] = useState(false);
 
   const roleId = currentBlock?.roleId ?? null;
   const color = currentBlock?.roleColor || "#7ba3d9";
@@ -91,6 +94,25 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
   useEffect(() => {
     const i = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(i);
+  }, []);
+
+  // Gentle end-of-day tee-up: after 3:30pm on weekdays, once/day, dismissible.
+  useEffect(() => {
+    const check = () => {
+      const d = new Date();
+      const weekday = d.getDay() >= 1 && d.getDay() <= 5;
+      const afterEod = d.getHours() * 60 + d.getMinutes() >= 15 * 60 + 30;
+      const dismissed = localStorage.getItem("conductor-eod-teeup") === d.toDateString();
+      setShowEod(weekday && afterEod && !dismissed);
+    };
+    check();
+    const i = setInterval(check, 60_000);
+    return () => clearInterval(i);
+  }, []);
+
+  const dismissEod = useCallback(() => {
+    localStorage.setItem("conductor-eod-teeup", new Date().toDateString());
+    setShowEod(false);
   }, []);
 
   const complete = useCallback(async (id: string) => {
@@ -185,7 +207,14 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
           <h1 className="text-[30px] font-bold leading-none tracking-tight" style={{ color }}>
             {currentBlock.roleName}
           </h1>
-          <span className="ml-auto text-[13px] font-medium text-[var(--text-secondary)] tabular-nums">{currentBlock.timeLabel}</span>
+          <button
+            onClick={() => setPlanOpen(true)}
+            className="ml-auto flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-tertiary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
+          >
+            <Moon className="h-3.5 w-3.5" />
+            Plan tomorrow
+          </button>
+          <span className="text-[13px] font-medium text-[var(--text-secondary)] tabular-nums">{currentBlock.timeLabel}</span>
         </div>
         <div className="h-1 overflow-hidden rounded-full bg-[var(--surface-raised)]">
           <motion.div className="h-full rounded-full" style={{ backgroundColor: color, opacity: 0.8 }} initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8, ease: "easeOut" }} />
@@ -201,6 +230,20 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
       <div className="mb-6">
         <CommsCoverStrip />
       </div>
+
+      {/* Gentle end-of-day tee-up */}
+      {showEod && (
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-4 py-3">
+          <Moon className="h-4 w-4 shrink-0 text-[var(--text-tertiary)]" />
+          <span className="flex-1 text-[13.5px] text-[var(--text-secondary)]">Winding down — want to line up tomorrow&apos;s stack?</span>
+          <button onClick={() => setPlanOpen(true)} className="rounded-lg bg-[var(--text-primary)] px-3.5 py-2 text-[12.5px] font-semibold text-[var(--surface)] transition-opacity hover:opacity-90">
+            Plan tomorrow
+          </button>
+          <button onClick={dismissEod} aria-label="Dismiss" className="rounded-lg p-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Two columns: meetings (1/3, sticky) · one-thing flow (2/3) */}
       <div className="grid gap-6 lg:grid-cols-3">
@@ -356,6 +399,8 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
           </form>
         </div>
       </div>
+
+      <PlanTomorrow open={planOpen} onClose={() => setPlanOpen(false)} />
     </div>
   );
 }
