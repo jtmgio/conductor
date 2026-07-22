@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, X, CheckSquare, Clock, FileText, MessageSquare, Sparkles, Loader2, RefreshCw, Calendar, Mic, Link2, Plus, PenLine, Copy, Check } from "lucide-react";
+import { Search, X, CheckSquare, Clock, FileText, MessageSquare, Sparkles, Loader2, RefreshCw, Calendar, Mic, Link2, Plus, PenLine, Copy, Check, Crosshair, Columns3, ListChecks, Settings, Moon } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { useTaskSuggestion } from "@/hooks/useTaskSuggestion";
 import { TaskSuggestionBox } from "@/components/TaskSuggestionBox";
@@ -119,20 +119,16 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
 
   const quickActions: QuickAction[] = [
     {
-      id: "sync-granola",
-      label: "Sync Granola",
-      description: "Pull meeting transcripts into Inbox",
-      icon: Mic,
-      keywords: ["sync", "granola", "meetings", "transcripts"],
-      action: () => runSync("granola", "/inbox"),
-    },
-    {
-      id: "sync-linear",
-      label: "Sync Linear",
-      description: "Import tasks from Linear",
-      icon: Link2,
-      keywords: ["sync", "linear", "tasks", "import"],
-      action: () => runSync("linear", "/board"),
+      id: "format-message",
+      label: "Format message",
+      description: "Rewrite in your tone for Slack, Teams, or email",
+      icon: PenLine,
+      keywords: ["format", "tone", "rewrite", "message", "draft", "slack", "teams", "email"],
+      action: async () => {
+        setFormatMessageMode(true);
+        setFormatRoleId(roles[0]?.id || "");
+        setTimeout(() => formatRoleSelectRef.current?.focus(), 100);
+      },
     },
     {
       id: "add-task",
@@ -146,16 +142,44 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
       },
     },
     {
-      id: "format-message",
-      label: "Format message",
-      description: "Rewrite in your tone for Slack, Teams, or email",
-      icon: PenLine,
-      keywords: ["format", "tone", "rewrite", "message", "draft", "slack", "teams", "email"],
-      action: async () => {
-        setFormatMessageMode(true);
-        setFormatRoleId(roles[0]?.id || "");
-        setTimeout(() => formatRoleSelectRef.current?.focus(), 100);
-      },
+      id: "plan-tomorrow",
+      label: "Plan tomorrow",
+      description: "Line up tomorrow's tasks",
+      icon: Moon,
+      keywords: ["plan", "tomorrow", "next day", "schedule", "prep"],
+      action: async () => { setOpen(false); router.push("/plan"); },
+    },
+    {
+      id: "go-today",
+      label: "Go to Today",
+      description: "Your one-thing cockpit",
+      icon: Crosshair,
+      keywords: ["today", "focus", "home", "now"],
+      action: async () => { setOpen(false); router.push("/"); },
+    },
+    {
+      id: "go-board",
+      label: "Go to Board",
+      description: "All tasks by status",
+      icon: Columns3,
+      keywords: ["board", "kanban", "tasks", "backlog"],
+      action: async () => { setOpen(false); router.push("/board"); },
+    },
+    {
+      id: "go-tracker",
+      label: "Go to Tracker",
+      description: "Things you're waiting on",
+      icon: ListChecks,
+      keywords: ["tracker", "follow", "waiting", "followup"],
+      action: async () => { setOpen(false); router.push("/tracker"); },
+    },
+    {
+      id: "go-settings",
+      label: "Go to Settings",
+      description: "Roles, integrations, reminders",
+      icon: Settings,
+      keywords: ["settings", "config", "integrations", "reminders"],
+      action: async () => { setOpen(false); router.push("/settings"); },
     },
   ];
 
@@ -192,7 +216,7 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
   };
 
   const totalResults = results
-    ? results.tasks.length + results.followUps.length + results.notes.length + results.transcripts.length
+    ? results.tasks.length + results.followUps.length
     : 0;
 
   const filteredActions = query.trim()
@@ -211,8 +235,6 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
   if (results && totalResults > 0) {
     for (let i = 0; i < results.tasks.length; i++) selectableItems.push({ type: "result", category: "tasks", idx: i });
     for (let i = 0; i < results.followUps.length; i++) selectableItems.push({ type: "result", category: "followUps", idx: i });
-    for (let i = 0; i < results.notes.length; i++) selectableItems.push({ type: "result", category: "notes", idx: i });
-    for (let i = 0; i < results.transcripts.length; i++) selectableItems.push({ type: "result", category: "transcripts", idx: i });
   }
 
   // Reset selection when items change
@@ -613,30 +635,6 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
                           <ResultRow key={f.id} role={f.role} selected={selectedIdx === idx} onMouseEnter={() => setSelectedIdx(idx)} onClick={() => setOpen(false)}>
                             <span className="text-[var(--text-primary)]">{f.title}</span>
                             <span className="text-[12px] text-[var(--text-tertiary)] ml-2">waiting on {f.waitingOn}</span>
-                          </ResultRow>
-                          );
-                        })}
-                      </Section>
-                    )}
-                    {results.notes.length > 0 && (
-                      <Section icon={FileText} label="Notes">
-                        {results.notes.map((n) => {
-                          const idx = runIdx++;
-                          return (
-                          <ResultRow key={n.id} role={n.role} selected={selectedIdx === idx} onMouseEnter={() => setSelectedIdx(idx)} onClick={() => setOpen(false)}>
-                            <span className="text-[var(--text-secondary)] text-[14px] truncate">{n.content}</span>
-                          </ResultRow>
-                          );
-                        })}
-                      </Section>
-                    )}
-                    {results.transcripts.length > 0 && (
-                      <Section icon={MessageSquare} label="Transcripts">
-                        {results.transcripts.map((t) => {
-                          const idx = runIdx++;
-                          return (
-                          <ResultRow key={t.id} role={t.role} selected={selectedIdx === idx} onMouseEnter={() => setSelectedIdx(idx)} onClick={() => setOpen(false)}>
-                            <span className="text-[var(--text-secondary)] text-[14px] truncate">{t.preview}</span>
                           </ResultRow>
                           );
                         })}
