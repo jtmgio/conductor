@@ -7,7 +7,6 @@ import { Sidebar } from "./Sidebar";
 import { MobileDrawer } from "./MobileDrawer";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { GlobalSearch } from "./GlobalSearch";
-import { EodPlanningPrompt } from "./EodPlanningPrompt";
 import { Reminders } from "./Reminders";
 import { BlockTransition, type TransitionBlock } from "./BlockTransition";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
@@ -136,13 +135,9 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
 
   const shortcuts: Shortcut[] = useMemo(() => [
     // Navigation
-    { key: "1", modifiers: ["cmd"], action: () => router.push("/"), description: "Go to Focus", category: "Navigation" },
-    { key: "2", modifiers: ["cmd"], action: () => router.push("/inbox"), description: "Go to Inbox", category: "Navigation" },
+    { key: "1", modifiers: ["cmd"], action: () => router.push("/"), description: "Go to Today", category: "Navigation" },
+    { key: "2", modifiers: ["cmd"], action: () => router.push("/board"), description: "Go to Board", category: "Navigation" },
     { key: "3", modifiers: ["cmd"], action: () => router.push("/tracker"), description: "Go to Tracker", category: "Navigation" },
-    { key: "4", modifiers: ["cmd"], action: () => router.push("/board"), description: "Go to Board", category: "Navigation" },
-    { key: "5", modifiers: ["cmd"], action: () => router.push("/ai"), description: "Go to AI", category: "Navigation" },
-    { key: "6", modifiers: ["cmd"], action: () => router.push("/documents"), description: "Go to Documents", category: "Navigation" },
-    { key: "7", modifiers: ["cmd"], action: () => router.push("/drafts"), description: "Go to Drafts", category: "Navigation" },
     { key: ",", modifiers: ["cmd"], action: () => router.push("/settings"), description: "Go to Settings", category: "Navigation" },
 
     // Note: Cmd+K is handled by GlobalSearch component directly
@@ -178,9 +173,6 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
       <KeyboardShortcuts open={showShortcuts} onClose={closeShortcuts} />
       {/* GlobalSearch always mounted for ⌘K even when sidebar is collapsed */}
       {sidebarCollapsed && <GlobalSearch hideTrigger />}
-
-      {/* End-of-day planning prompt — fires at 4:45pm Mon-Fri if not yet planned */}
-      <EodPlanningPrompt />
 
       {/* Mandatory health/routine reminders — banner at/after each reminder's time on its days */}
       <Reminders />
