@@ -120,11 +120,15 @@ export function FormatterPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") run();
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  run();
+                }
               }}
               placeholder="Paste or type your rough message…"
               className="min-h-[200px] w-full resize-y rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-4 text-[14px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)] focus-visible:border-[var(--border-strong)]"
             />
+            <p className="mt-1.5 px-1 text-[12px] text-[var(--text-tertiary)]">Enter to format · Shift+Enter for a new line</p>
             <button
               onClick={run}
               disabled={!input.trim() || !roleId || fmt.state === "formatting"}
@@ -163,7 +167,7 @@ export function FormatterPage() {
               </div>
             ) : (
               <div className="flex h-full min-h-[240px] items-center justify-center px-6 text-center text-[13.5px] text-[var(--text-tertiary)]">
-                Your rewritten message appears here — paste a draft and hit format (⌘↵).
+                Your rewritten message appears here — paste a draft and hit Enter.
               </div>
             )}
           </div>
