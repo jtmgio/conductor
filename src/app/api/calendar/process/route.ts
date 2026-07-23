@@ -486,8 +486,12 @@ async function reconcileAndSave(
     }
   }
 
-  // Phase 3: Remove stale meetings
-  const now = new Date();
+  // Phase 3: Remove stale meetings. currentTimeStr MUST be local wall-clock — meeting
+  // start/end times are local ("14:30"), but the container runs UTC, so now.getHours()
+  // would be the UTC hour and wrongly mark afternoon meetings as already-ended (so a
+  // moved/deleted meeting would never get removed). Compute in the configured tz.
+  const tz = process.env.TIMEZONE || "America/New_York";
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
   const currentTimeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const removedMeetings: { id: string }[] = [];
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Calendar sync — reads events via EventKit and feeds them to Conductor
-# Runs every 30 minutes via LaunchAgent; guards for working hours
+# Runs every 10 minutes via LaunchAgent; guards for working hours
 
 CONDUCTOR_URL="${CONDUCTOR_URL:-http://localhost:5402}"
 SYNC_TRIGGER="${SYNC_TRIGGER:-cron-refresh}"
