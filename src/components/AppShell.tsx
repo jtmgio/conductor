@@ -138,6 +138,7 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
     { key: "1", modifiers: ["cmd"], action: () => router.push("/"), description: "Go to Today", category: "Navigation" },
     { key: "2", modifiers: ["cmd"], action: () => router.push("/board"), description: "Go to Board", category: "Navigation" },
     { key: "3", modifiers: ["cmd"], action: () => router.push("/tracker"), description: "Go to Tracker", category: "Navigation" },
+    { key: "4", modifiers: ["cmd"], action: () => router.push("/formatter"), description: "Go to Formatter", category: "Navigation" },
     { key: ",", modifiers: ["cmd"], action: () => router.push("/settings"), description: "Go to Settings", category: "Navigation" },
 
     // Note: Cmd+K is handled by GlobalSearch component directly

@@ -12,6 +12,7 @@ const navLinks = [
   { href: "/", label: "Today", icon: Crosshair },
   { href: "/board", label: "Board", icon: Columns3 },
   { href: "/tracker", label: "Tracker", icon: ListChecks },
+  { href: "/formatter", label: "Formatter", icon: Send },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

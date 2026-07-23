@@ -12,6 +12,7 @@ const navLinks = [
   { href: "/", label: "Today", icon: Crosshair, shortcut: "⌘1" },
   { href: "/board", label: "Board", icon: Columns3, shortcut: "⌘2" },
   { href: "/tracker", label: "Tracker", icon: ListChecks, shortcut: "⌘3" },
+  { href: "/formatter", label: "Formatter", icon: Send, shortcut: "⌘4" },
 ];
 
 const bottomLinks = [

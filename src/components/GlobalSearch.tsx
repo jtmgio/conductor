@@ -166,6 +166,14 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
       action: async () => { setOpen(false); router.push("/board"); },
     },
     {
+      id: "go-formatter",
+      label: "Go to Formatter",
+      description: "Rewrite a draft in your voice",
+      icon: PenLine,
+      keywords: ["formatter", "format", "message", "draft", "rewrite"],
+      action: async () => { setOpen(false); router.push("/formatter"); },
+    },
+    {
       id: "go-tracker",
       label: "Go to Tracker",
       description: "Things you're waiting on",
