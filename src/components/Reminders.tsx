@@ -24,10 +24,7 @@ const ICONS: Record<string, typeof Pill> = {
   stretch: PersonStanding,
 };
 
-// Escalation timings
-const CRIT_TAKEOVER_MS = 120_000; // critical: ignored 2 min -> full-screen takeover
-const NORMAL_RECHIME_MS = 600_000; // normal: ignored 10 min -> a second gentle chime
-const SNOOZE_MS = 300_000; // "snooze 5 min" from the takeover
+const SNOOZE_MS = 300_000; // "snooze 5 min" on a critical reminder
 
 function isDue(r: Reminder, now: Date): boolean {
   if (r.ackedToday) return false;
@@ -49,34 +46,20 @@ function mmss(secs: number): string {
 }
 
 /**
- * Mandatory health/routine reminders. Amber banner stack at the bottom-center.
- * Tiered escalation: a "critical" reminder (meds) ignored past CRIT_TAKEOVER_MS
- * becomes a full-screen takeover that can't be dismissed without acting or snoozing;
- * a "normal" reminder just re-chimes and stays a banner. Timed reminders (stretch)
- * run a countdown that auto-completes.
+ * Mandatory health/routine reminders — each fires as a big centered modal you have
+ * to deal with (not a corner banner). One at a time. Timed reminders (stretch) run a
+ * countdown; the rest have a big action button. Critical ones (meds) offer Snooze
+ * instead of Skip so they can't be waved off — they come back.
  */
 export function Reminders() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [acked, setAcked] = useState<Set<string>>(new Set());
-  const [, setTick] = useState(0);
   const [running, setRunning] = useState<Record<string, number>>({}); // id -> seconds left
-  const [snoozedUntil, setSnoozedUntil] = useState<Record<string, number>>({}); // id -> ms epoch
-  const [takeoverId, setTakeoverId] = useState<string | null>(null);
+  const [snoozedUntil, setSnoozedUntil] = useState<Record<string, number>>({});
+  const [, setTick] = useState(0);
   const prevDueRef = useRef<Set<string>>(new Set());
-  const firstSeenRef = useRef<Record<string, number>>({});
-  const rechimedRef = useRef<Set<string>>(new Set());
-
-  // refs mirror latest state for the interval to read
   const runningRef = useRef(running);
   runningRef.current = running;
-  const remindersRef = useRef(reminders);
-  remindersRef.current = reminders;
-  const ackedRef = useRef(acked);
-  ackedRef.current = acked;
-  const snoozeRef = useRef(snoozedUntil);
-  snoozeRef.current = snoozedUntil;
-  const takeoverRef = useRef(takeoverId);
-  takeoverRef.current = takeoverId;
 
   const fetchReminders = useCallback(async () => {
     try {
@@ -91,6 +74,12 @@ export function Reminders() {
     return () => clearInterval(interval);
   }, [fetchReminders]);
 
+  // Re-evaluate the clock every 10s so a reminder appears promptly at its time
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 10_000);
+    return () => clearInterval(interval);
+  }, []);
+
   const acknowledge = useCallback(async (id: string) => {
     setAcked((prev) => new Set(prev).add(id)); // optimistic
     setRunning((prev) => {
@@ -98,7 +87,6 @@ export function Reminders() {
       delete next[id];
       return next;
     });
-    setTakeoverId((cur) => (cur === id ? null : cur));
     try {
       await fetch(`/api/reminders/${id}/ack`, { method: "POST" });
     } catch {}
@@ -106,47 +94,13 @@ export function Reminders() {
 
   const snooze = useCallback((id: string) => {
     setSnoozedUntil((prev) => ({ ...prev, [id]: Date.now() + SNOOZE_MS }));
-    setTakeoverId((cur) => (cur === id ? null : cur));
-    delete firstSeenRef.current[id]; // restart escalation after the snooze
-    rechimedRef.current.delete(id);
   }, []);
 
-  const isSnoozed = useCallback((id: string, nowMs: number) => {
-    const until = snoozeRef.current[id];
-    return until !== undefined && nowMs < until;
+  const startTimer = useCallback((id: string, mins: number) => {
+    setRunning((prev) => ({ ...prev, [id]: mins * 60 }));
   }, []);
 
-  const currentlyDue = useCallback((now: Date, nowMs: number) => {
-    return remindersRef.current.filter(
-      (r) => isDue(r, now) && !ackedRef.current.has(r.id) && !isSnoozed(r.id, nowMs)
-    );
-  }, [isSnoozed]);
-
-  // Clock re-eval + escalation, every 5s
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = new Date();
-      const nowMs = Date.now();
-      const due = currentlyDue(now, nowMs);
-
-      for (const r of due) {
-        if (firstSeenRef.current[r.id] === undefined) firstSeenRef.current[r.id] = nowMs;
-        const elapsed = nowMs - firstSeenRef.current[r.id];
-
-        if (r.tier === "critical" && !takeoverRef.current && elapsed >= CRIT_TAKEOVER_MS) {
-          setTakeoverId(r.id);
-          playSound("checkin");
-        } else if (r.tier !== "critical" && elapsed >= NORMAL_RECHIME_MS && !rechimedRef.current.has(r.id)) {
-          rechimedRef.current.add(r.id);
-          playSound("checkin");
-        }
-      }
-      setTick((t) => t + 1); // refresh banners / snooze expiry
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [currentlyDue]);
-
-  // Countdown tick for timed reminders
+  // Countdown tick for timed reminders — auto-completes at zero
   useEffect(() => {
     const interval = setInterval(() => {
       const cur = runningRef.current;
@@ -168,7 +122,9 @@ export function Reminders() {
 
   const now = new Date();
   const nowMs = Date.now();
-  const due = reminders.filter((r) => isDue(r, now) && !acked.has(r.id) && !isSnoozed(r.id, nowMs));
+  const due = reminders.filter(
+    (r) => isDue(r, now) && !acked.has(r.id) && !(snoozedUntil[r.id] !== undefined && nowMs < snoozedUntil[r.id])
+  );
 
   // Chime once when a reminder newly becomes due
   useEffect(() => {
@@ -178,194 +134,99 @@ export function Reminders() {
     if (isNew) playSound("checkin");
   }, [due]);
 
-  const startTimer = useCallback((id: string, mins: number) => {
-    setRunning((prev) => ({ ...prev, [id]: mins * 60 }));
-  }, []);
+  const active = due[0] ?? null;
+  if (!active) return null;
 
-  const takeover = takeoverId ? due.find((r) => r.id === takeoverId) ?? null : null;
-
-  if (due.length === 0) return null;
-
-  const bannerList = due.filter((r) => r.id !== takeoverId && !r.durationMin);
-  const timedDue = due.find((r) => r.id !== takeoverId && !!r.durationMin) ?? null;
+  const Icon = ICONS[active.icon ?? ""] ?? Pill;
+  const secsLeft = running[active.id];
+  const isRunning = secsLeft !== undefined;
+  const isTimed = !!active.durationMin;
+  const isCritical = active.tier === "critical";
+  const actionLabel = active.icon === "pill" || active.icon === "syringe" ? "Taken" : "Done";
 
   return (
-    <>
-      {/* Gentle banner stack (normal reminders + not-yet-escalated criticals) */}
-      <div className="fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 flex flex-col items-center gap-2 px-4 pointer-events-none lg:bottom-6">
-        <AnimatePresence>
-          {bannerList.map((r) => {
-            const Icon = ICONS[r.icon ?? ""] ?? Pill;
-            const secsLeft = running[r.id];
-            const isRunning = secsLeft !== undefined;
-            const isTimed = !!r.durationMin;
-            const actionLabel = r.icon === "pill" || r.icon === "syringe" ? "Taken" : "Done";
-            return (
-              <motion.div
-                key={r.id}
-                initial={{ opacity: 0, y: 20, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.96 }}
-                transition={{ type: "spring", damping: 24, stiffness: 320 }}
-                className="pointer-events-auto w-full max-w-sm flex items-center gap-3 rounded-2xl border border-amber-500/30 bg-[var(--surface-raised)] px-4 py-3 shadow-2xl ring-1 ring-amber-500/10"
-              >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/15">
-                  <Icon className="h-4 w-4 text-amber-400" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-semibold text-[var(--text-primary)] truncate">{r.label}</p>
-                  <p className="text-[12px] text-[var(--text-tertiary)]">
-                    Reminder · {formatTime(r.hour, r.minute)}
-                    {isTimed && !isRunning ? ` · ${r.durationMin} min` : ""}
-                  </p>
-                </div>
+    <AnimatePresence>
+      <motion.div
+        key={active.id}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[80] flex items-center justify-center bg-amber-950/40 p-5 backdrop-blur-xl"
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 12 }}
+          transition={{ type: "spring", damping: 24, stiffness: 300 }}
+          className="w-full max-w-sm rounded-3xl border border-amber-500/40 bg-[var(--surface)] p-8 text-center shadow-2xl"
+        >
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/15">
+            <Icon className="h-8 w-8 text-amber-400" />
+          </div>
 
-                {isRunning ? (
-                  <span className="flex shrink-0 items-center gap-1.5 rounded-lg bg-amber-500/15 px-3.5 py-2 text-[13px] font-semibold text-amber-300 tabular-nums">
-                    {mmss(secsLeft)}
-                  </span>
-                ) : isTimed ? (
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <button
-                      onClick={() => startTimer(r.id, r.durationMin!)}
-                      className="flex items-center gap-1.5 rounded-lg bg-amber-500/15 px-3 py-2 text-[13px] font-medium text-amber-300 transition-colors hover:bg-amber-500/25"
-                    >
-                      <Play className="h-3.5 w-3.5" />
-                      Start
-                    </button>
-                    <button
-                      onClick={() => acknowledge(r.id)}
-                      className="rounded-lg px-2 py-2 text-[12px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
-                    >
-                      Skip
-                    </button>
-                  </div>
-                ) : (
+          {isTimed && isRunning ? (
+            <>
+              <p className="text-[12px] font-semibold uppercase tracking-wider text-amber-400/80">In progress</p>
+              <h2 className="mt-1.5 text-[24px] font-bold tracking-tight text-[var(--text-primary)]">{active.label}</h2>
+              <div className="mt-5 text-[56px] font-bold leading-none tabular-nums text-amber-400">{mmss(secsLeft)}</div>
+              <button
+                onClick={() => acknowledge(active.id)}
+                className="mt-7 w-full rounded-xl border border-[var(--border-subtle)] py-3 text-[13px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+              >
+                Finish now
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-[12px] font-semibold uppercase tracking-wider text-amber-400/80">
+                {isCritical ? "Don't skip this" : isTimed ? "Time to move" : "Reminder"}
+              </p>
+              <h2 className="mt-1.5 text-[24px] font-bold tracking-tight text-[var(--text-primary)]">{active.label}</h2>
+              <p className="mt-1 text-[13.5px] text-[var(--text-tertiary)]">
+                {formatTime(active.hour, active.minute)}
+                {isTimed ? ` · ${active.durationMin} min` : ""}
+              </p>
+
+              <div className="mt-7 flex flex-col gap-2.5">
+                {isTimed ? (
                   <button
-                    onClick={() => acknowledge(r.id)}
-                    className="flex shrink-0 items-center gap-1.5 rounded-lg bg-amber-500/15 px-3.5 py-2 text-[13px] font-medium text-amber-300 transition-colors hover:bg-amber-500/25"
+                    onClick={() => startTimer(active.id, active.durationMin!)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-[15px] font-bold text-amber-950 transition-opacity hover:opacity-90"
                   >
-                    <Check className="h-3.5 w-3.5" />
-                    {actionLabel}
+                    <Play className="h-4 w-4" />
+                    Start
                   </button>
-                )}
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-      </div>
-
-      {/* Timed reminder (e.g. stretch) — big centered dialog with a large Start / countdown */}
-      <AnimatePresence>
-        {timedDue && (() => {
-          const Icon = ICONS[timedDue.icon ?? ""] ?? Pill;
-          const secsLeft = running[timedDue.id];
-          const isRunning = secsLeft !== undefined;
-          return (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[80] flex items-center justify-center bg-amber-950/40 p-5 backdrop-blur-xl"
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 12 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 12 }}
-                transition={{ type: "spring", damping: 24, stiffness: 300 }}
-                className="w-full max-w-sm rounded-3xl border border-amber-500/40 bg-[var(--surface)] p-8 text-center shadow-2xl"
-              >
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/15">
-                  <Icon className="h-8 w-8 text-amber-400" />
-                </div>
-                {isRunning ? (
-                  <>
-                    <p className="text-[12px] font-semibold uppercase tracking-wider text-amber-400/80">In progress</p>
-                    <h2 className="mt-1.5 text-[24px] font-bold tracking-tight text-[var(--text-primary)]">{timedDue.label}</h2>
-                    <div className="mt-5 text-[56px] font-bold leading-none tabular-nums text-amber-400">{mmss(secsLeft)}</div>
-                    <button
-                      onClick={() => acknowledge(timedDue.id)}
-                      className="mt-7 w-full rounded-xl border border-[var(--border-subtle)] py-3 text-[13px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
-                    >
-                      Finish now
-                    </button>
-                  </>
                 ) : (
-                  <>
-                    <p className="text-[12px] font-semibold uppercase tracking-wider text-amber-400/80">Time to move</p>
-                    <h2 className="mt-1.5 text-[24px] font-bold tracking-tight text-[var(--text-primary)]">{timedDue.label}</h2>
-                    <p className="mt-1 text-[13.5px] text-[var(--text-tertiary)]">Take {timedDue.durationMin} minutes · {formatTime(timedDue.hour, timedDue.minute)}</p>
-                    <div className="mt-7 flex flex-col gap-2.5">
-                      <button
-                        onClick={() => startTimer(timedDue.id, timedDue.durationMin!)}
-                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-[15px] font-bold text-amber-950 transition-opacity hover:opacity-90"
-                      >
-                        <Play className="h-4 w-4" />
-                        Start
-                      </button>
-                      <button
-                        onClick={() => acknowledge(timedDue.id)}
-                        className="w-full rounded-xl border border-[var(--border-subtle)] py-3 text-[13px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
-                      >
-                        Skip
-                      </button>
-                    </div>
-                  </>
-                )}
-              </motion.div>
-            </motion.div>
-          );
-        })()}
-      </AnimatePresence>
-
-      {/* Critical takeover — full-screen, can't be dismissed without acting or snoozing */}
-      <AnimatePresence>
-        {takeover && (() => {
-          const Icon = ICONS[takeover.icon ?? ""] ?? Pill;
-          const actionLabel = takeover.icon === "pill" || takeover.icon === "syringe" ? "Taken" : "Done";
-          return (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[85] flex items-center justify-center bg-amber-950/40 backdrop-blur-xl p-5"
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 12 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 12 }}
-                transition={{ type: "spring", damping: 24, stiffness: 300 }}
-                className="w-full max-w-sm rounded-3xl border border-amber-500/40 bg-[var(--surface)] p-7 text-center shadow-2xl"
-              >
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/15">
-                  <Icon className="h-8 w-8 text-amber-400" />
-                </div>
-                <p className="text-[12px] font-semibold uppercase tracking-wider text-amber-400/80">Don&apos;t skip this</p>
-                <h2 className="mt-1.5 text-[24px] font-bold tracking-tight text-[var(--text-primary)]">{takeover.label}</h2>
-                <p className="mt-1 text-[13px] text-[var(--text-tertiary)]">
-                  Due at {formatTime(takeover.hour, takeover.minute)} · still waiting
-                </p>
-                <div className="mt-6 flex flex-col gap-2.5">
                   <button
-                    onClick={() => acknowledge(takeover.id)}
+                    onClick={() => acknowledge(active.id)}
                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-[15px] font-bold text-amber-950 transition-opacity hover:opacity-90"
                   >
                     <Check className="h-4 w-4" />
                     {actionLabel}
                   </button>
+                )}
+
+                {isCritical ? (
                   <button
-                    onClick={() => snooze(takeover.id)}
+                    onClick={() => snooze(active.id)}
                     className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] py-3 text-[13px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
                   >
                     <Clock className="h-3.5 w-3.5" />
                     Snooze 5 min
                   </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          );
-        })()}
-      </AnimatePresence>
-    </>
+                ) : (
+                  <button
+                    onClick={() => acknowledge(active.id)}
+                    className="w-full rounded-xl border border-[var(--border-subtle)] py-3 text-[13px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+                  >
+                    Skip
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   );
 }
