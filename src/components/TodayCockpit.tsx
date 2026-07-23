@@ -101,6 +101,29 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     return () => clearInterval(i);
   }, []);
 
+  // Whether there are still-upcoming meetings today — drives whether the agenda
+  // column shows (else the tasks reclaim the full width).
+  const [upcomingMeetings, setUpcomingMeetings] = useState<number | null>(null);
+  useEffect(() => {
+    const load = () =>
+      fetch("/api/meetings")
+        .then((r) => (r.ok ? r.json() : []))
+        .then((ms: Array<{ endTime: string; isIgnored: boolean }>) => {
+          const d = new Date();
+          const nowMinutes = d.getHours() * 60 + d.getMinutes();
+          const toMin = (t: string) => {
+            const [h, m] = t.split(":").map(Number);
+            return h * 60 + m;
+          };
+          setUpcomingMeetings(ms.filter((m) => !m.isIgnored && toMin(m.endTime) > nowMinutes).length);
+        })
+        .catch(() => setUpcomingMeetings(0));
+    load();
+    const i = setInterval(load, 60_000);
+    return () => clearInterval(i);
+  }, []);
+  const hasAgenda = (upcomingMeetings ?? 0) > 0;
+
   // Gentle end-of-day tee-up: after 3:30pm on weekdays, once/day, dismissible.
   useEffect(() => {
     const check = () => {
@@ -253,7 +276,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
   const others = clear.filter((c) => c.id !== roleId);
 
   return (
-    <div className="mx-auto max-w-5xl pt-2">
+    <div className={`mx-auto ${hasAgenda ? "max-w-6xl" : "max-w-3xl"} pt-2`}>
       {/* Block header — full width */}
       <section className="mb-5">
         <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -299,13 +322,15 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
         </div>
       )}
 
-      {/* Two columns: meetings (1/3, sticky) · one-thing flow (2/3) */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <aside className="order-2 lg:order-1 lg:col-span-1 lg:sticky lg:top-4 lg:self-start">
-          <AgendaStrip mode="strip" />
-        </aside>
+      {/* Two columns when there are meetings; tasks reclaim the full width otherwise */}
+      <div className={hasAgenda ? "grid gap-6 lg:grid-cols-3" : ""}>
+        {hasAgenda && (
+          <aside className="order-2 lg:order-1 lg:col-span-1 lg:sticky lg:top-4 lg:self-start">
+            <AgendaStrip mode="strip" />
+          </aside>
+        )}
 
-        <div className="order-1 lg:order-2 lg:col-span-2">
+        <div className={hasAgenda ? "order-1 lg:order-2 lg:col-span-2" : ""}>
           {/* Unfinished from before — resurfaced carry-overs with one-tap triage */}
           {carriedOver.length > 0 && (
             <div className="mb-4 rounded-2xl border border-amber-500/25 bg-amber-500/[0.06] p-4">
