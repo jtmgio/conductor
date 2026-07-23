@@ -186,7 +186,8 @@ export function Reminders() {
 
   if (due.length === 0) return null;
 
-  const bannerList = due.filter((r) => r.id !== takeoverId);
+  const bannerList = due.filter((r) => r.id !== takeoverId && !r.durationMin);
+  const timedDue = due.find((r) => r.id !== takeoverId && !!r.durationMin) ?? null;
 
   return (
     <>
@@ -253,6 +254,69 @@ export function Reminders() {
           })}
         </AnimatePresence>
       </div>
+
+      {/* Timed reminder (e.g. stretch) — big centered dialog with a large Start / countdown */}
+      <AnimatePresence>
+        {timedDue && (() => {
+          const Icon = ICONS[timedDue.icon ?? ""] ?? Pill;
+          const secsLeft = running[timedDue.id];
+          const isRunning = secsLeft !== undefined;
+          return (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[80] flex items-center justify-center bg-amber-950/40 p-5 backdrop-blur-xl"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 12 }}
+                transition={{ type: "spring", damping: 24, stiffness: 300 }}
+                className="w-full max-w-sm rounded-3xl border border-amber-500/40 bg-[var(--surface)] p-8 text-center shadow-2xl"
+              >
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/15">
+                  <Icon className="h-8 w-8 text-amber-400" />
+                </div>
+                {isRunning ? (
+                  <>
+                    <p className="text-[12px] font-semibold uppercase tracking-wider text-amber-400/80">In progress</p>
+                    <h2 className="mt-1.5 text-[24px] font-bold tracking-tight text-[var(--text-primary)]">{timedDue.label}</h2>
+                    <div className="mt-5 text-[56px] font-bold leading-none tabular-nums text-amber-400">{mmss(secsLeft)}</div>
+                    <button
+                      onClick={() => acknowledge(timedDue.id)}
+                      className="mt-7 w-full rounded-xl border border-[var(--border-subtle)] py-3 text-[13px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+                    >
+                      Finish now
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[12px] font-semibold uppercase tracking-wider text-amber-400/80">Time to move</p>
+                    <h2 className="mt-1.5 text-[24px] font-bold tracking-tight text-[var(--text-primary)]">{timedDue.label}</h2>
+                    <p className="mt-1 text-[13.5px] text-[var(--text-tertiary)]">Take {timedDue.durationMin} minutes · {formatTime(timedDue.hour, timedDue.minute)}</p>
+                    <div className="mt-7 flex flex-col gap-2.5">
+                      <button
+                        onClick={() => startTimer(timedDue.id, timedDue.durationMin!)}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-[15px] font-bold text-amber-950 transition-opacity hover:opacity-90"
+                      >
+                        <Play className="h-4 w-4" />
+                        Start
+                      </button>
+                      <button
+                        onClick={() => acknowledge(timedDue.id)}
+                        className="w-full rounded-xl border border-[var(--border-subtle)] py-3 text-[13px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+                      >
+                        Skip
+                      </button>
+                    </div>
+                  </>
+                )}
+              </motion.div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
 
       {/* Critical takeover — full-screen, can't be dismissed without acting or snoozing */}
       <AnimatePresence>

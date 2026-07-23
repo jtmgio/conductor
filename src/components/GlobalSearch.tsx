@@ -121,14 +121,10 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
     {
       id: "format-message",
       label: "Format message",
-      description: "Rewrite in your tone for Slack, Teams, or email",
+      description: "Rewrite a draft in your voice",
       icon: PenLine,
       keywords: ["format", "tone", "rewrite", "message", "draft", "slack", "teams", "email"],
-      action: async () => {
-        setFormatMessageMode(true);
-        setFormatRoleId(roles[0]?.id || "");
-        setTimeout(() => formatRoleSelectRef.current?.focus(), 100);
-      },
+      action: async () => { setOpen(false); router.push("/formatter"); },
     },
     {
       id: "add-task",
