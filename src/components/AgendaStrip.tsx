@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Calendar, ChevronDown, ChevronUp, Check, Users, Bell, Trash2, ArrowRight } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { useMeetingNotifications } from "@/hooks/useMeetingNotifications";
-import { MeetingPrepPanel } from "./MeetingPrepPanel";
 
 interface Meeting {
   id: string;
@@ -61,7 +60,6 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [collapsed, setCollapsed] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [prepMeeting, setPrepMeeting] = useState<Meeting | null>(null);
   const { toast } = useToast();
 
   const fetchMeetings = useCallback(async () => {
@@ -128,11 +126,8 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
     return () => clearInterval(interval);
   }, [fetchMeetings, toast]);
 
-  // Notifications + prep alert
-  const handleMeetingAlert = useCallback((meeting: Meeting) => {
-    setPrepMeeting(meeting);
-  }, []);
-  useMeetingNotifications(meetings, { onMeetingAlert: handleMeetingAlert });
+  // Meeting notifications — OS notification + chime at the lead time.
+  useMeetingNotifications(meetings);
 
   const deleteMeeting = useCallback(
     async (meetingId: string, title: string) => {
@@ -223,9 +218,8 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                 return (
                   <div
                     key={meeting.id}
-                    onClick={() => setPrepMeeting(meeting)}
                     className={`
-                      group/row flex items-center gap-2 px-3 py-1.5 transition-all cursor-pointer hover:bg-[var(--sidebar-hover)]
+                      group/row flex items-center gap-2 px-3 py-1.5 transition-all hover:bg-[var(--sidebar-hover)]
                       ${isPast ? "opacity-35" : ""}
                       ${isHighlighted ? "bg-[var(--surface-sunken)]" : ""}
                     `}
@@ -268,9 +262,8 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                 return (
                   <div
                     key={meeting.id}
-                    onClick={() => setPrepMeeting(meeting)}
                     className={`
-                      group/row flex items-center gap-2.5 rounded-xl transition-all overflow-hidden cursor-pointer hover:bg-[var(--sidebar-hover)]
+                      group/row flex items-center gap-2.5 rounded-xl transition-all overflow-hidden hover:bg-[var(--sidebar-hover)]
                       ${isPast ? "opacity-30 py-1 px-3" : "px-3 py-2.5"}
                       ${isHighlighted ? "bg-[var(--surface-sunken)] ring-1 ring-[var(--border-subtle)]" : ""}
                     `}
@@ -363,15 +356,6 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
         {/* Notification prompt at bottom */}
         {!sidebarCollapsed && <NotificationPrompt />}
       </motion.div>
-
-      {/* Meeting Prep Panel */}
-      {prepMeeting && (
-        <MeetingPrepPanel
-          meeting={prepMeeting}
-          open={!!prepMeeting}
-          onClose={() => setPrepMeeting(null)}
-        />
-      )}
     </>
     );
   }
@@ -439,9 +423,8 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                 return (
                   <div
                     key={meeting.id}
-                    onClick={() => setPrepMeeting(meeting)}
                     className={`
-                      group/row flex items-start gap-3 px-3.5 py-3 rounded-xl transition-all cursor-pointer hover:bg-[var(--sidebar-hover)]
+                      group/row flex items-start gap-3 px-3.5 py-3 rounded-xl transition-all hover:bg-[var(--sidebar-hover)]
                       ${isPast ? "opacity-40" : ""}
                       ${isHighlighted ? "bg-[var(--surface-sunken)] ring-1 ring-[var(--border-subtle)]" : ""}
                     `}
@@ -544,15 +527,6 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
         )}
       </AnimatePresence>
     </motion.div>
-
-    {/* Meeting Prep Panel */}
-    {prepMeeting && (
-      <MeetingPrepPanel
-        meeting={prepMeeting}
-        open={!!prepMeeting}
-        onClose={() => setPrepMeeting(null)}
-      />
-    )}
     </>
   );
 }
