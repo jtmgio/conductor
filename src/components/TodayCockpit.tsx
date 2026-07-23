@@ -83,6 +83,9 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
 
   useEffect(() => {
     fetchTasks();
+    const onChange = () => fetchTasks();
+    window.addEventListener("tasks-changed", onChange);
+    return () => window.removeEventListener("tasks-changed", onChange);
   }, [fetchTasks]);
 
   useEffect(() => {

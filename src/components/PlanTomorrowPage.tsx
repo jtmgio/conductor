@@ -58,6 +58,9 @@ export function PlanTomorrowPage() {
 
   useEffect(() => {
     load();
+    const onChange = () => load();
+    window.addEventListener("tasks-changed", onChange);
+    return () => window.removeEventListener("tasks-changed", onChange);
   }, [load]);
 
   const isOnTomorrow = (t: Task) => !!t.scheduledFor && ymd(new Date(t.scheduledFor)) === tomorrowIso;
