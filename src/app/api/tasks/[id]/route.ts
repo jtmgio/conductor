@@ -24,7 +24,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if (body.done) data.doneAt = new Date();
   }
   if (body.status !== undefined) {
-    const validStatuses = ["backlog", "in_progress", "in_review", "blocked"];
+    const validStatuses = ["backlog", "in_progress", "in_review", "blocked", "icebox"];
     if (!validStatuses.includes(body.status)) {
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }

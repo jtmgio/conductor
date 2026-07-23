@@ -141,6 +141,24 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     [fetchTasks]
   );
 
+  const nextWorkingDayStr = useCallback(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + (d.getDay() === 5 ? 3 : d.getDay() === 6 ? 2 : 1));
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+
+  // "Drop" a carry-over → icebox (out of the active flow, still recoverable/searchable)
+  const dropTask = useCallback(async (id: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+    try {
+      await fetch(`/api/tasks/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "icebox" }),
+      });
+    } catch {}
+  }, []);
+
   const submitCapture = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -188,17 +206,18 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     );
   }
 
-  // "Today" = scheduled for today/past, or actively in-flight. Deep backlog stays on the Board.
+  // Buckets: today (in-flight or scheduled today) · carried over (past-scheduled, still
+  // backlog — resurfaces with one-tap triage) · deep backlog (never scheduled).
   const pad = (n: number) => String(n).padStart(2, "0");
   const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const isForToday = (t: Task) => {
-    if (t.status === "in_progress" || t.status === "in_review" || t.status === "blocked") return true;
-    if (!t.scheduledFor) return false;
-    const d = new Date(t.scheduledFor);
-    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` <= todayStr;
+  const ymd = (s: string) => {
+    const d = new Date(s);
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   };
-  const todayTasks = tasks.filter(isForToday);
-  const backlog = tasks.filter((t) => !isForToday(t));
+  const inFlight = (t: Task) => t.status === "in_progress" || t.status === "in_review" || t.status === "blocked";
+  const todayTasks = tasks.filter((t) => inFlight(t) || (!!t.scheduledFor && ymd(t.scheduledFor) === todayStr));
+  const carriedOver = tasks.filter((t) => !inFlight(t) && !!t.scheduledFor && ymd(t.scheduledFor) < todayStr);
+  const backlog = tasks.filter((t) => !inFlight(t) && !t.scheduledFor);
   const one = todayTasks[0];
   const rest = todayTasks.slice(1);
 
@@ -266,6 +285,40 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
         </aside>
 
         <div className="order-1 lg:order-2 lg:col-span-2">
+          {/* Unfinished from before — resurfaced carry-overs with one-tap triage */}
+          {carriedOver.length > 0 && (
+            <div className="mb-4 rounded-2xl border border-amber-500/25 bg-amber-500/[0.06] p-4">
+              <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-amber-500/90">Unfinished from before · {carriedOver.length}</p>
+              <div className="flex flex-col gap-2.5">
+                {carriedOver.map((t) => (
+                  <div key={t.id} className="flex items-center gap-3">
+                    <span className="min-w-0 flex-1 truncate text-[14px] text-[var(--text-secondary)]">{t.title}</span>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        onClick={() => setSchedule(t.id, todayStr)}
+                        className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2.5 py-1.5 text-[12px] font-semibold text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)]"
+                      >
+                        Today
+                      </button>
+                      <button
+                        onClick={() => setSchedule(t.id, nextWorkingDayStr())}
+                        className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+                      >
+                        Push
+                      </button>
+                      <button
+                        onClick={() => dropTask(t.id)}
+                        className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-red-400"
+                      >
+                        Drop
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Your one thing */}
           <AnimatePresence mode="popLayout">
             {one ? (
