@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { AppShell } from "./AppShell";
 import { useFormatMessage } from "@/hooks/useFormatMessage";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Check, Loader2, PenLine } from "lucide-react";
+import { Copy, Check, Loader2, PenLine, X } from "lucide-react";
 
 type FormatType = "slack" | "teams" | "email" | "sms";
 
@@ -47,10 +48,22 @@ export function FormatterPage() {
   const [roleId, setRoleId] = useState("");
   const [input, setInput] = useState("");
   const [recents, setRecents] = useState<Recent[]>([]);
+  const router = useRouter();
   const fmt = useFormatMessage();
   const previewRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const savedRef = useRef(false);
+
+  const close = () => router.back();
+
+  // Escape closes the formatter (back to where you came from)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") router.back();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [router]);
 
   // Company + platform are derived from the block you're in — no pickers.
   const selectedRole = roles.find((r) => r.id === roleId);
@@ -102,15 +115,27 @@ export function FormatterPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-5xl pt-1">
-        <h1 className="text-[26px] font-bold tracking-tight text-[var(--text-primary)]">Formatter</h1>
-        <p className="mt-1 text-[14px] text-[var(--text-tertiary)]">
-          Rewrite a rough draft in your voice.
-          {selectedRole && (
-            <span className="ml-1 text-[var(--text-secondary)]">
-              For <b className="font-semibold" style={{ color: selectedRole.color }}>{selectedRole.name}</b> · {capitalize(platform)}.
-            </span>
-          )}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-[26px] font-bold tracking-tight text-[var(--text-primary)]">Formatter</h1>
+            <p className="mt-1 text-[14px] text-[var(--text-tertiary)]">
+              Rewrite a rough draft in your voice.
+              {selectedRole && (
+                <span className="ml-1 text-[var(--text-secondary)]">
+                  For <b className="font-semibold" style={{ color: selectedRole.color }}>{selectedRole.name}</b> · {capitalize(platform)}.
+                </span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={close}
+            aria-label="Close (Esc)"
+            title="Close (Esc)"
+            className="shrink-0 rounded-lg border border-[var(--border-subtle)] p-2 text-[var(--text-tertiary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
           {/* Left — compose */}
