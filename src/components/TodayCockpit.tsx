@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Check, Plus, ChevronRight, Moon, X } from "lucide-react";
 import { AgendaStrip } from "./AgendaStrip";
 import { CommsCoverStrip } from "./CommsCoverStrip";
+import { TaskDetail } from "./TaskDetail";
 import { refineTaskInBackground } from "@/lib/capture-refine";
 
 interface BlockInfo {
@@ -29,6 +30,8 @@ interface Task {
   dueDate: string | null;
   scheduledFor: string | null;
   sourceType: string | null;
+  notes: string | null;
+  checklist: Array<{ text: string; done?: boolean }> | null;
 }
 
 interface ClearRole {
@@ -62,6 +65,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [capture, setCapture] = useState("");
   const [showEod, setShowEod] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const roleId = currentBlock?.roleId ?? null;
   const color = currentBlock?.roleColor || "#7ba3d9";
@@ -157,6 +161,23 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
         body: JSON.stringify({ status: "icebox" }),
       });
     } catch {}
+  }, []);
+
+  const deleteTask = useCallback(async (id: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+    try {
+      await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+    } catch {}
+  }, []);
+
+  const toggleChecklist = useCallback((id: string, idx: number) => {
+    setSelectedTask((prev) => {
+      if (!prev || prev.id !== id || !prev.checklist) return prev;
+      const cl = prev.checklist.map((c, i) => (i === idx ? { ...c, done: !c.done } : c));
+      fetch(`/api/tasks/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ checklist: cl }) }).catch(() => {});
+      setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, checklist: cl } : t)));
+      return { ...prev, checklist: cl };
+    });
   }, []);
 
   const submitCapture = useCallback(
@@ -342,8 +363,8 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                     className="mt-0.5 h-6 w-6 shrink-0 rounded-lg border-[1.75px] transition-colors hover:bg-[color:var(--surface)]"
                     style={{ borderColor: `${color}88` }}
                   />
-                  <div className="min-w-0 flex-1">
-                    <h2 className="text-[19px] font-semibold leading-snug tracking-tight text-[var(--text-primary)]">{one.title}</h2>
+                  <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setSelectedTask(one)}>
+                    <h2 className="text-[19px] font-semibold leading-snug tracking-tight text-[var(--text-primary)] hover:underline">{one.title}</h2>
                     <div className="mt-2.5 flex flex-wrap items-center gap-2">
                       <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold capitalize text-[var(--text-secondary)]">
                         {one.status.replace("_", " ")}
@@ -394,7 +415,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                           aria-label="Mark done"
                           className="h-4 w-4 shrink-0 rounded border-[1.5px] border-[var(--border-strong)] transition-colors hover:border-[color:var(--text-secondary)]"
                         />
-                        <span className="flex-1 truncate text-[14px] text-[var(--text-secondary)]">{t.title}</span>
+                        <span className="flex-1 cursor-pointer truncate text-[14px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]" onClick={() => setSelectedTask(t)}>{t.title}</span>
                         {isToday(t.dueDate, now) && <span className="shrink-0 text-[11px] font-semibold text-amber-400">Due today</span>}
                       </li>
                     ))}
@@ -466,6 +487,15 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
           </form>
         </div>
       </div>
+
+      <TaskDetail
+        task={selectedTask}
+        color={color}
+        onClose={() => setSelectedTask(null)}
+        onComplete={complete}
+        onDelete={deleteTask}
+        onToggleChecklist={toggleChecklist}
+      />
     </div>
   );
 }
