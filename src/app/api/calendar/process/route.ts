@@ -493,11 +493,17 @@ async function reconcileAndSave(
   const tz = process.env.TIMEZONE || "America/New_York";
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
   const currentTimeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  // The "already-ended, preserve it" guard is a TODAY-only concern (don't yank a
+  // meeting that already happened this morning). For future/past days in the rolling
+  // window, time-of-day is meaningless — always reconcile so moved/deleted meetings
+  // actually get removed.
+  const localTodayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const isProcessingToday = date === localTodayStr;
   const removedMeetings: { id: string }[] = [];
 
   for (const existing of existingMeetings) {
     if (parsedSourceIds.has(existing.sourceId)) continue;
-    if (existing.endTime <= currentTimeStr) continue;
+    if (isProcessingToday && existing.endTime <= currentTimeStr) continue;
 
     if (existing.prepTask && !existing.prepTask.done) {
       await prisma.task.delete({ where: { id: existing.prepTask.id } });

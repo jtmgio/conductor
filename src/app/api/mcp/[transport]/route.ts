@@ -137,6 +137,51 @@ const handler = createMcpHandler(
     );
 
     server.registerTool(
+      "get_meetings",
+      {
+        title: "Get meetings",
+        description:
+          "List calendar meetings for a single day or a date range. Covers a rolling ~14-day forward window (today through ~2 weeks out) plus any past day already synced. Dates are YYYY-MM-DD. Returns each meeting's time, title, company, and attendees. Note: only the macOS Calendar window that has been synced is available — meetings beyond ~2 weeks out are not yet stored.",
+        inputSchema: {
+          date: z.string().optional().describe("A single day, YYYY-MM-DD. Defaults to today. Ignored if from/to are given."),
+          from: z.string().optional().describe("Range start (inclusive), YYYY-MM-DD"),
+          to: z.string().optional().describe("Range end (inclusive), YYYY-MM-DD"),
+          includeIgnored: z.boolean().optional().describe("Include ignored blocks (OOO, Lunch, Focus Time, etc.). Default false."),
+        },
+      },
+      async ({ date, from, to, includeIgnored }) => {
+        const where: Record<string, unknown> = { userHidden: false };
+        if (from || to) {
+          // date is a "YYYY-MM-DD" text column — lexicographic range == chronological range
+          const range: Record<string, string> = {};
+          if (from) range.gte = from;
+          if (to) range.lte = to;
+          where.date = range;
+        } else {
+          where.date = date || formatDateOnly(today());
+        }
+        if (!includeIgnored) where.isIgnored = false;
+        const meetings = await prisma.meeting.findMany({
+          where,
+          include: { role: { select: { name: true } } },
+          orderBy: [{ date: "asc" }, { startTime: "asc" }],
+          take: 200,
+        });
+        return ok(
+          meetings.map((m) => ({
+            date: m.date,
+            start: m.startTime,
+            end: m.endTime,
+            title: m.title,
+            company: m.role?.name ?? null,
+            attendees: m.attendees,
+            ignored: m.isIgnored,
+          }))
+        );
+      }
+    );
+
+    server.registerTool(
       "create_task",
       {
         title: "Create task",
