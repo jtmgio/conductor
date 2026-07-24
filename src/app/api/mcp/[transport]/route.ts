@@ -299,6 +299,28 @@ const handler = createMcpHandler(
     );
 
     server.registerTool(
+      "delete_task",
+      {
+        title: "Delete task",
+        description:
+          "Permanently delete a task. This is destructive and cannot be undone — for something you just want off the board, prefer update_task (mark done, or set status to icebox). Use delete only when the task was a mistake or the user explicitly asks to delete it. Get the id from list_tasks/search.",
+        inputSchema: {
+          taskId: z.string().describe("The task id (from list_tasks/search)"),
+        },
+      },
+      async ({ taskId }) => {
+        const existing = await prisma.task.findUnique({
+          where: { id: taskId },
+          include: { role: { select: { name: true } } },
+        });
+        if (!existing) return ok({ deleted: false, message: "No task with that id (already gone?)" });
+        await prisma.task.delete({ where: { id: taskId } });
+        invalidateRebalanceCache();
+        return ok({ deleted: true, title: existing.title, company: existing.role?.name ?? null });
+      }
+    );
+
+    server.registerTool(
       "create_followup",
       {
         title: "Create follow-up",
