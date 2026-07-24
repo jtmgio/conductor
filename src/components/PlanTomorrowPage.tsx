@@ -69,7 +69,7 @@ export function PlanTomorrowPage() {
   const load = useCallback(async () => {
     try {
       const [rr, tr] = await Promise.all([fetch("/api/roles"), fetch("/api/tasks")]);
-      if (rr.ok) setRoles(((await rr.json()) as Role[]).filter((r) => r.active !== false && isActiveCompany(r.name)));
+      if (rr.ok) setRoles(((await rr.json()) as Role[]).filter((r) => r.active !== false));
       if (tr.ok) setTasks(await tr.json());
     } catch {}
   }, []);
@@ -141,7 +141,10 @@ export function PlanTomorrowPage() {
         </p>
 
         <div className="mt-6 flex flex-col gap-6">
-          {roles.map((role) => {
+          {/* Show your primary companies always, plus any other company you have tasks for */}
+          {roles
+            .filter((role) => isActiveCompany(role.name) || tasks.some((t) => t.roleId === role.id))
+            .map((role) => {
             const items = tasks.filter((t) => t.roleId === role.id);
             return (
               <section key={role.id}>
