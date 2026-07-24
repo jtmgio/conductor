@@ -98,6 +98,7 @@ export function TaskBrainDump({ roleId, roleName, roleColor, scheduledFor = null
       });
       if (!res.ok) throw new Error();
       toast("Task added", "success");
+      window.dispatchEvent(new CustomEvent("tasks-changed"));
       reset();
       setInputText("");
       onTaskCreated();
