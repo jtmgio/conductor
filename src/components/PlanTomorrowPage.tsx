@@ -29,11 +29,17 @@ const pad = (n: number) => String(n).padStart(2, "0");
 function ymd(d: Date): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
-function nextWorkingDay(): { iso: string; label: string } {
+// The day you're about to work: if it's a weekday and the workday hasn't started
+// yet (e.g. planning at 5am), that's TODAY; otherwise it's the next working day.
+function computeTarget(workdayStartMin: number): { iso: string; label: string } {
+  const now = new Date();
+  const dow = now.getDay();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  if (dow >= 1 && dow <= 5 && nowMin < workdayStartMin) {
+    return { iso: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`, label: "today" };
+  }
   const d = new Date();
-  const dow = d.getDay();
-  const add = dow === 5 ? 3 : dow === 6 ? 2 : 1;
-  d.setDate(d.getDate() + add);
+  d.setDate(d.getDate() + (dow === 5 ? 3 : dow === 6 ? 2 : 1));
   return { iso: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, label: d.toLocaleDateString("en-US", { weekday: "long" }) };
 }
 
@@ -46,7 +52,19 @@ export function PlanTomorrowPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const { iso: tomorrowIso, label } = nextWorkingDay();
+  const [target, setTarget] = useState(() => computeTarget(9 * 60));
+  useEffect(() => {
+    fetch("/api/schedule")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((sched) => {
+        const blocks = (sched?.allBlocks || []) as Array<{ startHour: number; startMinute: number }>;
+        const starts = blocks.map((b) => b.startHour * 60 + b.startMinute).filter((n) => Number.isFinite(n));
+        setTarget(computeTarget(starts.length ? Math.min(...starts) : 9 * 60));
+      })
+      .catch(() => {});
+  }, []);
+  const tomorrowIso = target.iso;
+  const label = target.label;
 
   const load = useCallback(async () => {
     try {

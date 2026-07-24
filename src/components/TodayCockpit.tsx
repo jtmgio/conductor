@@ -246,7 +246,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
             className="flex items-center gap-2 rounded-xl bg-[var(--text-primary)] px-5 py-3 text-[14px] font-semibold text-[var(--surface)] transition-opacity hover:opacity-90"
           >
             <Moon className="h-4 w-4" />
-            Line up tomorrow
+            Line up your day
           </button>
         </div>
       </div>
