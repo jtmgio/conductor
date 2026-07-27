@@ -14,7 +14,7 @@ import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 
 interface Staff { id: string; name: string; title: string; relationship?: string; commNotes?: string; email?: string; slackHandle?: string; }
 interface AiContextFields { aiRecentNotesCount?: number | null; aiRecentTranscriptsCount?: number | null; aiConversationHistoryLimit?: number | null; aiNoteChunkSize?: number | null; aiTranscriptChunkSize?: number | null; aiPinnedNoteChunkSize?: number | null; }
-interface Role extends AiContextFields { id: string; name: string; title: string; platform: string; priority: number; color: string; tone?: string; context?: string; responsibilities?: string; quarterlyGoals?: string; }
+interface Role extends AiContextFields { id: string; name: string; title: string; platform: string; taskPrefix?: string | null; priority: number; color: string; tone?: string; context?: string; responsibilities?: string; quarterlyGoals?: string; }
 interface UserProfile extends AiContextFields { communicationStyle?: string; sampleMessages?: string; globalContext?: string; calendarIgnorePatterns?: string; calendarRoleMappings?: string; }
 interface Skill { id: string; name: string; label: string; description: string; icon?: string; prompt: string; category: string; isBuiltIn: boolean; enabled: boolean; }
 interface Integration { id: string; type: string; roleId: string; config: Record<string, string>; enabled: boolean; lastSyncAt: string | null; lastSyncResult: string | null; }
@@ -209,6 +209,7 @@ Based on the above, provide:`;
   const [expandedSkillId, setExpandedSkillId] = useState<string | null>(null);
   const [addingCompany, setAddingCompany] = useState(false);
   const [newCompany, setNewCompany] = useState({ name: "", title: "", platform: "Slack", color: "#4d8ef7" });
+  const [editPrefix, setEditPrefix] = useState<Record<string, string>>({});
   const COLOR_PRESETS = ["#7c3aed", "#2563eb", "#0d9488", "#d97706", "#e11d48", "#8cbf6e", "#f97316", "#4d8ef7", "#2dd4bf", "#a78bfa", "#fbbf24", "#fb7185", "#06b6d4", "#ec4899", "#84cc16", "#6366f1", "#14b8a6"];
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
@@ -284,6 +285,7 @@ Based on the above, provide:`;
       const roleAiCtx: Record<string, Record<string, string>> = {};
       for (const r of arr) { tones[r.id] = r.tone || ""; contexts[r.id] = r.context || ""; resps[r.id] = r.responsibilities || ""; goals[r.id] = r.quarterlyGoals || ""; roleAiCtx[r.id] = { aiRecentNotesCount: r.aiRecentNotesCount != null ? String(r.aiRecentNotesCount) : "", aiRecentTranscriptsCount: r.aiRecentTranscriptsCount != null ? String(r.aiRecentTranscriptsCount) : "", aiConversationHistoryLimit: r.aiConversationHistoryLimit != null ? String(r.aiConversationHistoryLimit) : "", aiNoteChunkSize: r.aiNoteChunkSize != null ? String(r.aiNoteChunkSize) : "", aiTranscriptChunkSize: r.aiTranscriptChunkSize != null ? String(r.aiTranscriptChunkSize) : "", aiPinnedNoteChunkSize: r.aiPinnedNoteChunkSize != null ? String(r.aiPinnedNoteChunkSize) : "" }; }
       setEditTone(tones); setEditContext(contexts); setEditResponsibilities(resps); setEditGoals(goals); setRoleAiContext(roleAiCtx);
+      setEditPrefix(Object.fromEntries(arr.map((r) => [r.id, r.taskPrefix || ""])));
       if (profileRes.ok) { const p = await profileRes.json(); setProfile({ communicationStyle: p.communicationStyle || "", sampleMessages: p.sampleMessages || "", globalContext: p.globalContext || "", calendarIgnorePatterns: p.calendarIgnorePatterns || "", calendarRoleMappings: p.calendarRoleMappings || "" }); const sysCtx: Record<string, string> = {}; for (const k of ["aiRecentNotesCount", "aiRecentTranscriptsCount", "aiConversationHistoryLimit", "aiNoteChunkSize", "aiTranscriptChunkSize", "aiPinnedNoteChunkSize"]) { sysCtx[k] = p[k] != null ? String(p[k]) : ""; } setSystemAiContext(sysCtx); if (p.anthropicApiKeyMasked) setAnthropicKey(p.anthropicApiKeyMasked); if (p.hasAnthropicKey) setAnthropicKeySaved(true); if (p.openaiApiKeyMasked) setOpenaiKey(p.openaiApiKeyMasked); if (p.hasOpenAIKey) setOpenaiKeySaved(true); if (p.granolaApiKeyMasked) setGranolaKey(p.granolaApiKeyMasked); if (p.hasGranolaKey) setGranolaKeySaved(true); }
       const staffResults: Record<string, Staff[]> = {};
       await Promise.all(arr.map(async (role) => { staffResults[role.id] = await fetch(`/api/roles/${role.id}/staff`).then(r => r.json()); }));
@@ -294,7 +296,7 @@ Based on the above, provide:`;
   useEffect(() => { fetchData(); fetchSkills(); fetchIntegrations(); fetchSyncLogs(); }, [fetchData, fetchSkills, fetchIntegrations, fetchSyncLogs]);
 
   const toggleRole = (roleId: string) => setExpandedRoleId((prev) => (prev === roleId ? null : roleId));
-  const saveRole = async (roleId: string) => { setSaving(true); try { const aiFields: Record<string, number | null> = {}; const rc = roleAiContext[roleId] || {}; for (const k of ["aiRecentNotesCount", "aiRecentTranscriptsCount", "aiConversationHistoryLimit", "aiNoteChunkSize", "aiTranscriptChunkSize", "aiPinnedNoteChunkSize"]) { aiFields[k] = rc[k] ? parseInt(rc[k], 10) : null; } const res = await fetch(`/api/roles/${roleId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tone: editTone[roleId], context: editContext[roleId], responsibilities: editResponsibilities[roleId], quarterlyGoals: editGoals[roleId], ...aiFields }) }); if (!res.ok) throw new Error(); toast("Role settings saved", "success"); } catch { toast("Failed to save", "error"); } setSaving(false); };
+  const saveRole = async (roleId: string) => { setSaving(true); try { const aiFields: Record<string, number | null> = {}; const rc = roleAiContext[roleId] || {}; for (const k of ["aiRecentNotesCount", "aiRecentTranscriptsCount", "aiConversationHistoryLimit", "aiNoteChunkSize", "aiTranscriptChunkSize", "aiPinnedNoteChunkSize"]) { aiFields[k] = rc[k] ? parseInt(rc[k], 10) : null; } const res = await fetch(`/api/roles/${roleId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tone: editTone[roleId], context: editContext[roleId], responsibilities: editResponsibilities[roleId], quarterlyGoals: editGoals[roleId], taskPrefix: (editPrefix[roleId] ?? '').trim().toUpperCase() || null, ...aiFields }) }); if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ""); } toast("Role settings saved", "success"); } catch (e) { toast((e as Error).message || "Failed to save", "error"); } setSaving(false); };
   const saveProfile = async () => { setSavingProfile(true); try { const res = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(profile) }); if (!res.ok) throw new Error(); toast("Voice profile saved", "success"); } catch { toast("Failed to save", "error"); } setSavingProfile(false); };
   const openEditStaff = (roleId: string, staff: Staff) => { setEditingStaff(staff); setEditingRoleId(roleId); setStaffForm({ ...staff }); };
   const saveStaffEdit = async () => { if (!editingStaff || !editingRoleId) return; try { const res = await fetch(`/api/roles/${editingRoleId}/staff/${editingStaff.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(staffForm) }); if (!res.ok) throw new Error(); toast("Staff updated", "success"); } catch { toast("Failed to save", "error"); } setEditingStaff(null); setEditingRoleId(null); setStaffForm({}); fetchData(); };
@@ -597,6 +599,21 @@ Based on the above, provide:`;
                       <div>
                         <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-2">Quarterly Goals</p>
                         <textarea value={editGoals[role.id] || ""} onChange={(e) => setEditGoals((prev) => ({ ...prev, [role.id]: e.target.value }))} placeholder="Current quarter objectives..." className={`${textareaCls} min-h-[160px]`} />
+                      </div>
+                      <div>
+                        <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-2">Task Key Prefix</p>
+                        <div className="flex items-center gap-3">
+                          <input
+                            value={editPrefix[role.id] ?? ""}
+                            onChange={(e) => setEditPrefix((prev) => ({ ...prev, [role.id]: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4) }))}
+                            placeholder="VQ"
+                            className={`${inputCls} w-24 font-mono uppercase`}
+                          />
+                          <p className="text-[13px] text-[var(--text-tertiary)]">
+                            Tasks here are addressable as{" "}
+                            <span className="font-mono text-[var(--text-secondary)]">{(editPrefix[role.id] || "VQ")}-14</span>. Must be unique; renaming re-labels every existing task.
+                          </p>
+                        </div>
                       </div>
                       <div>
                         <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-2">Communication Tone</p>

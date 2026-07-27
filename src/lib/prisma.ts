@@ -18,7 +18,10 @@ function withTaskNumbers(client: PrismaClient) {
         async create({ args, query }) {
           const data = args.data as Record<string, unknown>;
           const roleId = data?.roleId as string | undefined;
-          if (roleId && data.number == null) {
+          // A task that brings its own key (Linear's MED-54) doesn't need a
+          // Conductor number — allocating one would burn the company's counter
+          // for a key that never gets displayed.
+          if (roleId && data.number == null && !data.externalKey) {
             const rows = await client.$queryRaw<{ taskSeq: number }[]>`
               UPDATE "Role" SET "taskSeq" = "taskSeq" + 1
               WHERE id = ${roleId}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { uniquePrefix } from "@/lib/task-key";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -33,6 +34,12 @@ export async function POST(req: NextRequest) {
   const maxPriority = await prisma.role.aggregate({ _max: { priority: true } });
   const assignedPriority = priority ?? (maxPriority._max.priority ?? 0) + 1;
 
+  // Every company needs a task-key prefix or its tasks are unaddressable.
+  // Derive one from the name, avoiding prefixes already in use.
+  const existingPrefixes = (
+    await prisma.role.findMany({ where: { taskPrefix: { not: null } }, select: { taskPrefix: true } })
+  ).map((r) => r.taskPrefix as string);
+
   const role = await prisma.role.create({
     data: {
       name,
@@ -40,6 +47,7 @@ export async function POST(req: NextRequest) {
       platform: platform || "Slack",
       color: color || "#4d8ef7",
       priority: assignedPriority,
+      taskPrefix: uniquePrefix(name, existingPrefixes),
     },
   });
 

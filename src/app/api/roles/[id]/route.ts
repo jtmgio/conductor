@@ -23,16 +23,29 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const updateData: Record<string, unknown> = {};
 
   // Allow updating all role fields
-  const fields = ["name", "title", "platform", "color", "priority", "tone", "context", "responsibilities", "quarterlyGoals", "active", "aiRecentNotesCount", "aiRecentTranscriptsCount", "aiConversationHistoryLimit", "aiNoteChunkSize", "aiTranscriptChunkSize", "aiPinnedNoteChunkSize"];
+  const fields = ["name", "title", "platform", "color", "priority", "tone", "context", "responsibilities", "quarterlyGoals", "active", "taskPrefix", "aiRecentNotesCount", "aiRecentTranscriptsCount", "aiConversationHistoryLimit", "aiNoteChunkSize", "aiTranscriptChunkSize", "aiPinnedNoteChunkSize"];
   for (const field of fields) {
     if (body[field] !== undefined) updateData[field] = body[field];
   }
 
-  const role = await prisma.role.update({
-    where: { id: params.id },
-    data: updateData,
-  });
-  return NextResponse.json(role);
+  // taskPrefix is unique — turn the constraint violation into something the
+  // settings form can actually show the user.
+  try {
+    const role = await prisma.role.update({
+      where: { id: params.id },
+      data: updateData,
+    });
+    return NextResponse.json(role);
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === "P2002") {
+      return NextResponse.json(
+        { error: `Task prefix "${updateData.taskPrefix}" is already used by another company` },
+        { status: 409 }
+      );
+    }
+    throw e;
+  }
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {

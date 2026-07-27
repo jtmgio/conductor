@@ -8,6 +8,7 @@ import { useToast } from "@/components/ui/toast";
 import { useTaskSuggestion } from "@/hooks/useTaskSuggestion";
 import { TaskSuggestionBox } from "@/components/TaskSuggestionBox";
 import { TaskBrainDump } from "@/components/TaskBrainDump";
+import { taskKey } from "@/lib/task-key";
 import { useFormatMessage } from "@/hooks/useFormatMessage";
 import { sanitizeHtml } from "@/lib/sanitize-html";
 import { todayISO, tomorrowISO, parseDateOnly, formatDateOnly, nextWorkingDay } from "@/lib/dates";
@@ -15,7 +16,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 interface SearchResult {
-  tasks: Array<{ id: string; title: string; priority: string; dueDate?: string; role: { id: string; name: string; color: string } }>;
+  tasks: Array<{ id: string; title: string; priority: string; dueDate?: string; number?: number | null; externalKey?: string | null; role: { id: string; name: string; color: string; taskPrefix?: string | null } }>;
   followUps: Array<{ id: string; title: string; waitingOn: string; role: { id: string; name: string; color: string } }>;
   notes: Array<{ id: string; content: string; createdAt: string; role: { id: string; name: string; color: string } }>;
   transcripts: Array<{ id: string; preview: string; createdAt: string; role: { id: string; name: string; color: string } }>;
@@ -624,6 +625,9 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
                           const idx = runIdx++;
                           return (
                           <ResultRow key={t.id} role={t.role} selected={selectedIdx === idx} onMouseEnter={() => setSelectedIdx(idx)} onClick={() => setOpen(false)}>
+                            {taskKey(t, t.role) && (
+                              <span className="font-mono text-[11px] text-[var(--text-tertiary)] mr-2">{taskKey(t, t.role)}</span>
+                            )}
                             <span className="text-[var(--text-primary)]">{t.title}</span>
                             {t.priority === "urgent" && <span className="text-[11px] font-bold text-red-400 ml-2">URGENT</span>}
                           </ResultRow>

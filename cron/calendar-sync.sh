@@ -12,13 +12,18 @@ SYNC_TRIGGER="${SYNC_TRIGGER:-cron-refresh}"
 WINDOW_DAYS="${CALENDAR_WINDOW_DAYS:-14}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Only run during working hours (7 AM - 4 PM, weekdays)
-# Belt-and-suspenders with the LaunchAgent's schedule.
-HOUR=$(date +%H)
-DAY=$(date +%u)  # 1=Mon, 7=Sun
-if [ "$DAY" -gt 5 ] || [ "$HOUR" -lt 7 ] || [ "$HOUR" -gt 16 ]; then
-  echo "$(date): Outside working hours, skipping"
-  exit 0
+# Runs around the clock, deliberately. The old 7AM-4PM weekday guard meant an
+# early start (or a meeting moved overnight) saw a stale window until the 7am
+# run. Per-day hashing makes off-hours runs nearly free: unchanged days skip the
+# API call entirely, so a quiet night costs one EventKit read per day and no
+# writes. Set CALENDAR_WORK_HOURS_ONLY=1 to restore the old behavior.
+if [ "${CALENDAR_WORK_HOURS_ONLY:-0}" = "1" ]; then
+  HOUR=$(date +%H)
+  DAY=$(date +%u)  # 1=Mon, 7=Sun
+  if [ "$DAY" -gt 5 ] || [ "$HOUR" -lt 7 ] || [ "$HOUR" -gt 16 ]; then
+    echo "$(date): Outside working hours, skipping"
+    exit 0
+  fi
 fi
 
 # Read one day's events from EventKit. Echoes the events JSON array on success, or one of
