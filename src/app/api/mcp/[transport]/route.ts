@@ -419,13 +419,27 @@ const handler = createMcpHandler(
       {
         title: "Search Conductor",
         description:
-          "Search tasks, follow-ups, notes, and transcripts by keyword. Use before creating tasks to avoid duplicates.",
+          "Search tasks, follow-ups, notes, and transcripts by keyword, or look one up by its key (VQ-14, MED-54). Use before creating tasks to avoid duplicates.",
         inputSchema: { query: z.string().min(1) },
       },
       async ({ query }) => {
         const [tasks, followUps, notes, transcripts] = await Promise.all([
           prisma.task.findMany({
-            where: { done: false, title: { contains: query, mode: "insensitive" } },
+            // A key ("VQ-14", "MED-54", "G-105") finds that exact task; anything
+            // else is a title search.
+            where: {
+              done: false,
+              OR: [
+                { title: { contains: query, mode: "insensitive" } },
+                { externalKey: { equals: query.trim(), mode: "insensitive" } },
+                ...(parseTaskKey(query)
+                  ? [{
+                      number: parseTaskKey(query)!.number,
+                      role: { taskPrefix: { equals: parseTaskKey(query)!.prefix, mode: "insensitive" as const } },
+                    }]
+                  : []),
+              ],
+            },
             include: { role: { select: { name: true, taskPrefix: true } } },
             take: 10,
             orderBy: { createdAt: "desc" },

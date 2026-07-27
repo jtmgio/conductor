@@ -58,8 +58,14 @@ export function uniquePrefix(name: string, taken: string[]): string {
   return base; // pathological; unique constraint will surface it
 }
 
-/** Matches a display key like "VQ-14" or "MED-54". */
-const KEY_RE = /^([A-Z][A-Z0-9]{1,4})-(\d+)$/i;
+/**
+ * Matches a display key like "VQ-14", "MED-54", or "G-105".
+ *
+ * Deliberately loose on prefix length: Conductor mints 2-4 chars, but externalKey
+ * carries whatever the upstream tracker uses — including single-letter team keys.
+ * Callers treat a match as "worth looking up", not as proof the task exists.
+ */
+const KEY_RE = /^([A-Z][A-Z0-9]{0,9})-(\d+)$/i;
 
 export function parseTaskKey(input: string): { prefix: string; number: number } | null {
   const m = input.trim().match(KEY_RE);
