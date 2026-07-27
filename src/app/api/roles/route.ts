@@ -51,10 +51,6 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Auto-create default "General" conversation thread for the new role
-  await prisma.conversation.create({
-    data: { roleId: role.id, name: "General", isDefault: true, messages: [] },
-  });
 
   return NextResponse.json(role);
 }

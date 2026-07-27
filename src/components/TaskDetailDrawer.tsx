@@ -4,11 +4,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Trash2, Plus, X, Pencil, ExternalLink, Sparkles, ListChecks, Paperclip, Download, Loader2, Sun } from "lucide-react";
 import { FileIcon, formatFileSize } from "@/lib/file-utils";
-import { DocumentViewer, type ViewerFile } from "./DocumentViewer";
 import { STATUS_CONFIG, STATUS_ORDER } from "./TaskItem";
-import { ChatThread } from "./ChatThread";
 import { FontSizeControl } from "./FontSizeControl";
-import { useTaskChat } from "@/hooks/useTaskChat";
 import { useFontSize } from "@/hooks/useFontSize";
 import { useToast } from "@/components/ui/toast";
 import { todayISO, isScheduledForTodayOrPast } from "@/lib/dates";
@@ -59,16 +56,7 @@ interface TaskDetailDrawerProps {
   onDelete: (id: string) => void;
 }
 
-// Local first (default) — keep the local id in sync with LOCAL_AI_MODEL
-const MODELS = [
-  { id: "local/mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit", label: "Qwen3 30B (local)" },
-  { id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
-  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
-  { id: "claude-opus-4-6", label: "Opus 4.6" },
-];
-
 export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onComplete, onDelete }: TaskDetailDrawerProps) {
-  const [activeTab, setActiveTab] = useState<"details" | "chat">("details");
   const [editTitle, setEditTitle] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
@@ -77,7 +65,6 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
   const [editTags, setEditTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState("");
   const [editingNotes, setEditingNotes] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
   const titleRef = useRef<HTMLInputElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -87,15 +74,9 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [viewerFile, setViewerFile] = useState<ViewerFile | null>(null);
 
   const font = useFontSize("task-drawer");
 
-  const { messages, loading: chatLoading, sending, sendMessage, clearConversation } = useTaskChat(
-    task?.id || null,
-    task?.roleId || "",
-    task?.title || ""
-  );
 
   // Load attachments
   const loadAttachments = useCallback(async (taskId: string) => {
@@ -116,7 +97,6 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
       setNewCheckItem("");
       setEditingNotes(false);
       setNewTag("");
-      setActiveTab("details");
       setAttachments([]);
       loadAttachments(task.id);
     }
@@ -242,52 +222,13 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                 </button>
               </div>
 
-              {/* Tab bar */}
-              <div className="flex gap-2 mt-4 mb-0">
-                <button
-                  onClick={() => setActiveTab("details")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all ${
-                    activeTab === "details"
-                      ? "bg-[var(--surface-raised)] text-[var(--text-primary)]"
-                      : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-                  }`}
-                >
-                  <ListChecks className="w-3.5 h-3.5" />
-                  Details
-                </button>
-                <button
-                  onClick={() => setActiveTab("chat")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all ${
-                    activeTab === "chat"
-                      ? "bg-[var(--surface-raised)] text-[var(--text-primary)]"
-                      : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-                  }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  AI Chat
-                  {messages.length > 0 && (
-                    <span className="text-[11px] text-[var(--text-tertiary)]">({messages.length})</span>
-                  )}
-                </button>
+              <div className="flex items-center gap-2 mt-4 mb-0">
                 <div className="flex-1" />
-                {activeTab === "chat" && (
-                  <select
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    className="bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-lg px-2 py-1 text-[12px] text-[var(--text-secondary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20 shrink-0 cursor-pointer"
-                  >
-                    {MODELS.map((m) => (
-                      <option key={m.id} value={m.id}>{m.label}</option>
-                    ))}
-                  </select>
-                )}
                 <FontSizeControl size={font.size} onIncrease={font.increase} onDecrease={font.decrease} atMin={font.atMin} atMax={font.atMax} />
               </div>
             </div>
 
-            {/* Tab content */}
-            {activeTab === "details" ? (
-              <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-5">
+            <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-5">
                 {/* Status */}
                 <div>
                   <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-2">Status</p>
@@ -380,7 +321,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                   {attachments.length > 0 && (
                     <div className="space-y-1.5 mb-3">
                       {attachments.map((file) => (
-                        <div key={file.id} onClick={() => setViewerFile(file)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[var(--surface-raised)] group cursor-pointer hover:bg-[var(--sidebar-hover)] transition-colors">
+                        <div key={file.id} onClick={() => window.open(`/api/files/${file.id}`, "_blank", "noopener")} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[var(--surface-raised)] group cursor-pointer hover:bg-[var(--sidebar-hover)] transition-colors">
                           <FileIcon mimeType={file.mimeType} />
                           <div className="flex-1 min-w-0">
                             <p className="text-[14px] text-[var(--text-primary)] truncate">{file.filename}</p>
@@ -553,27 +494,10 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                   </button>
                 </div>
               </div>
-            ) : (
-              /* AI Chat tab */
-              <div className="flex-1 min-h-0 flex flex-col">
-                <ChatThread
-                  roleId={task.roleId}
-                  roleName={task.role.name}
-                  roleColor={task.role.color}
-                  messages={messages}
-                  onSendMessage={(text, attachments) => sendMessage(text, attachments, selectedModel)}
-                  onClearConversation={clearConversation}
-                  loading={chatLoading || sending}
-                  threadName={task.title}
-                  fontSize={font.size}
-                />
-              </div>
-            )}
           </motion.div>
         </>
       )}
     </AnimatePresence>
-    <DocumentViewer file={viewerFile} onClose={() => setViewerFile(null)} />
     </>
   );
 }

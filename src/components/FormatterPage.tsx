@@ -78,7 +78,18 @@ export function FormatterPage() {
         const active = (rs as Role[]).filter((r) => r.active !== false);
         setRoles(active);
         const blockRole = sched?.currentBlock?.roleId as string | undefined;
-        setRoleId((cur) => cur || (blockRole && active.some((r) => r.id === blockRole) ? blockRole : active[0]?.id) || "");
+        // A nudge handed off from the Tracker picks the company and seeds the draft.
+        let handoffRole: string | undefined;
+        try {
+          const raw = sessionStorage.getItem("conductor-format-handoff");
+          if (raw) {
+            sessionStorage.removeItem("conductor-format-handoff");
+            const h = JSON.parse(raw) as { text?: string; roleId?: string };
+            if (h.text) setInput(h.text);
+            if (h.roleId && active.some((r) => r.id === h.roleId)) handoffRole = h.roleId;
+          }
+        } catch {}
+        setRoleId((cur) => handoffRole || cur || (blockRole && active.some((r) => r.id === blockRole) ? blockRole : active[0]?.id) || "");
       })
       .catch(() => {});
     try {
