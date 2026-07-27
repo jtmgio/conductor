@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   const tasks = await prisma.task.findMany({
     where,
     include: {
-      role: { select: { id: true, name: true, color: true, priority: true } },
+      role: { select: { id: true, name: true, color: true, taskPrefix: true, priority: true } },
       tags: { include: { tag: true } },
     },
     orderBy: [{ role: { priority: "asc" } }, { sortOrder: "asc" }, { priority: "desc" }, { createdAt: "asc" }],

@@ -57,7 +57,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const updated = await prisma.task.findUnique({
     where: { id: params.id },
     include: {
-      role: { select: { id: true, name: true, color: true, priority: true } },
+      role: { select: { id: true, name: true, color: true, taskPrefix: true, priority: true } },
       tags: { include: { tag: true } },
       files: { include: { file: { select: { id: true, filename: true, mimeType: true, size: true, createdAt: true } } } },
     },

@@ -41,6 +41,10 @@ model Role {
   priority         Int
   color            String
   active           Boolean        @default(true)
+  /// Short human key prefix for this company's tasks: "VQ" -> VQ-14. Editable, unique.
+  taskPrefix       String?        @unique
+  /// Monotonic per-company task counter. Never decremented — deleted numbers stay dead.
+  taskSeq          Int            @default(0)
   tone             String?
   context          String?
   responsibilities String?
@@ -96,9 +100,16 @@ model Task {
   sortOrder     Int       @default(0)
   sourceType String?
   sourceId   String?
+  /// Per-company sequence number. Rendered as `${role.taskPrefix}-${number}`.
+  /// Allocated automatically by the Prisma extension in src/lib/prisma.ts.
+  number     Int?
+  /// The upstream system's own key (e.g. Linear "MED-54"). When set it wins over
+  /// number/prefix so a synced task keeps one identity, not two.
+  externalKey String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
+  @@unique([roleId, number])
   @@index([roleId, done])
   @@index([scheduledFor, done])
   @@index([roleId, status])

@@ -8,6 +8,7 @@ import { today, formatDateOnly } from "@/lib/dates";
 import { invalidateRebalanceCache } from "@/lib/schedule-rebalance";
 import { refineTask, type RefinedTask } from "@/lib/task-refine";
 import { formatMessage } from "@/lib/format-message";
+import { taskKey, parseTaskKey, looksLikeTaskKey } from "@/lib/task-key";
 
 export const dynamic = "force-dynamic";
 
@@ -42,9 +43,13 @@ function ok(data: unknown) {
 function taskShape(t: {
   id: string; title: string; status: string; priority: string; done: boolean;
   scheduledFor: Date | null; dueDate: Date | null; notes: string | null;
-  role?: { name: string } | null;
+  number?: number | null; externalKey?: string | null;
+  role?: { name: string; taskPrefix?: string | null } | null;
 }) {
   return {
+    // Human key ("VQ-14", or Linear's own "MED-54"). Prefer this when talking to
+    // the user; `id` is the cuid and is only needed as a fallback.
+    key: taskKey(t, t.role),
     id: t.id,
     title: t.title,
     role: t.role?.name,
@@ -55,6 +60,24 @@ function taskShape(t: {
     dueDate: t.dueDate ? t.dueDate.toISOString().split("T")[0] : null,
     notes: t.notes || undefined,
   };
+}
+
+/**
+ * Resolve a task reference that may be a human key ("VQ-14", "MED-54") or a raw cuid.
+ * Keys are what the user actually says out loud, so every tool taking a taskId
+ * routes through here.
+ */
+async function resolveTaskId(ref: string): Promise<string> {
+  if (!looksLikeTaskKey(ref)) return ref;
+  const byExternal = await prisma.task.findFirst({ where: { externalKey: { equals: ref.trim(), mode: "insensitive" } }, select: { id: true } });
+  if (byExternal) return byExternal.id;
+  const parsed = parseTaskKey(ref)!;
+  const task = await prisma.task.findFirst({
+    where: { number: parsed.number, role: { taskPrefix: { equals: parsed.prefix, mode: "insensitive" } } },
+    select: { id: true },
+  });
+  if (!task) throw new Error(`No task with key ${ref.trim().toUpperCase()}`);
+  return task.id;
 }
 
 const handler = createMcpHandler(
@@ -75,12 +98,12 @@ const handler = createMcpHandler(
           }),
           prisma.task.findMany({
             where: { scheduledFor: { lte: today() }, done: false },
-            include: { role: { select: { name: true } } },
+            include: { role: { select: { name: true, taskPrefix: true } } },
             orderBy: [{ role: { priority: "asc" } }, { sortOrder: "asc" }],
           }),
           prisma.followUp.findMany({
             where: { status: "waiting" },
-            include: { role: { select: { name: true } } },
+            include: { role: { select: { name: true, taskPrefix: true } } },
             orderBy: { createdAt: "asc" },
           }),
           getCurrentBlock(),
@@ -128,7 +151,7 @@ const handler = createMcpHandler(
         if (todayOnly) where.scheduledFor = { lte: today() };
         const tasks = await prisma.task.findMany({
           where,
-          include: { role: { select: { name: true, priority: true } } },
+          include: { role: { select: { name: true, priority: true, taskPrefix: true } } },
           orderBy: [{ role: { priority: "asc" } }, { sortOrder: "asc" }, { priority: "desc" }, { createdAt: "asc" }],
           take: 50,
         });
@@ -163,7 +186,7 @@ const handler = createMcpHandler(
         if (!includeIgnored) where.isIgnored = false;
         const meetings = await prisma.meeting.findMany({
           where,
-          include: { role: { select: { name: true } } },
+          include: { role: { select: { name: true, taskPrefix: true } } },
           orderBy: [{ date: "asc" }, { startTime: "asc" }],
           take: 200,
         });
@@ -244,7 +267,7 @@ const handler = createMcpHandler(
             dueDate: (dueDate || refined?.dueDate) ? new Date(`${dueDate || refined?.dueDate}T00:00:00`) : undefined,
             sourceType: "mcp",
           },
-          include: { role: { select: { name: true } } },
+          include: { role: { select: { name: true, taskPrefix: true } } },
         });
         if (isToday) invalidateRebalanceCache();
         return ok({
@@ -262,9 +285,9 @@ const handler = createMcpHandler(
       {
         title: "Update task",
         description:
-          "Update a task: move it on the board (status), mark it done, pull it into/out of today's plan, or edit fields. Get the id from list_tasks/search.",
+          "Update a task: move it on the board (status), mark it done, pull it into/out of today's plan, or edit fields. Accepts the task's human key (VQ-14, MED-54) or its id — both come back from list_tasks/search.",
         inputSchema: {
-          taskId: z.string(),
+          taskId: z.string().describe('Task key like "VQ-14" or "MED-54" (preferred), or the raw id'),
           title: z.string().optional(),
           status: z.enum(VALID_STATUSES).optional(),
           done: z.boolean().optional(),
@@ -289,9 +312,9 @@ const handler = createMcpHandler(
         if (isToday !== undefined) data.scheduledFor = isToday ? today() : null;
         if (dueDate !== undefined) data.dueDate = dueDate ? new Date(`${dueDate}T00:00:00`) : null;
         const task = await prisma.task.update({
-          where: { id: taskId },
+          where: { id: await resolveTaskId(taskId) },
           data,
-          include: { role: { select: { name: true } } },
+          include: { role: { select: { name: true, taskPrefix: true } } },
         });
         if (done !== undefined || isToday !== undefined) invalidateRebalanceCache();
         return ok({ updated: taskShape(task) });
@@ -303,20 +326,23 @@ const handler = createMcpHandler(
       {
         title: "Delete task",
         description:
-          "Permanently delete a task. This is destructive and cannot be undone — for something you just want off the board, prefer update_task (mark done, or set status to icebox). Use delete only when the task was a mistake or the user explicitly asks to delete it. Get the id from list_tasks/search.",
+          "Permanently delete a task. This is destructive and cannot be undone — for something you just want off the board, prefer update_task (mark done, or set status to icebox). Use delete only when the task was a mistake or the user explicitly asks to delete it. Accepts the task's key (VQ-14) or its id.",
         inputSchema: {
-          taskId: z.string().describe("The task id (from list_tasks/search)"),
+          taskId: z.string().describe('Task key like "VQ-14" (preferred), or the raw id'),
         },
       },
       async ({ taskId }) => {
-        const existing = await prisma.task.findUnique({
-          where: { id: taskId },
-          include: { role: { select: { name: true } } },
-        });
-        if (!existing) return ok({ deleted: false, message: "No task with that id (already gone?)" });
-        await prisma.task.delete({ where: { id: taskId } });
+        const resolvedId = await resolveTaskId(taskId).catch(() => null);
+        const existing = resolvedId
+          ? await prisma.task.findUnique({
+              where: { id: resolvedId },
+              include: { role: { select: { name: true, taskPrefix: true } } },
+            })
+          : null;
+        if (!existing) return ok({ deleted: false, message: "No task with that key or id (already gone?)" });
+        await prisma.task.delete({ where: { id: existing.id } });
         invalidateRebalanceCache();
-        return ok({ deleted: true, title: existing.title, company: existing.role?.name ?? null });
+        return ok({ deleted: true, key: taskKey(existing, existing.role), title: existing.title, company: existing.role?.name ?? null });
       }
     );
 
@@ -400,19 +426,19 @@ const handler = createMcpHandler(
         const [tasks, followUps, notes, transcripts] = await Promise.all([
           prisma.task.findMany({
             where: { done: false, title: { contains: query, mode: "insensitive" } },
-            include: { role: { select: { name: true } } },
+            include: { role: { select: { name: true, taskPrefix: true } } },
             take: 10,
             orderBy: { createdAt: "desc" },
           }),
           prisma.followUp.findMany({
             where: { status: "waiting", title: { contains: query, mode: "insensitive" } },
-            include: { role: { select: { name: true } } },
+            include: { role: { select: { name: true, taskPrefix: true } } },
             take: 10,
             orderBy: { createdAt: "desc" },
           }),
           prisma.note.findMany({
             where: { content: { contains: query, mode: "insensitive" } },
-            include: { role: { select: { name: true } } },
+            include: { role: { select: { name: true, taskPrefix: true } } },
             take: 10,
             orderBy: { createdAt: "desc" },
           }),
@@ -423,7 +449,7 @@ const handler = createMcpHandler(
                 { summary: { contains: query, mode: "insensitive" } },
               ],
             },
-            include: { role: { select: { name: true } } },
+            include: { role: { select: { name: true, taskPrefix: true } } },
             take: 5,
             orderBy: { createdAt: "desc" },
           }),

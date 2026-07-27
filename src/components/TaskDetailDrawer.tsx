@@ -32,6 +32,8 @@ interface TaskAttachment {
   createdAt: string;
 }
 
+import { taskKey } from "@/lib/task-key";
+
 export interface DrawerTask {
   id: string;
   title: string;
@@ -43,7 +45,9 @@ export interface DrawerTask {
   checklist?: ChecklistItem[] | null;
   scheduledFor?: string | null;
   tags?: TagRelation[];
-  role: { id: string; name: string; color: string };
+  number?: number | null;
+  externalKey?: string | null;
+  role: { id: string; name: string; color: string; taskPrefix?: string | null };
 }
 
 interface TaskDetailDrawerProps {
@@ -217,6 +221,9 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                   <div className="flex items-center gap-2 mb-2">
                     <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: task.role.color }} />
                     <span className="text-[13px] font-medium" style={{ color: task.role.color }}>{task.role.name}</span>
+                    {taskKey(task, task.role) && (
+                      <span className="font-mono text-[11px] tracking-wide text-[var(--text-tertiary)]">{taskKey(task, task.role)}</span>
+                    )}
                     {task.priority === "urgent" && (
                       <span className="text-[11px] font-bold tracking-wide text-red-400 uppercase ml-1">URGENT</span>
                     )}

@@ -166,7 +166,9 @@ export async function POST(req: NextRequest) {
       const sourceId = `linear-${issue.id}`;
       const conductorStatus = STATUS_MAP[issue.state.name] || "backlog";
       const conductorPriority = mapPriority(issue.priority);
-      const title = `${issue.identifier}: ${issue.title}`;
+      // Linear owns this task's identity — keep MED-54 as its key rather than
+      // minting a second Conductor number, and leave the title clean.
+      const title = issue.title;
 
       const existing = await prisma.task.findFirst({
         where: { sourceType: "linear", sourceId },
@@ -201,6 +203,7 @@ export async function POST(req: NextRequest) {
             status: conductorStatus,
             sourceType: "linear",
             sourceId,
+            externalKey: issue.identifier,
             notes: [
               issue.description?.slice(0, 1000),
               `\nLinear: ${issue.url}`,

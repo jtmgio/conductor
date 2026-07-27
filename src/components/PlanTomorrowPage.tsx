@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "./AppShell";
-import { Check, Plus, ArrowLeft, Trash2 } from "lucide-react";
+import { Check, Plus, ArrowLeft, Trash2, Sunrise, Loader2 } from "lucide-react";
+import { useToast } from "@/components/ui/toast";
 
 interface Role {
   id: string;
@@ -53,6 +54,8 @@ export function PlanTomorrowPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [target, setTarget] = useState(() => computeTarget(9 * 60));
+  const [finishing, setFinishing] = useState(false);
+  const { toast } = useToast();
   useEffect(() => {
     fetch("/api/schedule")
       .then((r) => (r.ok ? r.json() : null))
@@ -125,6 +128,41 @@ export function PlanTomorrowPage() {
   }, []);
 
   const pickedCount = tasks.filter(isOnTomorrow).length;
+
+  // Closing move. Marks the day planned (the signal start-day gates on), then — if
+  // you're planning TODAY from before your first block — shifts the whole schedule
+  // earlier by however early you are, so the cockpit opens in a real block instead
+  // of "Before hours". Planning tomorrow night just marks it planned.
+  const finish = useCallback(async () => {
+    if (finishing) return;
+    setFinishing(true);
+    try {
+      await fetch("/api/tasks/plan-day", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetDate: tomorrowIso, setLastPlannedFor: true }),
+      });
+      if (label === "today") {
+        const res = await fetch("/api/schedule/start-day", { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (data?.shifted) {
+          const mins = Math.abs(data.shiftMinutes);
+          const h = Math.floor(mins / 60);
+          const m = mins % 60;
+          toast(`Day started — schedule shifted ${h > 0 ? `${h}h ${m}m` : `${m}m`} earlier`, "success");
+        } else {
+          toast("Day started", "success");
+        }
+      } else {
+        toast(`${label.charAt(0).toUpperCase()}${label.slice(1)} is lined up`, "success");
+      }
+      window.dispatchEvent(new CustomEvent("tasks-changed"));
+      router.push("/");
+    } catch {
+      toast("Couldn't start your day", "error");
+      setFinishing(false);
+    }
+  }, [finishing, tomorrowIso, label, toast, router]);
 
   return (
     <AppShell>
@@ -200,6 +238,22 @@ export function PlanTomorrowPage() {
               </section>
             );
           })}
+        </div>
+
+        <div className="mt-8 mb-4 flex flex-col items-center gap-2">
+          <button
+            onClick={finish}
+            disabled={finishing}
+            className="flex min-h-[44px] items-center gap-2 rounded-xl bg-[var(--text-primary)] px-6 py-3 text-[14px] font-semibold text-[var(--surface)] transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {finishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sunrise className="h-4 w-4" />}
+            {label === "today" ? "Start my day" : `Done — ${label} is set`}
+          </button>
+          {label === "today" && (
+            <p className="text-[12px] text-[var(--text-tertiary)]">
+              Starting early shifts today&apos;s blocks to match.
+            </p>
+          )}
         </div>
       </div>
     </AppShell>
