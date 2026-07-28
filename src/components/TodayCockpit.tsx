@@ -87,9 +87,23 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
 
   useEffect(() => {
     fetchTasks();
+    // In-tab writes announce themselves; writes from anywhere else (MCP, phone,
+    // another machine) don't, so poll on the same 60s cadence as everything else
+    // on this page — and catch up immediately when you come back to the window.
     const onChange = () => fetchTasks();
+    const refreshIfVisible = () => {
+      if (!document.hidden) fetchTasks();
+    };
     window.addEventListener("tasks-changed", onChange);
-    return () => window.removeEventListener("tasks-changed", onChange);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    window.addEventListener("focus", refreshIfVisible);
+    const i = setInterval(refreshIfVisible, 60_000);
+    return () => {
+      window.removeEventListener("tasks-changed", onChange);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      window.removeEventListener("focus", refreshIfVisible);
+      clearInterval(i);
+    };
   }, [fetchTasks]);
 
   useEffect(() => {
