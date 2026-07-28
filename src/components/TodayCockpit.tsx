@@ -49,6 +49,14 @@ interface AlsoTask {
   role: { id: string; name: string; color: string; taskPrefix?: string | null };
 }
 
+interface NextCompany {
+  id: string;
+  name: string;
+  color: string;
+  why: string;
+  isCurrent: boolean;
+}
+
 interface ClearRole {
   id: string;
   name: string;
@@ -87,6 +95,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
   // for the rest of the day without touching the schedule — cleared automatically
   // when the day rolls over, or by hand via "back to schedule".
   const [override, setOverride] = useState<{ id: string; name: string; color: string } | null>(null);
+  const [nextUp, setNextUp] = useState<NextCompany | null>(null);
   useEffect(() => {
     try {
       const raw = localStorage.getItem("conductor-focus-override");
@@ -139,6 +148,19 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
       clearInterval(i);
     };
   }, [fetchTasks]);
+
+  // Where to go when this company is done. Scored server-side so the reasoning
+  // is auditable rather than vibes.
+  useEffect(() => {
+    const load = () =>
+      fetch("/api/next-company")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => setNextUp(d?.suggestion ?? null))
+        .catch(() => {});
+    load();
+    const i = setInterval(load, 60_000);
+    return () => clearInterval(i);
+  }, [roleId]);
 
   // Committed work from other companies — the only cross-company task surface on
   // this screen. Same 60s cadence as all-clear.
@@ -527,7 +549,19 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                   {focusName} — clear
                 </p>
                 <p className="mt-2 text-[14px] text-[var(--text-secondary)]">
-                  Nothing on today for {focusName}. {backlog.length > 0 ? "Pull something from the backlog below, or coast." : "Coast to the block change, or capture a thought below."}
+                  Nothing on today for {focusName}. {backlog.length > 0 ? "Pull something from the backlog below, or move on." : "Move on, or capture a thought below."}
+                </p>
+                {nextUp && (
+                  <button
+                    onClick={() => focusCompany({ id: nextUp.id, name: nextUp.name, color: nextUp.color })}
+                    className="mt-4 flex items-center gap-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-3 text-left transition-colors hover:border-[var(--border-strong)]"
+                  >
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: nextUp.color }} />
+                    <span className="text-[14px] font-semibold text-[var(--text-primary)]">Work {nextUp.name} next</span>
+                    <span className="text-[12.5px] text-[var(--text-tertiary)]">{nextUp.why}</span>
+                  </button>
+                )}
+                <p className="hidden">
                 </p>
               </motion.section>
             )}
