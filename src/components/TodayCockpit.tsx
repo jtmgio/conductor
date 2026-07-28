@@ -322,10 +322,14 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     const d = new Date(s);
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   };
-  const inFlight = (t: Task) => t.status === "in_progress" || t.status === "in_review" || t.status === "blocked";
-  const todayTasks = tasks.filter((t) => inFlight(t) || (!!t.scheduledFor && ymd(t.scheduledFor) === todayStr));
-  const carriedOver = tasks.filter((t) => !inFlight(t) && !!t.scheduledFor && ymd(t.scheduledFor) < todayStr);
-  const backlog = tasks.filter((t) => !inFlight(t) && !t.scheduledFor);
+  // Blocked means you're waiting on someone else — it is not work you can do, so
+  // it has no business in the one-thing flow ("HOLD until Jeff approves" was being
+  // served up as the headline). It stays on the Board's Blocked column.
+  const actionable = tasks.filter((t) => t.status !== "blocked");
+  const inFlight = (t: Task) => t.status === "in_progress" || t.status === "in_review";
+  const todayTasks = actionable.filter((t) => inFlight(t) || (!!t.scheduledFor && ymd(t.scheduledFor) === todayStr));
+  const carriedOver = actionable.filter((t) => !inFlight(t) && !!t.scheduledFor && ymd(t.scheduledFor) < todayStr);
+  const backlog = actionable.filter((t) => !inFlight(t) && !t.scheduledFor);
   // Your one thing has to be the most *urgent* thing, not just the first row the
   // API happened to return — that's how a task due in September ended up as the
   // headline while six items were days late. Tier by deadline; `in_progress` is a
