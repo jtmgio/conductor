@@ -83,9 +83,30 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [alsoToday, setAlsoToday] = useState<AlsoTask[]>([]);
   const [alsoOpen, setAlsoOpen] = useState(false);
+  // Finishing a block early shouldn't strand you. This focuses another company
+  // for the rest of the day without touching the schedule — cleared automatically
+  // when the day rolls over, or by hand via "back to schedule".
+  const [override, setOverride] = useState<{ id: string; name: string; color: string } | null>(null);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("conductor-focus-override");
+      if (!raw) return;
+      const o = JSON.parse(raw);
+      if (o?.date === new Date().toDateString() && o.role) setOverride(o.role);
+      else localStorage.removeItem("conductor-focus-override");
+    } catch {}
+  }, []);
+  const focusCompany = useCallback((role: { id: string; name: string; color: string } | null) => {
+    setOverride(role);
+    try {
+      if (role) localStorage.setItem("conductor-focus-override", JSON.stringify({ date: new Date().toDateString(), role }));
+      else localStorage.removeItem("conductor-focus-override");
+    } catch {}
+  }, []);
 
-  const roleId = currentBlock?.roleId ?? null;
-  const color = currentBlock?.roleColor || "#7ba3d9";
+  const roleId = override?.id ?? currentBlock?.roleId ?? null;
+  const color = override?.color || currentBlock?.roleColor || "#7ba3d9";
+  const focusName = override?.name || currentBlock?.roleName;
 
   const fetchTasks = useCallback(async () => {
     if (!roleId) {
@@ -360,9 +381,19 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
         <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 0 4px ${color}22` }} />
           <h1 className="text-[24px] font-bold leading-none tracking-tight sm:text-[30px]" style={{ color }}>
-            {currentBlock.roleName}
+            {focusName}
           </h1>
-          <span className="text-[13px] font-medium text-[var(--text-secondary)] tabular-nums">{currentBlock.timeLabel}</span>
+          {override ? (
+            <button
+              onClick={() => focusCompany(null)}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-2 py-1 text-[12px] font-medium text-[var(--text-tertiary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
+            >
+              <X className="h-3 w-3" />
+              off-schedule · back to {currentBlock.roleName}
+            </button>
+          ) : (
+            <span className="text-[13px] font-medium text-[var(--text-secondary)] tabular-nums">{currentBlock.timeLabel}</span>
+          )}
           <button
             onClick={() => router.push("/plan")}
             className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-tertiary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
@@ -493,10 +524,10 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                 className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-5 py-5"
               >
                 <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color }}>
-                  {currentBlock.roleName} — clear
+                  {focusName} — clear
                 </p>
                 <p className="mt-2 text-[14px] text-[var(--text-secondary)]">
-                  Nothing on today for {currentBlock.roleName}. {backlog.length > 0 ? "Pull something from the backlog below, or coast." : "Coast to the block change, or capture a thought below."}
+                  Nothing on today for {focusName}. {backlog.length > 0 ? "Pull something from the backlog below, or coast." : "Coast to the block change, or capture a thought below."}
                 </p>
               </motion.section>
             )}
@@ -507,7 +538,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
             <div className="mt-3">
               <button onClick={() => setRestOpen((v) => !v)} className="flex items-center gap-1.5 px-1 py-1.5 text-[12.5px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
                 <ChevronRight className={`h-3.5 w-3.5 transition-transform ${restOpen ? "rotate-90" : ""}`} />
-                {rest.length} more for {currentBlock.roleName}
+                {rest.length} more for {focusName}
               </button>
               <AnimatePresence initial={false}>
                 {restOpen && (
@@ -571,7 +602,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
             <div className="mt-3">
               <button onClick={() => setBacklogOpen((v) => !v)} className="flex items-center gap-1.5 px-1 py-1.5 text-[12.5px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
                 <ChevronRight className={`h-3.5 w-3.5 transition-transform ${backlogOpen ? "rotate-90" : ""}`} />
-                Pull from {currentBlock.roleName} backlog · {backlog.length}
+                Pull from {focusName} backlog · {backlog.length}
               </button>
               <AnimatePresence initial={false}>
                 {backlogOpen && (
@@ -598,7 +629,12 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
           {others.length > 0 && (
             <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 px-1">
               {others.map((c) => (
-                <span key={c.id} className="flex items-center gap-1.5 text-[12.5px]">
+                <button
+                  key={c.id}
+                  onClick={() => focusCompany({ id: c.id, name: c.name, color: c.color })}
+                  title={`Work ${c.name} now`}
+                  className="flex items-center gap-1.5 rounded-lg px-1.5 py-0.5 text-[12.5px] transition-colors hover:bg-[var(--surface-raised)]"
+                >
                   <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: c.color, opacity: c.quiet ? 0.5 : 1 }} />
                   {c.quiet ? (
                     <span className="flex items-center gap-1 text-[var(--text-tertiary)]">
@@ -611,7 +647,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                       {c.name} · <b className="font-semibold text-[var(--text-primary)]">{c.dueToday ? `${c.dueToday} due today` : `${c.staleFollowups} waiting`}</b>
                     </span>
                   )}
-                </span>
+                </button>
               ))}
             </div>
           )}
@@ -622,7 +658,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
             <input
               value={capture}
               onChange={(e) => setCapture(e.target.value)}
-              placeholder={`Capture a thought for ${currentBlock.roleName}…`}
+              placeholder={`Capture a thought for ${focusName}…`}
               className="flex-1 bg-transparent py-3 text-[14px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
             />
           </form>
