@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Check, ArrowRight, X } from "lucide-react";
+import { ArrowRight, X } from "lucide-react";
 import { playSound } from "@/lib/sounds";
 
 export interface TransitionBlock {
@@ -13,12 +13,6 @@ export interface TransitionBlock {
   timeLabel: string;
 }
 
-interface Company {
-  id: string;
-  name: string;
-  color: string;
-  platform: string;
-}
 
 /**
  * The between-blocks ritual. A calm full-screen takeover: close the last block,
@@ -37,8 +31,6 @@ export function BlockTransition({
 }) {
   const [park, setPark] = useState("");
   const [oneTask, setOneTask] = useState<string | null>(null);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [swept, setSwept] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
 
   const toColor = to.roleColor || "#7ba3d9";
@@ -66,27 +58,6 @@ export function BlockTransition({
       .catch(() => {});
   }, [to.roleId]);
 
-  useEffect(() => {
-    fetch("/api/roles")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((roles: Array<{ id: string; name: string; color: string; platform?: string; active?: boolean }>) =>
-        setCompanies(
-          roles
-            .filter((r) => r.active !== false && r.platform)
-            .map((r) => ({ id: r.id, name: r.name, color: r.color, platform: r.platform as string }))
-        )
-      )
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const start = useCallback(async () => {
     setSubmitting(true);
     const roleForPark = from.roleId ?? to.roleId;
@@ -112,6 +83,20 @@ export function BlockTransition({
     playSound("transition");
     onClose();
   }, [park, from, to, onClose]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      // Enter parks and starts; Shift+Enter keeps its normal newline in the textarea.
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        void start();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, start]);
+
 
   return (
     <motion.div
@@ -146,48 +131,12 @@ export function BlockTransition({
         {/* 2 · park */}
         <label className="text-[14px] font-semibold text-[var(--text-primary)]">Anything still open up there?</label>
         <textarea
+          autoFocus
           value={park}
           onChange={(e) => setPark(e.target.value)}
           placeholder="Park it — one per line. Files itself so you don't carry it into the next block."
           className="mt-2 min-h-[58px] w-full resize-none rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3.5 py-2.5 text-[13.5px] text-[var(--text-primary)] outline-none focus-visible:border-[var(--border-strong)]"
         />
-
-        <div className="my-5 border-t border-[var(--border-subtle)]" />
-
-        {/* 3 · sweep */}
-        <p className="text-[14px] font-semibold text-[var(--text-primary)]">Sweep comms — about 5 minutes</p>
-        <div className="mt-2 flex flex-col gap-1.5">
-          {companies.map((c) => {
-            const on = swept.has(c.id);
-            return (
-              <button
-                key={c.id}
-                onClick={() =>
-                  setSwept((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(c.id)) next.delete(c.id);
-                    else next.add(c.id);
-                    return next;
-                  })
-                }
-                className="flex min-h-[44px] items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3.5 py-2.5 text-left transition-colors hover:border-[var(--border-strong)]"
-              >
-                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
-                <span className="flex-1 text-[13.5px] font-medium text-[var(--text-primary)]">{c.name}</span>
-                <span className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">{c.platform}</span>
-                <span
-                  className={
-                    on
-                      ? "flex h-5 w-5 items-center justify-center rounded-md border border-emerald-500/60 bg-emerald-500/15"
-                      : "flex h-5 w-5 items-center justify-center rounded-md border border-[var(--border-strong)]"
-                  }
-                >
-                  <Check className={on ? "h-3 w-3 text-emerald-400" : "h-3 w-3 text-transparent"} />
-                </span>
-              </button>
-            );
-          })}
-        </div>
 
         <div className="my-5 border-t border-[var(--border-subtle)]" />
 
@@ -215,6 +164,9 @@ export function BlockTransition({
           Start {to.roleName || "next block"}
           <ArrowRight className="h-4 w-4" />
         </button>
+        <p className="mt-2 text-center text-[11.5px] text-[var(--text-tertiary)]">
+          Enter to start · Esc to skip
+        </p>
       </motion.div>
     </motion.div>
   );
