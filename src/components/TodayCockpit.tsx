@@ -35,6 +35,8 @@ interface Task {
   checklist: Array<{ text: string; done?: boolean }> | null;
   number?: number | null;
   externalKey?: string | null;
+  blockedReason?: string | null;
+  blockedAt?: string | null;
   role?: { id: string; name: string; color: string; taskPrefix?: string | null };
 }
 
@@ -54,6 +56,11 @@ interface ClearRole {
   dueToday?: number;
   staleFollowups?: number;
 }
+
+// How long a blocked task stays quiet before it taps you on the shoulder. Matches
+// the follow-up staleness feel: long enough not to nag, short enough that nothing
+// rots for a week.
+const BLOCKED_STALE_DAYS = 3;
 
 const SOURCE_LABEL: Record<string, string> = { linear: "Linear", calendar: "Calendar", granola: "Granola", mcp: "MCP" };
 
@@ -218,6 +225,39 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     } catch {}
   }, []);
 
+  const blockTask = useCallback(
+    async (id: string) => {
+      const reason = window.prompt("What's blocking this?");
+      if (reason === null) return; // cancelled — leave it alone
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      try {
+        await fetch(`/api/tasks/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "blocked", blockedReason: reason.trim() || null, scheduledFor: null }),
+        });
+      } catch {}
+      fetchTasks();
+    },
+    [fetchTasks]
+  );
+
+  // "Still blocked" re-stamps the clock; "unblock" puts it back in play.
+  const resolveBlocked = useCallback(
+    async (id: string, unblock: boolean) => {
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      try {
+        await fetch(`/api/tasks/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(unblock ? { status: "backlog" } : { status: "blocked" }),
+        });
+      } catch {}
+      fetchTasks();
+    },
+    [fetchTasks]
+  );
+
   const setSchedule = useCallback(
     async (id: string, iso: string | null) => {
       try {
@@ -326,6 +366,13 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
   // it has no business in the one-thing flow ("HOLD until Jeff approves" was being
   // served up as the headline). It stays on the Board's Blocked column.
   const actionable = tasks.filter((t) => t.status !== "blocked");
+  // Blocked work resurfaces once it's been quiet too long — otherwise "blocked" is
+  // just a slower way to lose it.
+  const staleBlocked = tasks.filter(
+    (t) =>
+      t.status === "blocked" &&
+      (!t.blockedAt || (Date.now() - new Date(t.blockedAt).getTime()) / 86_400_000 >= BLOCKED_STALE_DAYS)
+  );
   const inFlight = (t: Task) => t.status === "in_progress" || t.status === "in_review";
   const todayTasks = actionable.filter((t) => inFlight(t) || (!!t.scheduledFor && ymd(t.scheduledFor) === todayStr));
   const carriedOver = actionable.filter((t) => !inFlight(t) && !!t.scheduledFor && ymd(t.scheduledFor) < todayStr);
@@ -494,6 +541,12 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                       {isToday(one.dueDate, now) && (
                         <span className="rounded-full border border-amber-500/30 bg-amber-500/[0.13] px-2.5 py-1 text-[11.5px] font-semibold text-amber-400">Due today</span>
                       )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); blockTask(one.id); }}
+                        className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold text-[var(--text-tertiary)] transition-colors hover:border-amber-500/40 hover:text-amber-400"
+                      >
+                        Blocked?
+                      </button>
                       {one.sourceType && SOURCE_LABEL[one.sourceType] && (
                         <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold text-[var(--text-tertiary)]">
                           {SOURCE_LABEL[one.sourceType]}
@@ -554,6 +607,41 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                   </motion.ul>
                 )}
               </AnimatePresence>
+            </div>
+          )}
+
+          {/* Blocked work that's been quiet too long — the only thing that pulls a
+              blocked task back into view. Reason included so you can decide without
+              opening it. */}
+          {staleBlocked.length > 0 && (
+            <div className="mt-5 border-t border-[var(--border-subtle)] pt-4">
+              {staleBlocked.map((t) => {
+                const days = t.blockedAt
+                  ? Math.floor((Date.now() - new Date(t.blockedAt).getTime()) / 86_400_000)
+                  : null;
+                return (
+                  <div key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-1 py-1.5">
+                    <span className="text-[13.5px] text-[var(--text-secondary)]">{t.title}</span>
+                    <span className="text-[12px] text-amber-400/90">
+                      blocked{days ? ` ${days} days` : ""}
+                      {t.blockedReason ? ` · ${t.blockedReason}` : ""}
+                    </span>
+                    <span className="flex-1" />
+                    <button
+                      onClick={() => resolveBlocked(t.id, true)}
+                      className="rounded-lg border border-[var(--border-subtle)] px-2.5 py-1 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)]"
+                    >
+                      Unblock
+                    </button>
+                    <button
+                      onClick={() => resolveBlocked(t.id, false)}
+                      className="px-1.5 py-1 text-[12px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+                    >
+                      Still blocked
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
 

@@ -29,6 +29,18 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
     data.status = body.status;
+    // Blocking starts a clock so the task can resurface instead of rotting on the
+    // Board; any other status clears it. Re-blocking an already-blocked task with
+    // no new reason (the "still blocked" action) just resets the clock.
+    if (body.status === "blocked") {
+      data.blockedAt = new Date();
+      if (body.blockedReason !== undefined) data.blockedReason = body.blockedReason || null;
+    } else {
+      data.blockedAt = null;
+      data.blockedReason = null;
+    }
+  } else if (body.blockedReason !== undefined) {
+    data.blockedReason = body.blockedReason || null;
   }
 
   await prisma.task.update({ where: { id: params.id }, data });

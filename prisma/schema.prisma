@@ -100,6 +100,11 @@ model Task {
   sortOrder     Int       @default(0)
   sourceType String?
   sourceId   String?
+  /// Why this task can't proceed, captured when it's marked blocked. Without a
+  /// reason, "blocked" is just a nicer word for losing the task.
+  blockedReason String?
+  /// When it was blocked — drives the resurface nudge after BLOCKED_STALE_DAYS.
+  blockedAt    DateTime?
   /// Per-company sequence number. Rendered as `${role.taskPrefix}-${number}`.
   /// Allocated automatically by the Prisma extension in src/lib/prisma.ts.
   number     Int?

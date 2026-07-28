@@ -295,14 +295,28 @@ const handler = createMcpHandler(
           isToday: z.boolean().optional().describe("true = today's plan, false = back to backlog"),
           dueDate: z.string().nullable().optional().describe("YYYY-MM-DD, or null to clear"),
           notes: z.string().optional(),
+          blockedReason: z.string().optional().describe('Why it is blocked, e.g. "waiting on Jeff to approve the slate". Set this whenever you set status to blocked — a blocked task with no reason is just a lost task.'),
           role: z.string().optional().describe("Move the task to a different role/company (name or id)"),
         },
       },
-      async ({ taskId, title, status, done, priority, isToday, dueDate, notes, role }) => {
+      async ({ taskId, title, status, done, priority, isToday, dueDate, notes, role, blockedReason }) => {
         const data: Record<string, unknown> = {};
         if (role !== undefined) data.roleId = (await resolveRole(role)).id;
         if (title !== undefined) data.title = title;
-        if (status !== undefined) data.status = status;
+        if (status !== undefined) {
+          data.status = status;
+          // Mirror the REST route: blocking starts the resurface clock, anything
+          // else clears it.
+          if (status === "blocked") {
+            data.blockedAt = new Date();
+            if (blockedReason !== undefined) data.blockedReason = blockedReason || null;
+          } else {
+            data.blockedAt = null;
+            data.blockedReason = null;
+          }
+        } else if (blockedReason !== undefined) {
+          data.blockedReason = blockedReason || null;
+        }
         if (priority !== undefined) data.priority = priority;
         if (notes !== undefined) data.notes = notes;
         if (done !== undefined) {
