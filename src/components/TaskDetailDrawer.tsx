@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Trash2, Plus, X, Pencil, ExternalLink, Paperclip, Download, Loader2, Sun, Copy } from "lucide-react";
+import { Check, Trash2, Plus, X, Pencil, ExternalLink, Paperclip, Download, Loader2, Sun } from "lucide-react";
 import { FileIcon, formatFileSize } from "@/lib/file-utils";
 import { STATUS_CONFIG, STATUS_ORDER } from "./TaskItem";
 import { FontSizeControl } from "./FontSizeControl";
@@ -29,7 +29,7 @@ interface TaskAttachment {
   createdAt: string;
 }
 
-import { taskKey } from "@/lib/task-key";
+import { TaskKeyChip } from "./TaskKeyChip";
 
 export interface DrawerTask {
   id: string;
@@ -74,7 +74,6 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [copiedKey, setCopiedKey] = useState(false);
 
   const font = useFontSize("task-drawer");
 
@@ -116,17 +115,6 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
   }, [task, onClose]);
-
-  // The key is the whole point of having one — make it one click to grab.
-  const copyKey = async (key: string) => {
-    try {
-      await navigator.clipboard.writeText(key);
-      setCopiedKey(true);
-      setTimeout(() => setCopiedKey(false), 1500);
-    } catch {
-      toast("Couldn't copy to clipboard", "error");
-    }
-  };
 
   const save = (data: Record<string, unknown>) => {
     if (task) onUpdate(task.id, data);
@@ -213,20 +201,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                   <div className="flex items-center gap-2 mb-2">
                     <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: task.role.color }} />
                     <span className="text-[13px] font-medium" style={{ color: task.role.color }}>{task.role.name}</span>
-                    {taskKey(task, task.role) && (
-                      <button
-                        onClick={() => copyKey(taskKey(task, task.role)!)}
-                        title="Copy key"
-                        className="group/key flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[11px] tracking-wide text-[var(--text-tertiary)] transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--text-secondary)]"
-                      >
-                        {taskKey(task, task.role)}
-                        {copiedKey ? (
-                          <Check className="h-3 w-3 text-emerald-400" />
-                        ) : (
-                          <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover/key:opacity-100" />
-                        )}
-                      </button>
-                    )}
+                    <TaskKeyChip task={task} role={task.role} variant="inline" />
                     {task.priority === "urgent" && (
                       <span className="text-[11px] font-bold tracking-wide text-red-400 uppercase ml-1">URGENT</span>
                     )}

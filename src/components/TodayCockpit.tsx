@@ -7,6 +7,7 @@ import { Check, Plus, ChevronRight, Moon, X } from "lucide-react";
 import { AgendaStrip } from "./AgendaStrip";
 import { CommsCoverStrip } from "./CommsCoverStrip";
 import { TaskDetail } from "./TaskDetail";
+import { TaskKeyChip } from "./TaskKeyChip";
 import { refineTaskInBackground } from "@/lib/capture-refine";
 
 interface BlockInfo {
@@ -32,6 +33,9 @@ interface Task {
   sourceType: string | null;
   notes: string | null;
   checklist: Array<{ text: string; done?: boolean }> | null;
+  number?: number | null;
+  externalKey?: string | null;
+  role?: { id: string; name: string; color: string; taskPrefix?: string | null };
 }
 
 interface ClearRole {
@@ -397,6 +401,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                       <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold capitalize text-[var(--text-secondary)]">
                         {one.status.replace("_", " ")}
                       </span>
+                      <TaskKeyChip task={one} role={one.role} />
                       {isToday(one.dueDate, now) && (
                         <span className="rounded-full border border-amber-500/30 bg-amber-500/[0.13] px-2.5 py-1 text-[11.5px] font-semibold text-amber-400">Due today</span>
                       )}

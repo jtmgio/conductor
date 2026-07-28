@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Check, Trash2 } from "lucide-react";
+import { TaskKeyChip } from "./TaskKeyChip";
 
 export interface ChecklistItem {
   text: string;
@@ -16,6 +17,9 @@ export interface DetailTask {
   notes: string | null;
   checklist: ChecklistItem[] | null;
   sourceType: string | null;
+  number?: number | null;
+  externalKey?: string | null;
+  role?: { id: string; name: string; color: string; taskPrefix?: string | null };
 }
 
 const SOURCE_LABEL: Record<string, string> = { linear: "Linear", calendar: "Calendar", granola: "Granola", mcp: "MCP", siri: "Siri" };
@@ -82,6 +86,7 @@ export function TaskDetail({
 
             <div className="flex-1 px-6 pt-4">
               <h2 className="text-[20px] font-semibold leading-snug tracking-tight text-[var(--text-primary)]">{task.title}</h2>
+              <TaskKeyChip task={task} role={task.role} variant="inline" className="mt-2" />
 
               {task.notes && (
                 <p className="mt-4 whitespace-pre-wrap text-[14px] leading-relaxed text-[var(--text-secondary)]">{task.notes}</p>
