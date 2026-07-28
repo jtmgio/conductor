@@ -38,17 +38,6 @@ interface Task {
   role?: { id: string; name: string; color: string; taskPrefix?: string | null };
 }
 
-interface AlsoTask {
-  id: string;
-  title: string;
-  status: string;
-  number?: number | null;
-  externalKey?: string | null;
-  dueDate: string | null;
-  overdue: boolean;
-  role: { id: string; name: string; color: string; taskPrefix?: string | null };
-}
-
 interface NextCompany {
   id: string;
   name: string;
@@ -89,8 +78,6 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
   const [capture, setCapture] = useState("");
   const [showEod, setShowEod] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [alsoToday, setAlsoToday] = useState<AlsoTask[]>([]);
-  const [alsoOpen, setAlsoOpen] = useState(false);
   // Finishing a block early shouldn't strand you. This focuses another company
   // for the rest of the day without touching the schedule — cleared automatically
   // when the day rolls over, or by hand via "back to schedule".
@@ -162,19 +149,6 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     return () => clearInterval(i);
   }, [roleId]);
 
-  // Committed work from other companies — the only cross-company task surface on
-  // this screen. Same 60s cadence as all-clear.
-  useEffect(() => {
-    const load = () =>
-      fetch("/api/tasks/also-today")
-        .then((r) => (r.ok ? r.json() : []))
-        .then((d) => setAlsoToday(Array.isArray(d) ? d : []))
-        .catch(() => {});
-    load();
-    const i = setInterval(load, 60_000);
-    return () => clearInterval(i);
-  }, [roleId]);
-
   useEffect(() => {
     const load = () =>
       fetch("/api/all-clear")
@@ -235,19 +209,6 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
 
   const complete = useCallback(async (id: string) => {
     setTasks((prev) => prev.filter((t) => t.id !== id));
-    try {
-      await fetch(`/api/tasks/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ done: true }),
-      });
-    } catch {}
-  }, []);
-
-  // Completing from the Also-today lane shouldn't disturb the block you're in —
-  // drop the row and leave the one-thing flow alone.
-  const completeOther = useCallback(async (id: string) => {
-    setAlsoToday((prev) => prev.filter((t) => t.id !== id));
     try {
       await fetch(`/api/tasks/${id}`, {
         method: "PUT",
@@ -561,8 +522,6 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                     <span className="text-[12.5px] text-[var(--text-tertiary)]">{nextUp.why}</span>
                   </button>
                 )}
-                <p className="hidden">
-                </p>
               </motion.section>
             )}
           </AnimatePresence>
@@ -591,43 +550,6 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                   </motion.ul>
                 )}
               </AnimatePresence>
-            </div>
-          )}
-
-          {/* Also today — committed work from OTHER companies. Three visible so it
-              can't hide (that's how Wris went quiet), the rest behind a toggle so it
-              can't become a wall. Never raw backlog. */}
-          {alsoToday.length > 0 && (
-            <div className="mt-6 border-t border-[var(--border-subtle)] pt-4">
-              <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
-                Also today
-              </p>
-              <ul>
-                {(alsoOpen ? alsoToday : alsoToday.slice(0, 3)).map((t) => (
-                  <li key={t.id} className="flex items-center gap-3 px-1 py-2">
-                    <button
-                      onClick={() => completeOther(t.id)}
-                      aria-label={`Mark ${t.title} done`}
-                      className="h-[18px] w-[18px] shrink-0 rounded-md border border-[var(--border-strong)] transition-colors hover:border-[color:var(--text-secondary)]"
-                    />
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: t.role.color }} />
-                    <span className="min-w-0 flex-1 truncate text-[13.5px] text-[var(--text-secondary)]">{t.title}</span>
-                    {t.overdue && (
-                      <span className="shrink-0 text-[11px] font-semibold text-amber-400/90">late</span>
-                    )}
-                    <TaskKeyChip task={t} role={t.role} variant="inline" className="shrink-0" />
-                  </li>
-                ))}
-              </ul>
-              {alsoToday.length > 3 && (
-                <button
-                  onClick={() => setAlsoOpen((v) => !v)}
-                  className="flex items-center gap-1.5 px-1 py-1.5 text-[12.5px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
-                >
-                  <ChevronRight className={`h-3.5 w-3.5 transition-transform ${alsoOpen ? "rotate-90" : ""}`} />
-                  {alsoOpen ? "less" : "more"}
-                </button>
-              )}
             </div>
           )}
 
