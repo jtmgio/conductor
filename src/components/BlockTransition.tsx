@@ -48,7 +48,21 @@ export function BlockTransition({
     if (!to.roleId) return;
     fetch(`/api/tasks?roleId=${to.roleId}`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((tasks: Array<{ title: string }>) => setOneTask(tasks[0]?.title ?? null))
+      .then((tasks: Array<{ title: string; status: string; dueDate: string | null }>) => {
+        // Mirror the cockpit: blocked isn't work you can do, and the headline
+        // should be the most urgent thing rather than whatever came back first.
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const tier = (t: { dueDate: string | null }) => {
+          const due = t.dueDate ? t.dueDate.slice(0, 10) : null;
+          if (due && due < todayStr) return 0;
+          if (due === todayStr) return 1;
+          return 2;
+        };
+        const actionable = tasks
+          .filter((t) => t.status !== "blocked")
+          .sort((a, b) => tier(a) - tier(b) || (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
+        setOneTask(actionable[0]?.title ?? null);
+      })
       .catch(() => {});
   }, [to.roleId]);
 
@@ -111,7 +125,7 @@ export function BlockTransition({
         initial={{ opacity: 0, y: 16, scale: 0.985 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ type: "spring", damping: 24, stiffness: 320 }}
-        className="relative w-full max-w-md rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface)] p-7 shadow-2xl"
+        className="relative max-h-[calc(100vh-2rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface)] p-7 shadow-2xl"
       >
         <button
           onClick={onClose}
