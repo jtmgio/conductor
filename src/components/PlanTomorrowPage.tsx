@@ -79,9 +79,21 @@ export function PlanTomorrowPage() {
 
   useEffect(() => {
     load();
-    const onChange = () => load();
-    window.addEventListener("tasks-changed", onChange);
-    return () => window.removeEventListener("tasks-changed", onChange);
+    // Same as the cockpit: in-tab writes announce themselves, everything else
+    // (MCP, phone, another machine) needs polling plus a catch-up on focus.
+    const refreshIfVisible = () => {
+      if (!document.hidden) load();
+    };
+    window.addEventListener("tasks-changed", refreshIfVisible);
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    const i = setInterval(refreshIfVisible, 60_000);
+    return () => {
+      window.removeEventListener("tasks-changed", refreshIfVisible);
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      clearInterval(i);
+    };
   }, [load]);
 
   const isOnTomorrow = (t: Task) => !!t.scheduledFor && ymd(new Date(t.scheduledFor)) === tomorrowIso;

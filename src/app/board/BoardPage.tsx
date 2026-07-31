@@ -89,7 +89,22 @@ export function BoardPage() {
   }, [toast]);
 
   useEffect(() => {
-    if (activeRoleId) loadBoard(activeRoleId, showDone);
+    if (!activeRoleId) return;
+    loadBoard(activeRoleId, showDone);
+    // Writes from MCP, the phone, or another machine don't fire an in-tab event.
+    const refreshIfVisible = () => {
+      if (!document.hidden) loadBoard(activeRoleId, showDone);
+    };
+    window.addEventListener("tasks-changed", refreshIfVisible);
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    const i = setInterval(refreshIfVisible, 60_000);
+    return () => {
+      window.removeEventListener("tasks-changed", refreshIfVisible);
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      clearInterval(i);
+    };
   }, [activeRoleId, showDone, loadBoard]);
 
   const changeStatus = async (taskId: string, newStatus: string) => {
