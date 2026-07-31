@@ -33,6 +33,7 @@ function getPrepLeadMinutes(): number {
 }
 
 export function useMeetingNotifications<T extends BaseMeeting>(meetings: T[], options?: MeetingNotificationOptions<T>) {
+  // Keyed `${meetingId}:${stage}` so each escalation step fires exactly once.
   const notifiedRef = useRef<Set<string>>(new Set());
   const prepAlertedRef = useRef<Set<string>>(new Set());
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -73,36 +74,48 @@ export function useMeetingNotifications<T extends BaseMeeting>(meetings: T[], op
         }
       }
 
-      // Browser notification (5 min before by default)
-      if (notifiedRef.current.has(meeting.id)) continue;
-      if (!("Notification" in window) || Notification.permission !== "granted") continue;
-
+      // Escalating alerts. One quiet chime five minutes out is easy to miss
+      // entirely; three chances with distinct sounds is the whole point.
       const leadMinutes = getLeadMinutes();
-      const notifyAt = meetingMs - leadMinutes * 60 * 1000;
-      const delay = notifyAt - nowMs;
+      const stages: Array<{ key: string; atMs: number; sound: "meeting" | "meetingImminent" | "meetingNow"; label: string }> = [
+        { key: "lead", atMs: meetingMs - leadMinutes * 60_000, sound: "meeting", label: `in ${leadMinutes} min` },
+        { key: "imminent", atMs: meetingMs - 60_000, sound: "meetingImminent", label: "in 1 min" },
+        { key: "now", atMs: meetingMs, sound: "meetingNow", label: "starting now" },
+      ];
 
-      if (delay < -30_000) continue;
+      for (const stage of stages) {
+        // A 5-minute lead on a meeting 2 minutes away would collapse onto the
+        // later stages; skip anything already past rather than firing late.
+        if (stage.atMs - nowMs < -30_000) continue;
+        const stageKey = `${meeting.id}:${stage.key}`;
+        if (notifiedRef.current.has(stageKey)) continue;
 
-      const timer = setTimeout(
-        () => {
-          if (notifiedRef.current.has(meeting.id)) return;
-          notifiedRef.current.add(meeting.id);
+        const timer = setTimeout(
+          () => {
+            if (notifiedRef.current.has(stageKey)) return;
+            notifiedRef.current.add(stageKey);
 
-          const prepNote = meeting.prepTask && !meeting.prepTask.done
-            ? `\nPrep: ${meeting.prepTask.title.replace(/^\d{1,2}:\d{2}\s*[—–-]\s*/, "")}`
-            : "";
+            // Sound always; the OS notification only if it's been granted.
+            playSound(stage.sound);
 
-          new Notification(`${meeting.title} in ${leadMinutes} min`, {
-            body: `${formatTime(meeting.startTime)} · ${meeting.role.name}${prepNote}`,
-            tag: `meeting-${meeting.id}`,
-            icon: "/icon-192.png",
-          });
-          playSound("meeting");
-        },
-        Math.max(delay, 0)
-      );
+            if (!("Notification" in window) || Notification.permission !== "granted") return;
+            const prepNote =
+              meeting.prepTask && !meeting.prepTask.done
+                ? `\nPrep: ${meeting.prepTask.title.replace(/^\d{1,2}:\d{2}\s*[—–-]\s*/, "")}`
+                : "";
+            new Notification(`${meeting.title} ${stage.label}`, {
+              body: `${formatTime(meeting.startTime)} · ${meeting.role.name}${prepNote}`,
+              // Same tag per meeting so each stage replaces the last instead of
+              // stacking three notifications for one meeting.
+              tag: `meeting-${meeting.id}`,
+              icon: "/icon-192.png",
+            });
+          },
+          Math.max(stage.atMs - nowMs, 0)
+        );
+        timersRef.current.push(timer);
+      }
 
-      timersRef.current.push(timer);
     }
 
     return () => {

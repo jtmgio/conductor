@@ -10,6 +10,7 @@ import { CostsContent } from "@/app/costs/CostsPage";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { getSoundVolume, setSoundVolume, previewSound } from "@/lib/sounds";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 
 interface Staff { id: string; name: string; title: string; relationship?: string; commNotes?: string; email?: string; slackHandle?: string; }
@@ -210,6 +211,8 @@ Based on the above, provide:`;
   const [addingCompany, setAddingCompany] = useState(false);
   const [newCompany, setNewCompany] = useState({ name: "", title: "", platform: "Slack", color: "#4d8ef7" });
   const [editPrefix, setEditPrefix] = useState<Record<string, string>>({});
+  const [soundVolume, setSoundVolumeState] = useState(1);
+  useEffect(() => { setSoundVolumeState(getSoundVolume()); }, []);
   const COLOR_PRESETS = ["#7c3aed", "#2563eb", "#0d9488", "#d97706", "#e11d48", "#8cbf6e", "#f97316", "#4d8ef7", "#2dd4bf", "#a78bfa", "#fbbf24", "#fb7185", "#06b6d4", "#ec4899", "#84cc16", "#6366f1", "#14b8a6"];
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
@@ -1329,6 +1332,50 @@ Based on the above, provide:`;
                         >
                           Send test notification
                         </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Alert sounds */}
+                  <div>
+                    <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-3">Alert sounds</p>
+                    <div className="border border-[var(--border-subtle)] rounded-xl p-4 bg-[var(--surface-raised)]">
+                      <p className="text-[14px] text-[var(--text-secondary)]">
+                        Meetings escalate: a soft rise at your lead time, a tighter one at 1 minute, and a distinct
+                        arpeggio when it starts. Tune the volume against the room you actually work in.
+                      </p>
+                      <div className="mt-4 flex items-center gap-4">
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={Math.round(soundVolume * 100)}
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value, 10) / 100;
+                            setSoundVolumeState(v);
+                            setSoundVolume(v);
+                          }}
+                          onMouseUp={() => previewSound("meeting")}
+                          className="flex-1 accent-[var(--accent-blue)]"
+                        />
+                        <span className="w-10 text-right text-[13px] tabular-nums text-[var(--text-tertiary)]">
+                          {Math.round(soundVolume * 100)}%
+                        </span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {([
+                          ["meeting", "Lead time"],
+                          ["meetingImminent", "1 minute"],
+                          ["meetingNow", "Starting now"],
+                        ] as const).map(([sound, label]) => (
+                          <button
+                            key={sound}
+                            onClick={() => previewSound(sound)}
+                            className="border border-[var(--border-default)] text-[var(--text-secondary)] px-3.5 py-2 rounded-xl text-[13px] font-medium hover:bg-[var(--sidebar-hover)] transition-colors"
+                          >
+                            ▶ {label}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   </div>

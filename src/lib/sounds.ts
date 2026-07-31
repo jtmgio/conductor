@@ -1,6 +1,7 @@
-type SoundType = "checkin" | "overtime" | "meeting" | "transition";
+type SoundType = "checkin" | "overtime" | "meeting" | "meetingImminent" | "meetingNow" | "transition";
 
 const STORAGE_KEY = "conductor-sounds-enabled";
+const VOLUME_KEY = "conductor-sounds-volume"; // 0..1 multiplier, default 1
 
 let audioCtx: AudioContext | null = null;
 
@@ -20,16 +21,35 @@ function getAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
-function playTone(ctx: AudioContext, frequency: number, startTime: number, duration: number, volume: number = 0.15) {
+function getVolumeScale(): number {
+  if (typeof window === "undefined") return 1;
+  const raw = localStorage.getItem(VOLUME_KEY);
+  const n = raw === null ? 1 : parseFloat(raw);
+  return Number.isFinite(n) ? Math.min(Math.max(n, 0), 1) : 1;
+}
+
+/**
+ * `wave` matters more than volume for cutting through noise: a sine has no
+ * harmonics and is the first thing to disappear under speech or music, so the
+ * meeting alerts use triangle. Everything ambient stays sine.
+ */
+function playTone(
+  ctx: AudioContext,
+  frequency: number,
+  startTime: number,
+  duration: number,
+  volume: number = 0.15,
+  wave: OscillatorType = "sine"
+) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
 
-  osc.type = "sine";
+  osc.type = wave;
   osc.frequency.setValueAtTime(frequency, startTime);
 
   // Soft envelope: quick attack, gentle decay
   gain.gain.setValueAtTime(0, startTime);
-  gain.gain.linearRampToValueAtTime(volume, startTime + 0.02);
+  gain.gain.linearRampToValueAtTime(volume * getVolumeScale(), startTime + 0.02);
   gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
   osc.connect(gain);
@@ -43,6 +63,7 @@ function playTone(ctx: AudioContext, frequency: number, startTime: number, durat
 const C5 = 523.25;
 const E5 = 659.25;
 const G4 = 392.0;
+const G5 = 783.99;
 const C6 = 1046.5;
 
 const SOUNDS: Record<SoundType, (ctx: AudioContext) => void> = {
@@ -59,12 +80,38 @@ const SOUNDS: Record<SoundType, (ctx: AudioContext) => void> = {
     playTone(ctx, G4, t, 0.35, 0.1);
   },
 
-  // Three-note descending chime (E5 → C5 → G4)
+  // Meetings escalate in three stages. All ascending — a descending chime reads
+  // as "done" and is the wrong shape for something with a deadline attached —
+  // and all doubled, because repetition survives a noisy moment better than
+  // volume does.
+  //
+  // Stage 1 (lead time, ~5 min): soft rise, twice. Noticeable, not alarming.
   meeting: (ctx) => {
     const t = ctx.currentTime;
-    playTone(ctx, E5, t, 0.2, 0.12);
-    playTone(ctx, C5, t + 0.18, 0.2, 0.12);
-    playTone(ctx, G4, t + 0.36, 0.3, 0.1);
+    playTone(ctx, C5, t, 0.18, 0.16, "triangle");
+    playTone(ctx, E5, t + 0.16, 0.22, 0.18, "triangle");
+    playTone(ctx, C5, t + 0.5, 0.18, 0.16, "triangle");
+    playTone(ctx, E5, t + 0.66, 0.26, 0.18, "triangle");
+  },
+
+  // Stage 2 (1 min): higher, tighter, three rises. Unmistakably "now-ish".
+  meetingImminent: (ctx) => {
+    const t = ctx.currentTime;
+    for (let i = 0; i < 3; i++) {
+      const at = t + i * 0.34;
+      playTone(ctx, E5, at, 0.14, 0.2, "triangle");
+      playTone(ctx, G5, at + 0.13, 0.18, 0.22, "triangle");
+    }
+  },
+
+  // Stage 3 (starting now): full ascending arpeggio, top note held. Distinct
+  // enough that you never confuse it with the earlier two.
+  meetingNow: (ctx) => {
+    const t = ctx.currentTime;
+    playTone(ctx, C5, t, 0.14, 0.2, "triangle");
+    playTone(ctx, E5, t + 0.13, 0.14, 0.21, "triangle");
+    playTone(ctx, G5, t + 0.26, 0.14, 0.22, "triangle");
+    playTone(ctx, C6, t + 0.39, 0.5, 0.24, "triangle");
   },
 
   // Single bright ping (C6)
@@ -85,6 +132,20 @@ export function playSound(type: SoundType): void {
   if (!ctx) return;
 
   SOUNDS[type](ctx);
+}
+
+export function getSoundVolume(): number {
+  return getVolumeScale();
+}
+
+export function setSoundVolume(v: number): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(VOLUME_KEY, String(Math.min(Math.max(v, 0), 1)));
+}
+
+/** Preview a sound at the current volume — for the Settings slider. */
+export function previewSound(type: SoundType = "meeting"): void {
+  playSound(type);
 }
 
 export function isSoundsEnabled(): boolean {
