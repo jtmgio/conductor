@@ -5,11 +5,20 @@ operate/extend it. Companion to `docs/RUNBOOK_CALENDAR_SYNC.md`.
 
 ## ⚠️ The one thing you must know first
 
-**The MLX server on port 11435 is NOT Conductor's.** It belongs to the kosmos/trinity
-production stack (`~/projects/kosmos`, `~/projects/zeta/trinity`), runs under the
-LaunchAgent `com.kosmos.mlx` (with `com.kosmos.watchdog` beside it), serves live traffic
-through a cloudflared tunnel, and must never go down. Conductor is a **guest**: an HTTP
-client and nothing more.
+**The MLX server on port 11435 is NOT Conductor's — and, despite its `com.kosmos.mlx`
+label, it is not a kosmos service either.** It is the **vQuip arena SMS extraction
+backend**: a single-stream `mlx_lm.server` (Qwen2.5-32B-Instruct-4bit) whose sole
+consumer is `proto-sms-intake`
+(`defense-hub-arena-sms/apps/proto-sms-intake/.env:8-9`, model id pinned). No
+kosmos/trinity code references `:11435`, and the kosmos cloudflared tunnel exposes
+`:8011/:5474/:5475`, not `:11435` — the earlier "kosmos production via tunnel"
+description here was wrong (see `docs/MLX_PROVENANCE.md`).
+
+It runs under the LaunchAgent `com.kosmos.mlx`, and its **only** resilience is launchd
+`KeepAlive` — `com.kosmos.watchdog` does **not** monitor it (that watchdog covers Docker
+and the trinity review stack). Still: **never restart, kill, or reconfigure it** — the
+rule is unchanged, only the reason is: you would take down live vQuip SMS extraction.
+Conductor is a **guest**: an HTTP client and nothing more.
 
 The safety contract:
 
@@ -18,17 +27,18 @@ The safety contract:
 | Never restart, kill, or reconfigure the server (PID owned by `com.kosmos.mlx`) | Production outage |
 | Never touch `~/mlx-venv` (no pip install/upgrade) | The server runs from it |
 | Never send a model id other than the one loaded | `mlx_lm.server` will try to download/load a model named in a request — a multi-GB RAM/GPU spike on the prod box. `callLocal()` in `ai-provider.ts` hard-rejects mismatches for this reason. |
-| Keep requests modest (max_tokens ≤ 8K, 120s timeout) | Requests queue serially; a runaway generation delays kosmos traffic |
+| Keep requests modest (max_tokens ≤ 8K, 120s timeout) | Requests queue serially; a runaway generation delays live arena SMS extraction |
 | Verify state with read-only calls only (`GET /v1/models`, `ps`, `launchctl list`) | Everything else is intrusive |
 
 ## Current setup
 
-Conductor runs its **own dedicated MLX server** (since 2026-07-06). The kosmos server is
-no longer used by Conductor at all — the safety contract above still applies to it forever.
+Conductor runs its **own dedicated MLX server** (since 2026-07-06). The `:11435` server
+(arena SMS backend) is no longer used by Conductor at all — the safety contract above
+still applies to it forever.
 
 ```
 macOS host (M2 Ultra, 128GB)
-  ├─ com.kosmos.mlx → ~/mlx-venv/bin/mlx_lm.server                    [KOSMOS — HANDS OFF]
+  ├─ com.kosmos.mlx → ~/mlx-venv/bin/mlx_lm.server              [vQUIP ARENA SMS — HANDS OFF]
   │     --model mlx-community/Qwen2.5-32B-Instruct-4bit --port 11435 --host 0.0.0.0
   ├─ com.conductor.mlx → ~/conductor-mlx-venv/bin/mlx_lm.server       [OURS]
   │     --model mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit --port 11436 --host 127.0.0.1
