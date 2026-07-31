@@ -104,14 +104,24 @@ const SOUNDS: Record<SoundType, (ctx: AudioContext) => void> = {
     }
   },
 
-  // Stage 3 (starting now): full ascending arpeggio, top note held. Distinct
-  // enough that you never confuse it with the earlier two.
+  // Stage 3 (starting now): insistent. Three passes of a fast ascending
+  // arpeggio over ~2.5s, each pass octave-doubled underneath for body, ending
+  // on a held top note.
+  //
+  // Deliberately annoying, but via duration and repetition rather than timbre —
+  // a square or saw wave here would be genuinely painful in a headset, and the
+  // point is to be impossible to ignore, not unpleasant to hear.
   meetingNow: (ctx) => {
     const t = ctx.currentTime;
-    playTone(ctx, C5, t, 0.14, 0.2, "triangle");
-    playTone(ctx, E5, t + 0.13, 0.14, 0.21, "triangle");
-    playTone(ctx, G5, t + 0.26, 0.14, 0.22, "triangle");
-    playTone(ctx, C6, t + 0.39, 0.5, 0.24, "triangle");
+    for (let pass = 0; pass < 3; pass++) {
+      const at = t + pass * 0.78;
+      playTone(ctx, C5, at, 0.12, 0.26, "triangle");
+      playTone(ctx, E5, at + 0.12, 0.12, 0.27, "triangle");
+      playTone(ctx, G5, at + 0.24, 0.12, 0.28, "triangle");
+      playTone(ctx, C6, at + 0.36, pass === 2 ? 0.6 : 0.3, 0.3, "triangle");
+      // Octave below, quieter — adds weight so it reads through speech.
+      playTone(ctx, C5 / 2, at, 0.5, 0.12, "triangle");
+    }
   },
 
   // Single bright ping (C6)

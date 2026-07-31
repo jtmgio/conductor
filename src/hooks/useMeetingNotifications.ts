@@ -105,6 +105,9 @@ export function useMeetingNotifications<T extends BaseMeeting>(meetings: T[], op
                 : "";
             new Notification(`${meeting.title} ${stage.label}`, {
               body: `${formatTime(meeting.startTime)} · ${meeting.role.name}${prepNote}`,
+              // "Starting now" stays on screen until dismissed; the earlier
+              // stages auto-fade so they don't pile up.
+              requireInteraction: stage.key === "now",
               // Same tag per meeting so each stage replaces the last instead of
               // stacking three notifications for one meeting.
               tag: `meeting-${meeting.id}`,
