@@ -30,7 +30,7 @@ export interface AIResponse {
 // RAM spike), so callLocal hard-rejects any model other than LOCAL_AI_MODEL.
 
 export function getLocalModelId(): string {
-  return process.env.LOCAL_AI_MODEL || "mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit";
+  return process.env.LOCAL_AI_MODEL || "mlx-community/Qwen3.6-35B-A3B-4bit";
 }
 
 function getLocalBaseUrl(): string {
@@ -332,7 +332,12 @@ async function callLocal(params: {
     max_tokens: maxTokens,
     ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
     messages,
-  });
+    // Qwen3.5/3.6 are hybrid reasoning models that "think" before answering unless
+    // told not to. Conductor's prior model (Qwen3-30B-A3B-Instruct-2507) was the
+    // non-thinking Instruct variant; disable thinking here to preserve that behavior
+    // (faster replies, no reasoning tokens burned against the maxTokens cap).
+    chat_template_kwargs: { enable_thinking: false },
+  } as OpenAI.ChatCompletionCreateParamsNonStreaming);
 
   const text = response.choices[0]?.message?.content || "";
 

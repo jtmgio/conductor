@@ -17,7 +17,7 @@ services:
       # Port 11435 is the kosmos PRODUCTION server — never point Conductor back at it
       # without reading docs/RUNBOOK_LOCAL_AI.md.
       LOCAL_AI_BASE_URL: ${LOCAL_AI_BASE_URL:-http://host.docker.internal:11436/v1}
-      LOCAL_AI_MODEL: ${LOCAL_AI_MODEL:-mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit}
+      LOCAL_AI_MODEL: ${LOCAL_AI_MODEL:-mlx-community/Qwen3.6-35B-A3B-4bit}
     volumes:
       - uploads:/opt/conductor/uploads
     networks:
