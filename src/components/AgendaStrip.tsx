@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Calendar, ChevronDown, ChevronUp, Check, Users, Bell, Trash2, ArrowRight } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { useMeetingNotifications } from "@/hooks/useMeetingNotifications";
-import { MeetingPrepPanel } from "./MeetingPrepPanel";
 
 interface Meeting {
   id: string;
@@ -61,7 +60,6 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [collapsed, setCollapsed] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [prepMeeting, setPrepMeeting] = useState<Meeting | null>(null);
   const { toast } = useToast();
 
   const fetchMeetings = useCallback(async () => {
@@ -128,11 +126,8 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
     return () => clearInterval(interval);
   }, [fetchMeetings, toast]);
 
-  // Notifications + prep alert
-  const handleMeetingAlert = useCallback((meeting: Meeting) => {
-    setPrepMeeting(meeting);
-  }, []);
-  useMeetingNotifications(meetings, { onMeetingAlert: handleMeetingAlert });
+  // Meeting notifications — OS notification + chime at the lead time.
+  useMeetingNotifications(meetings);
 
   const deleteMeeting = useCallback(
     async (meetingId: string, title: string) => {
@@ -171,6 +166,9 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
   };
 
   if (!loaded || meetings.length === 0) return null;
+
+  // Only surface meetings that haven't ended yet — passed ones drop off the list.
+  const upcomingMeetings = meetings.filter((m) => getMeetingStatus(m) !== "past");
 
   const currentOrNext = meetings.find((m) => {
     const status = getMeetingStatus(m);
@@ -220,9 +218,8 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                 return (
                   <div
                     key={meeting.id}
-                    onClick={() => setPrepMeeting(meeting)}
                     className={`
-                      group/row flex items-center gap-2 px-3 py-1.5 transition-all cursor-pointer hover:bg-[var(--sidebar-hover)]
+                      group/row flex items-center gap-2 px-3 py-1.5 transition-all hover:bg-[var(--sidebar-hover)]
                       ${isPast ? "opacity-35" : ""}
                       ${isHighlighted ? "bg-[var(--surface-sunken)]" : ""}
                     `}
@@ -265,9 +262,8 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                 return (
                   <div
                     key={meeting.id}
-                    onClick={() => setPrepMeeting(meeting)}
                     className={`
-                      group/row flex items-center gap-2.5 rounded-xl transition-all overflow-hidden cursor-pointer hover:bg-[var(--sidebar-hover)]
+                      group/row flex items-center gap-2.5 rounded-xl transition-all overflow-hidden hover:bg-[var(--sidebar-hover)]
                       ${isPast ? "opacity-30 py-1 px-3" : "px-3 py-2.5"}
                       ${isHighlighted ? "bg-[var(--surface-sunken)] ring-1 ring-[var(--border-subtle)]" : ""}
                     `}
@@ -360,20 +356,25 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
         {/* Notification prompt at bottom */}
         {!sidebarCollapsed && <NotificationPrompt />}
       </motion.div>
-
-      {/* Meeting Prep Panel */}
-      {prepMeeting && (
-        <MeetingPrepPanel
-          meeting={prepMeeting}
-          open={!!prepMeeting}
-          onClose={() => setPrepMeeting(null)}
-        />
-      )}
     </>
     );
   }
 
   // ── Strip mode (original stacked layout for mobile) ──
+  // Had meetings today, all now finished — calm closure instead of a vanished panel.
+  if (upcomingMeetings.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6 flex items-center gap-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-5 py-4"
+      >
+        <Calendar className="h-4 w-4 text-[var(--text-tertiary)]" />
+        <span className="text-[13.5px] font-medium text-[var(--text-secondary)]">All meetings done for the day</span>
+        <Check className="h-4 w-4 text-emerald-500" />
+      </motion.div>
+    );
+  }
   return (
     <>
     <motion.div
@@ -392,7 +393,7 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
             Today&apos;s Meetings
           </span>
           <span className="text-[13px] text-[var(--text-tertiary)]">
-            {formatTime(meetings[0].startTime)} – {formatTime(meetings[meetings.length - 1].endTime)}
+            {formatTime(upcomingMeetings[0].startTime)} – {formatTime(upcomingMeetings[upcomingMeetings.length - 1].endTime)}
           </span>
         </div>
         {collapsed ? (
@@ -413,7 +414,7 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 flex flex-col gap-1.5">
-              {meetings.map((meeting) => {
+              {upcomingMeetings.map((meeting) => {
                 const status = getMeetingStatus(meeting);
                 const isCurrent = status === "current";
                 const isPast = status === "past";
@@ -422,9 +423,8 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                 return (
                   <div
                     key={meeting.id}
-                    onClick={() => setPrepMeeting(meeting)}
                     className={`
-                      group/row flex items-start gap-3 px-3.5 py-3 rounded-xl transition-all cursor-pointer hover:bg-[var(--sidebar-hover)]
+                      group/row flex items-start gap-3 px-3.5 py-3 rounded-xl transition-all hover:bg-[var(--sidebar-hover)]
                       ${isPast ? "opacity-40" : ""}
                       ${isHighlighted ? "bg-[var(--surface-sunken)] ring-1 ring-[var(--border-subtle)]" : ""}
                     `}
@@ -447,7 +447,7 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
                           className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: meeting.role.color }}
                         />
-                        <span className="text-[14px] font-medium text-[var(--text-primary)] truncate">
+                        <span className="text-[14px] font-medium text-[var(--text-primary)] leading-snug">
                           {meeting.title}
                         </span>
                         {isCurrent && (
@@ -459,14 +459,6 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
 
                       <div className="flex items-center gap-3 text-[12px] text-[var(--text-tertiary)]">
                         <span>{meeting.role.name}</span>
-                        {meeting.attendees.length > 0 && (
-                          <span className="flex items-center gap-1">
-                            <Users className="h-3 w-3" />
-                            {meeting.attendees.length <= 3
-                              ? meeting.attendees.join(", ")
-                              : `${meeting.attendees.slice(0, 2).join(", ")} +${meeting.attendees.length - 2}`}
-                          </span>
-                        )}
                       </div>
 
                       {/* Prep task */}
@@ -535,15 +527,6 @@ export function AgendaStrip({ mode = "strip", sidebarCollapsed = false, onToggle
         )}
       </AnimatePresence>
     </motion.div>
-
-    {/* Meeting Prep Panel */}
-    {prepMeeting && (
-      <MeetingPrepPanel
-        meeting={prepMeeting}
-        open={!!prepMeeting}
-        onClose={() => setPrepMeeting(null)}
-      />
-    )}
     </>
   );
 }

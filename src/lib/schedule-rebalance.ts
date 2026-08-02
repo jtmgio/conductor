@@ -68,10 +68,13 @@ async function computeRebalance(
   );
   if (scheduledRoleIds.length === 0) return baseBlocks;
 
-  // Query which roles have non-done tasks today (or earlier — yesterday's leftovers carry forward)
+  // A role counts as active if it has ANY open work — not just work that was
+  // explicitly scheduled. Keying on scheduledFor meant a company with a real
+  // backlog looked empty, its block got dropped, and the work stayed invisible;
+  // that's how Wris went quiet for days. Iceboxed tasks don't count as work.
   const counts = await prisma.task.groupBy({
     by: ["roleId"],
-    where: { scheduledFor: { lte: today() }, done: false, roleId: { in: scheduledRoleIds } },
+    where: { done: false, status: { not: "icebox" }, roleId: { in: scheduledRoleIds } },
     _count: true,
   });
   const activeRoleIds = new Set(counts.map((c) => c.roleId));

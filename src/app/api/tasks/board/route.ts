@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const tasks = await prisma.task.findMany({
     where: { roleId, done: false, status: { not: "icebox" } },
     include: {
-      role: { select: { id: true, name: true, color: true } },
+      role: { select: { id: true, name: true, color: true, taskPrefix: true } },
       tags: { include: { tag: true } },
     },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     const doneTasks = await prisma.task.findMany({
       where: { roleId, done: true },
       include: {
-        role: { select: { id: true, name: true, color: true } },
+        role: { select: { id: true, name: true, color: true, taskPrefix: true } },
         tags: { include: { tag: true } },
       },
       orderBy: { updatedAt: "desc" },

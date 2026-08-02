@@ -27,6 +27,9 @@ model UserProfile {
   aiTranscriptChunkSize      Int?
   aiPinnedNoteChunkSize      Int?
   lastPlannedFor         DateTime? @db.Date
+  dayShiftDate           DateTime? @db.Date
+  dayShiftMinutes        Int?
+  lastSweepAt            DateTime? // last completed comms sweep (UTC instant)
   updatedAt              DateTime @updatedAt
 }
 
@@ -38,6 +41,10 @@ model Role {
   priority         Int
   color            String
   active           Boolean        @default(true)
+  /// Short human key prefix for this company's tasks: "VQ" -> VQ-14. Editable, unique.
+  taskPrefix       String?        @unique
+  /// Monotonic per-company task counter. Never decremented — deleted numbers stay dead.
+  taskSeq          Int            @default(0)
   tone             String?
   context          String?
   responsibilities String?
@@ -93,9 +100,21 @@ model Task {
   sortOrder     Int       @default(0)
   sourceType String?
   sourceId   String?
+  /// Why this task can't proceed, captured when it's marked blocked. Without a
+  /// reason, "blocked" is just a nicer word for losing the task.
+  blockedReason String?
+  /// When it was blocked — drives the resurface nudge after BLOCKED_STALE_DAYS.
+  blockedAt    DateTime?
+  /// Per-company sequence number. Rendered as `${role.taskPrefix}-${number}`.
+  /// Allocated automatically by the Prisma extension in src/lib/prisma.ts.
+  number     Int?
+  /// The upstream system's own key (e.g. Linear "MED-54"). When set it wins over
+  /// number/prefix so a synced task keeps one identity, not two.
+  externalKey String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
+  @@unique([roleId, number])
   @@index([roleId, done])
   @@index([scheduledFor, done])
   @@index([roleId, status])
@@ -244,6 +263,29 @@ model ScheduleOverride {
   day     String
   roleId  String
   weekOf  DateTime
+}
+
+model Reminder {
+  id          String    @id @default(cuid())
+  label       String
+  hour        Int
+  minute      Int
+  days        Int[]     // weekdays: 0=Sun .. 6=Sat
+  active      Boolean   @default(true)
+  lastAckOn   DateTime? @db.Date // last date acknowledged (local tz)
+  sortOrder   Int       @default(0)
+  icon        String?   // lucide key: pill | syringe | shake | stretch
+  durationMin Int?      // if set, the reminder runs an N-minute countdown timer
+  tier        String    @default("normal") // "critical" escalates to a takeover if ignored; "normal" stays a gentle banner
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model SweepLog {
+  id        String   @id @default(cuid())
+  sweptAt   DateTime @default(now())
+  blockId   String?  // ScheduleBlock id the sweep closed out (null = manual sweep)
+  createdAt DateTime @default(now())
 }
 
 model Skill {

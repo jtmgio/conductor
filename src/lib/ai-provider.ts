@@ -75,6 +75,7 @@ export async function createCompletion(params: {
   system?: string;
   messages: AIMessage[];
   max_tokens: number;
+  temperature?: number;
 }): Promise<AIResponse> {
   const provider = getProvider(params.model);
 
@@ -95,6 +96,7 @@ export async function createCompletionWithLocalFallback(params: {
   system?: string;
   messages: AIMessage[];
   max_tokens: number;
+  temperature?: number;
 }): Promise<AIResponse> {
   try {
     return await createCompletion(params);
@@ -137,6 +139,7 @@ async function callAnthropic(params: {
   system?: string;
   messages: AIMessage[];
   max_tokens: number;
+  temperature?: number;
 }): Promise<AIResponse> {
   const apiKey = await getAnthropicApiKey();
   const anthropic = new Anthropic({ apiKey });
@@ -164,6 +167,7 @@ async function callAnthropic(params: {
   });
 
   const response = await anthropic.messages.create({
+    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
     model: params.model,
     max_tokens: params.max_tokens,
     ...(params.system ? { system: params.system } : {}),
@@ -192,6 +196,7 @@ async function callOpenAI(params: {
   system?: string;
   messages: AIMessage[];
   max_tokens: number;
+  temperature?: number;
 }): Promise<AIResponse> {
   const apiKey = await getOpenAIApiKey();
   if (!apiKey) throw new Error("OpenAI API key not configured");
@@ -258,6 +263,7 @@ async function callLocal(params: {
   system?: string;
   messages: AIMessage[];
   max_tokens: number;
+  temperature?: number;
 }): Promise<AIResponse> {
   const requested = params.model.replace(/^local\//, "");
   const loaded = getLocalModelId();
@@ -324,6 +330,7 @@ async function callLocal(params: {
   const response = await client.chat.completions.create({
     model: requested,
     max_tokens: maxTokens,
+    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
     messages,
   });
 

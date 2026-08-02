@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { parseTaskKey } from "@/lib/task-key";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -12,8 +13,22 @@ export async function GET(req: NextRequest) {
 
   const [tasks, followUps, notes, transcripts] = await Promise.all([
     prisma.task.findMany({
-      where: { done: false, title: { contains: q, mode: "insensitive" } },
-      include: { role: { select: { id: true, name: true, color: true } } },
+      // Typing a key ("WRI-12", "MED-54") jumps straight to that task; anything
+      // else is a title search.
+      where: {
+        done: false,
+        OR: [
+          { title: { contains: q, mode: "insensitive" } },
+          { externalKey: { equals: q, mode: "insensitive" } },
+          ...(parseTaskKey(q)
+            ? [{
+                number: parseTaskKey(q)!.number,
+                role: { taskPrefix: { equals: parseTaskKey(q)!.prefix, mode: "insensitive" as const } },
+              }]
+            : []),
+        ],
+      },
+      include: { role: { select: { id: true, name: true, color: true, taskPrefix: true } } },
       take: 10,
       orderBy: { createdAt: "desc" },
     }),

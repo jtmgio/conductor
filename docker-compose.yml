@@ -1,21 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    ports:
-      - "5433:5432"
-    environment:
-      POSTGRES_USER: conductor
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
-      POSTGRES_DB: conductor
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U conductor"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   conductor:
     build: .
     ports:
@@ -23,9 +6,9 @@ services:
     env_file:
       - .env
     environment:
-      # macOS/Windows: use host.docker.internal to reach host Postgres
-      # Linux: change to the Postgres container (postgresql://conductor:localdev@postgres:5432/conductor)
-      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:5432/conductor
+      # Talks to the shared `postgres` container on the external postgres_default network.
+      # That container holds Conductor's real data (created/owned by user `conductor`).
+      DATABASE_URL: postgresql://conductor:localdev@postgres:5432/conductor
       NODE_ENV: production
       UPLOAD_DIR: /opt/conductor/uploads
       # Change this if deploying to a real domain or different port
@@ -37,9 +20,9 @@ services:
       LOCAL_AI_MODEL: ${LOCAL_AI_MODEL:-mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit}
     volumes:
       - uploads:/opt/conductor/uploads
-    depends_on:
-      postgres:
-        condition: service_healthy
+    networks:
+      - default
+      - shared-postgres
     restart: unless-stopped
 
   conductor-cron:
@@ -65,5 +48,9 @@ services:
     restart: unless-stopped
 
 volumes:
-  pgdata:
   uploads:
+
+networks:
+  shared-postgres:
+    external: true
+    name: postgres_default

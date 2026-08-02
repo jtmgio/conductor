@@ -9,18 +9,13 @@ import { GlobalSearch } from "./GlobalSearch";
 import { ConductorLogo } from "./ConductorLogo";
 
 const navLinks = [
-  { href: "/", label: "Focus", icon: Crosshair, shortcut: "⌘1" },
-  { href: "/meetings", label: "Meetings", icon: CalendarDays, shortcut: "⌘2" },
-  { href: "/inbox", label: "Inbox", icon: Inbox, shortcut: "⌘3" },
-  { href: "/tracker", label: "Tracker", icon: ListChecks, shortcut: "⌘4" },
-  { href: "/board", label: "Board", icon: Columns3, shortcut: "⌘5" },
-  { href: "/ai", label: "AI", icon: Sparkles, shortcut: "⌘6" },
-  { href: "/documents", label: "Notes", icon: FileText, shortcut: "⌘7" },
-  { href: "/drafts", label: "Drafts", icon: Send, shortcut: "⌘8" },
+  { href: "/", label: "Today", icon: Crosshair, shortcut: "⌘1" },
+  { href: "/board", label: "Board", icon: Columns3, shortcut: "⌘2" },
+  { href: "/tracker", label: "Tracker", icon: ListChecks, shortcut: "⌘3" },
+  { href: "/formatter", label: "Formatter", icon: Send, shortcut: "⌘4" },
 ];
 
 const bottomLinks = [
-  { href: "/docs", label: "Docs", icon: BookOpen },
   { href: "/settings", label: "Settings", icon: Settings, shortcut: "⌘," },
 ];
 

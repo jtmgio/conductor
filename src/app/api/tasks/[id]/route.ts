@@ -24,11 +24,23 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if (body.done) data.doneAt = new Date();
   }
   if (body.status !== undefined) {
-    const validStatuses = ["backlog", "in_progress", "in_review", "blocked"];
+    const validStatuses = ["backlog", "in_progress", "in_review", "blocked", "icebox"];
     if (!validStatuses.includes(body.status)) {
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
     data.status = body.status;
+    // Blocking starts a clock so the task can resurface instead of rotting on the
+    // Board; any other status clears it. Re-blocking an already-blocked task with
+    // no new reason (the "still blocked" action) just resets the clock.
+    if (body.status === "blocked") {
+      data.blockedAt = new Date();
+      if (body.blockedReason !== undefined) data.blockedReason = body.blockedReason || null;
+    } else {
+      data.blockedAt = null;
+      data.blockedReason = null;
+    }
+  } else if (body.blockedReason !== undefined) {
+    data.blockedReason = body.blockedReason || null;
   }
 
   await prisma.task.update({ where: { id: params.id }, data });
@@ -57,7 +69,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const updated = await prisma.task.findUnique({
     where: { id: params.id },
     include: {
-      role: { select: { id: true, name: true, color: true, priority: true } },
+      role: { select: { id: true, name: true, color: true, taskPrefix: true, priority: true } },
       tags: { include: { tag: true } },
       files: { include: { file: { select: { id: true, filename: true, mimeType: true, size: true, createdAt: true } } } },
     },

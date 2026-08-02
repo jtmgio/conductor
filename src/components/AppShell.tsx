@@ -1,26 +1,29 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar } from "./Sidebar";
 import { MobileDrawer } from "./MobileDrawer";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { GlobalSearch } from "./GlobalSearch";
-import { EodPlanningPrompt } from "./EodPlanningPrompt";
+import { Reminders } from "./Reminders";
+import { BlockTransition, type TransitionBlock } from "./BlockTransition";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 import { cn } from "@/lib/utils";
-import { useCheckInTimer } from "@/hooks/useCheckInTimer";
-import { playSound } from "@/lib/sounds";
-import { MessageSquare, Clock, Check } from "lucide-react";
 
 interface BlockInfo {
+  id?: string;
   label: string;
   timeLabel: string;
   roleId: string | null;
   roleName?: string;
   roleColor?: string;
   rolePlatform?: string;
+}
+
+function blockKey(b: BlockInfo): string {
+  return `${b.id ?? ""}|${b.roleId ?? ""}|${b.timeLabel}`;
 }
 
 interface AppShellProps {
@@ -60,6 +63,29 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
   const currentBlock = propBlock !== undefined ? propBlock : fetchedBlock;
   const nextBlocks = propNextBlocks !== undefined ? propNextBlocks : fetchedNextBlocks;
 
+  // Block-transition ritual: fire the full-screen reset when the current work block
+  // changes to a different one while the app is open. Mid-block opens don't fire
+  // (prev starts null); localStorage guards against re-showing the same transition.
+  const prevBlockRef = useRef<BlockInfo | null>(null);
+  const [transition, setTransition] = useState<{ from: TransitionBlock; to: TransitionBlock } | null>(null);
+
+  useEffect(() => {
+    const cb = currentBlock;
+    if (cb && cb.roleId) {
+      const prev = prevBlockRef.current;
+      if (prev && prev.roleId && blockKey(prev) !== blockKey(cb)) {
+        const key = blockKey(cb);
+        if (localStorage.getItem("conductor-transition-seen") !== key) {
+          localStorage.setItem("conductor-transition-seen", key);
+          setTransition({ from: prev, to: cb });
+        }
+      }
+      prevBlockRef.current = cb;
+    } else if (cb === null) {
+      prevBlockRef.current = null;
+    }
+  }, [currentBlock]);
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("conductor-sidebar-collapsed") === "true";
@@ -84,16 +110,11 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
   }, []);
 
   useEffect(() => {
-    const today = new Date().toDateString();
-
-    // Daily reset — move incomplete today-tasks back to backlog
-    const lastResetKey = "conductor-last-reset";
-    const lastReset = localStorage.getItem(lastResetKey);
-    if (lastReset !== today) {
-      fetch("/api/tasks/reset-today", { method: "POST" })
-        .then(() => localStorage.setItem(lastResetKey, today))
-        .catch(() => {});
-    }
+    // NOTE: the old per-device "daily reset" (POST /api/tasks/reset-today) was removed
+    // for v2. It unscheduled every undone task on first app open of a new day, gated by
+    // per-device localStorage — which meant opening a second machine wiped the plan you'd
+    // made on the first. In v2, scheduledFor IS the persistent plan (shared DB) and undone
+    // tasks stay until dealt with. Proper end-of-day carry-over is the queued rollover phase.
 
     // Calendar sync — trigger if last sync was more than 65 minutes ago
     // (LaunchAgent runs hourly on the hour, 7 AM - 4 PM weekdays; 65 min gives a 5 min buffer)
@@ -114,13 +135,10 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
 
   const shortcuts: Shortcut[] = useMemo(() => [
     // Navigation
-    { key: "1", modifiers: ["cmd"], action: () => router.push("/"), description: "Go to Focus", category: "Navigation" },
-    { key: "2", modifiers: ["cmd"], action: () => router.push("/inbox"), description: "Go to Inbox", category: "Navigation" },
+    { key: "1", modifiers: ["cmd"], action: () => router.push("/"), description: "Go to Today", category: "Navigation" },
+    { key: "2", modifiers: ["cmd"], action: () => router.push("/board"), description: "Go to Board", category: "Navigation" },
     { key: "3", modifiers: ["cmd"], action: () => router.push("/tracker"), description: "Go to Tracker", category: "Navigation" },
-    { key: "4", modifiers: ["cmd"], action: () => router.push("/board"), description: "Go to Board", category: "Navigation" },
-    { key: "5", modifiers: ["cmd"], action: () => router.push("/ai"), description: "Go to AI", category: "Navigation" },
-    { key: "6", modifiers: ["cmd"], action: () => router.push("/documents"), description: "Go to Documents", category: "Navigation" },
-    { key: "7", modifiers: ["cmd"], action: () => router.push("/drafts"), description: "Go to Drafts", category: "Navigation" },
+    { key: "4", modifiers: ["cmd"], action: () => router.push("/formatter"), description: "Go to Formatter", category: "Navigation" },
     { key: ",", modifiers: ["cmd"], action: () => router.push("/settings"), description: "Go to Settings", category: "Navigation" },
 
     // Note: Cmd+K is handled by GlobalSearch component directly
@@ -132,16 +150,6 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
   ], [router, toggleSidebar, toggleShortcuts, closeShortcuts]);
 
   useHotkeys(shortcuts);
-
-  // Communication check-in timer (30-min intervals)
-  const checkIn = useCheckInTimer(currentBlock?.roleId);
-
-  // Play sound when check-in expires
-  useEffect(() => {
-    if (checkIn.isExpired && currentBlock?.roleId) {
-      playSound("checkin");
-    }
-  }, [checkIn.isExpired, currentBlock?.roleId]);
 
   return (
     <div className="min-h-screen bg-[var(--surface)] text-[var(--text-primary)]" data-sidebar-collapsed={sidebarCollapsed}>
@@ -167,70 +175,17 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
       {/* GlobalSearch always mounted for ⌘K even when sidebar is collapsed */}
       {sidebarCollapsed && <GlobalSearch hideTrigger />}
 
-      {/* End-of-day planning prompt — fires at 4:45pm Mon-Fri if not yet planned */}
-      <EodPlanningPrompt />
+      {/* Mandatory health/routine reminders — banner at/after each reminder's time on its days */}
+      <Reminders />
 
-      {/* Communication check-in dialog */}
+      {/* Block-transition ritual — full-screen reset between company blocks */}
       <AnimatePresence>
-        {checkIn.isExpired && currentBlock?.roleId && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
-            >
-              <div className="px-6 pt-6 pb-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: `${currentBlock.roleColor || "#706c65"}20` }}
-                  >
-                    <MessageSquare className="h-5 w-5" style={{ color: currentBlock.roleColor || "#706c65" }} />
-                  </div>
-                  <div>
-                    <p className="text-[13px] text-[var(--text-tertiary)]">Time to check</p>
-                    <h2 className="text-[20px] font-bold leading-tight" style={{ color: currentBlock.roleColor || "#e8e6e1" }}>
-                      Slack / Teams
-                    </h2>
-                  </div>
-                </div>
-                <p className="text-[13px] text-[var(--text-tertiary)]">
-                  Quick triage — 2-3 minutes. Reply or flag, then come back.
-                </p>
-              </div>
-
-              <div className="mx-6 border-t border-[var(--border-subtle)]" />
-
-              <div className="px-6 py-4 flex items-center gap-3">
-                <button
-                  onClick={() => checkIn.snooze(5)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 text-[13px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-raised)] rounded-lg transition-colors"
-                >
-                  <Clock className="h-3.5 w-3.5" />
-                  Delay 5 min
-                </button>
-                <div className="flex-1" />
-                <button
-                  onClick={() => checkIn.markChecked()}
-                  className="flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-medium rounded-lg transition-colors"
-                  style={{
-                    backgroundColor: `${currentBlock.roleColor || "#706c65"}20`,
-                    color: currentBlock.roleColor || "#e8e6e1",
-                  }}
-                >
-                  <Check className="h-3.5 w-3.5" />
-                  I checked
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
+        {transition && (
+          <BlockTransition
+            from={transition.from}
+            to={transition.to}
+            onClose={() => setTransition(null)}
+          />
         )}
       </AnimatePresence>
     </div>

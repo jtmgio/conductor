@@ -3,22 +3,40 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, X, CheckSquare, Clock, FileText, MessageSquare, Sparkles, Loader2, RefreshCw, Calendar, Mic, Link2, Plus, PenLine, Copy, Check } from "lucide-react";
+import { Search, X, CheckSquare, Clock, FileText, MessageSquare, Sparkles, Loader2, RefreshCw, Calendar, Mic, Link2, Plus, PenLine, Copy, Check, Crosshair, Columns3, ListChecks, Settings, Moon } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { useTaskSuggestion } from "@/hooks/useTaskSuggestion";
 import { TaskSuggestionBox } from "@/components/TaskSuggestionBox";
 import { TaskBrainDump } from "@/components/TaskBrainDump";
+import { taskKey } from "@/lib/task-key";
 import { useFormatMessage } from "@/hooks/useFormatMessage";
 import { sanitizeHtml } from "@/lib/sanitize-html";
-import { todayISO } from "@/lib/dates";
+import { todayISO, tomorrowISO, parseDateOnly, formatDateOnly, nextWorkingDay } from "@/lib/dates";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 interface SearchResult {
-  tasks: Array<{ id: string; title: string; priority: string; dueDate?: string; role: { id: string; name: string; color: string } }>;
+  tasks: Array<{ id: string; title: string; priority: string; dueDate?: string; number?: number | null; externalKey?: string | null; role: { id: string; name: string; color: string; taskPrefix?: string | null } }>;
   followUps: Array<{ id: string; title: string; waitingOn: string; role: { id: string; name: string; color: string } }>;
   notes: Array<{ id: string; content: string; createdAt: string; role: { id: string; name: string; color: string } }>;
   transcripts: Array<{ id: string; preview: string; createdAt: string; role: { id: string; name: string; color: string } }>;
+}
+
+// Slack mrkdwn → standard markdown, for the preview only. The API emits real
+// Slack syntax (*bold*, _italic_, ~strike~), but ReactMarkdown reads *x* as
+// italic — and Copy grabs the rendered preview HTML, so a misrender here would
+// paste wrong into Slack too. Code spans/blocks are left untouched.
+function mrkdwnToMarkdown(text: string): string {
+  return text
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/)
+    .map((seg) => {
+      if (seg.startsWith("`")) return seg;
+      return seg
+        .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s.,;:!?)]|$)/gm, "$1**$2**")
+        .replace(/(^|[\s(])_([^_\n]+)_(?=[\s.,;:!?)]|$)/gm, "$1*$2*")
+        .replace(/(^|[\s(])~([^~\n]+)~(?=[\s.,;:!?)]|$)/gm, "$1~~$2~~");
+    })
+    .join("");
 }
 
 interface QuickAction {
@@ -46,6 +64,7 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
   const [newTaskRoleId, setNewTaskRoleId] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<"normal" | "urgent">("normal");
   const [newTaskIsToday, setNewTaskIsToday] = useState(false);
+  const [newTaskScheduledFor, setNewTaskScheduledFor] = useState<string | null>(null);
   const [roles, setRoles] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [formatMessageMode, setFormatMessageMode] = useState(false);
   const [formatRoleId, setFormatRoleId] = useState("");
@@ -101,20 +120,12 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
 
   const quickActions: QuickAction[] = [
     {
-      id: "sync-granola",
-      label: "Sync Granola",
-      description: "Pull meeting transcripts into Inbox",
-      icon: Mic,
-      keywords: ["sync", "granola", "meetings", "transcripts"],
-      action: () => runSync("granola", "/inbox"),
-    },
-    {
-      id: "sync-linear",
-      label: "Sync Linear",
-      description: "Import tasks from Linear",
-      icon: Link2,
-      keywords: ["sync", "linear", "tasks", "import"],
-      action: () => runSync("linear", "/board"),
+      id: "format-message",
+      label: "Format message",
+      description: "Rewrite a draft in your voice",
+      icon: PenLine,
+      keywords: ["format", "tone", "rewrite", "message", "draft", "slack", "teams", "email"],
+      action: async () => { setOpen(false); router.push("/formatter"); },
     },
     {
       id: "add-task",
@@ -128,16 +139,52 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
       },
     },
     {
-      id: "format-message",
-      label: "Format message",
-      description: "Rewrite in your tone for Slack, Teams, or email",
+      id: "plan-tomorrow",
+      label: "Plan tomorrow",
+      description: "Line up tomorrow's tasks",
+      icon: Moon,
+      keywords: ["plan", "tomorrow", "next day", "schedule", "prep"],
+      action: async () => { setOpen(false); router.push("/plan"); },
+    },
+    {
+      id: "go-today",
+      label: "Go to Today",
+      description: "Your one-thing cockpit",
+      icon: Crosshair,
+      keywords: ["today", "focus", "home", "now"],
+      action: async () => { setOpen(false); router.push("/"); },
+    },
+    {
+      id: "go-board",
+      label: "Go to Board",
+      description: "All tasks by status",
+      icon: Columns3,
+      keywords: ["board", "kanban", "tasks", "backlog"],
+      action: async () => { setOpen(false); router.push("/board"); },
+    },
+    {
+      id: "go-formatter",
+      label: "Go to Formatter",
+      description: "Rewrite a draft in your voice",
       icon: PenLine,
-      keywords: ["format", "tone", "rewrite", "message", "draft", "slack", "teams", "email"],
-      action: async () => {
-        setFormatMessageMode(true);
-        setFormatRoleId(roles[0]?.id || "");
-        setTimeout(() => formatRoleSelectRef.current?.focus(), 100);
-      },
+      keywords: ["formatter", "format", "message", "draft", "rewrite"],
+      action: async () => { setOpen(false); router.push("/formatter"); },
+    },
+    {
+      id: "go-tracker",
+      label: "Go to Tracker",
+      description: "Things you're waiting on",
+      icon: ListChecks,
+      keywords: ["tracker", "follow", "waiting", "followup"],
+      action: async () => { setOpen(false); router.push("/tracker"); },
+    },
+    {
+      id: "go-settings",
+      label: "Go to Settings",
+      description: "Roles, integrations, reminders",
+      icon: Settings,
+      keywords: ["settings", "config", "integrations", "reminders"],
+      action: async () => { setOpen(false); router.push("/settings"); },
     },
   ];
 
@@ -174,7 +221,7 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
   };
 
   const totalResults = results
-    ? results.tasks.length + results.followUps.length + results.notes.length + results.transcripts.length
+    ? results.tasks.length + results.followUps.length
     : 0;
 
   const filteredActions = query.trim()
@@ -193,8 +240,6 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
   if (results && totalResults > 0) {
     for (let i = 0; i < results.tasks.length; i++) selectableItems.push({ type: "result", category: "tasks", idx: i });
     for (let i = 0; i < results.followUps.length; i++) selectableItems.push({ type: "result", category: "followUps", idx: i });
-    for (let i = 0; i < results.notes.length; i++) selectableItems.push({ type: "result", category: "notes", idx: i });
-    for (let i = 0; i < results.transcripts.length; i++) selectableItems.push({ type: "result", category: "transcripts", idx: i });
   }
 
   // Reset selection when items change
@@ -254,7 +299,7 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 100);
-    if (!open) { setQuery(""); setResults(null); setAiAnswer(null); setAddTaskMode(false); setNewTaskTitle(""); setFormatMessageMode(false); fmtHook.reset(); setFormatInput(""); setFormatRoleId(""); setFormatType("slack"); }
+    if (!open) { setQuery(""); setResults(null); setAiAnswer(null); setAddTaskMode(false); setNewTaskTitle(""); setNewTaskScheduledFor(null); setFormatMessageMode(false); fmtHook.reset(); setFormatInput(""); setFormatRoleId(""); setFormatType("slack"); }
   }, [open]);
 
   const doSearch = useCallback(async (q: string) => {
@@ -415,7 +460,9 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
                           ) : fmtHook.format === "sms" ? (
                             <pre className="whitespace-pre-wrap font-sans">{fmtHook.formatted}</pre>
                           ) : (
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{fmtHook.formatted}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {fmtHook.format === "slack" ? mrkdwnToMarkdown(fmtHook.formatted) : fmtHook.formatted}
+                            </ReactMarkdown>
                           )}
                         </div>
                       </motion.div>
@@ -448,12 +495,58 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
                     ))}
                   </select>
 
+                  {/* Schedule chips */}
+                  {newTaskRoleId && (() => {
+                    const today = todayISO();
+                    const tomorrow = tomorrowISO();
+                    const nwdDate = formatDateOnly(nextWorkingDay(parseDateOnly(today)!))!;
+                    const nwdLabel = parseDateOnly(nwdDate)!.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+                    const showNwdChip = nwdDate !== tomorrow;
+                    const options: Array<{ label: string; value: string | null }> = [
+                      { label: "Backlog", value: null },
+                      { label: "Today", value: today },
+                      { label: "Tomorrow", value: tomorrow },
+                    ];
+                    if (showNwdChip) options.push({ label: nwdLabel, value: nwdDate });
+                    const isPreset = newTaskScheduledFor === null || options.some((o) => o.value === newTaskScheduledFor);
+                    return (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mr-1">Schedule</span>
+                        {options.map((opt) => (
+                          <button
+                            key={opt.label}
+                            onClick={() => setNewTaskScheduledFor(opt.value)}
+                            className={`px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors ${
+                              newTaskScheduledFor === opt.value
+                                ? "bg-[var(--accent-blue)]/15 text-[var(--accent-blue)]"
+                                : "bg-[var(--surface)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                        <input
+                          type="date"
+                          value={!isPreset && newTaskScheduledFor ? newTaskScheduledFor : ""}
+                          onChange={(e) => setNewTaskScheduledFor(e.target.value || null)}
+                          className={`bg-transparent border rounded-full px-2 py-0.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/30 ${
+                            !isPreset && newTaskScheduledFor
+                              ? "border-[var(--accent-blue)]/40 text-[var(--accent-blue)]"
+                              : "border-[var(--border-subtle)] text-[var(--text-tertiary)]"
+                          }`}
+                        />
+                      </div>
+                    );
+                  })()}
+
                   {/* Brain dump → AI refine → create */}
                   {newTaskRoleId && (
                     <TaskBrainDump
                       roleId={newTaskRoleId}
                       roleName={roles.find(r => r.id === newTaskRoleId)?.name}
                       roleColor={roles.find(r => r.id === newTaskRoleId)?.color}
+                      scheduledFor={newTaskScheduledFor}
+                      onScheduleParsed={(iso) => setNewTaskScheduledFor(iso)}
                       onTaskCreated={() => {
                         window.dispatchEvent(new CustomEvent("tasks-changed"));
                       }}
@@ -532,6 +625,9 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
                           const idx = runIdx++;
                           return (
                           <ResultRow key={t.id} role={t.role} selected={selectedIdx === idx} onMouseEnter={() => setSelectedIdx(idx)} onClick={() => setOpen(false)}>
+                            {taskKey(t, t.role) && (
+                              <span className="font-mono text-[11px] text-[var(--text-tertiary)] mr-2">{taskKey(t, t.role)}</span>
+                            )}
                             <span className="text-[var(--text-primary)]">{t.title}</span>
                             {t.priority === "urgent" && <span className="text-[11px] font-bold text-red-400 ml-2">URGENT</span>}
                           </ResultRow>
@@ -547,30 +643,6 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
                           <ResultRow key={f.id} role={f.role} selected={selectedIdx === idx} onMouseEnter={() => setSelectedIdx(idx)} onClick={() => setOpen(false)}>
                             <span className="text-[var(--text-primary)]">{f.title}</span>
                             <span className="text-[12px] text-[var(--text-tertiary)] ml-2">waiting on {f.waitingOn}</span>
-                          </ResultRow>
-                          );
-                        })}
-                      </Section>
-                    )}
-                    {results.notes.length > 0 && (
-                      <Section icon={FileText} label="Notes">
-                        {results.notes.map((n) => {
-                          const idx = runIdx++;
-                          return (
-                          <ResultRow key={n.id} role={n.role} selected={selectedIdx === idx} onMouseEnter={() => setSelectedIdx(idx)} onClick={() => setOpen(false)}>
-                            <span className="text-[var(--text-secondary)] text-[14px] truncate">{n.content}</span>
-                          </ResultRow>
-                          );
-                        })}
-                      </Section>
-                    )}
-                    {results.transcripts.length > 0 && (
-                      <Section icon={MessageSquare} label="Transcripts">
-                        {results.transcripts.map((t) => {
-                          const idx = runIdx++;
-                          return (
-                          <ResultRow key={t.id} role={t.role} selected={selectedIdx === idx} onMouseEnter={() => setSelectedIdx(idx)} onClick={() => setOpen(false)}>
-                            <span className="text-[var(--text-secondary)] text-[14px] truncate">{t.preview}</span>
                           </ResultRow>
                           );
                         })}

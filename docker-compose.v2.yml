@@ -1,0 +1,43 @@
+# Parallel v2 dogfood stack — runs alongside the live 5402 app on port 5403,
+# against the SAME shared Postgres. Lets v2 be built/tested without touching the
+# daily driver. See docs/ROLLOUT_V2.md.
+#
+#   docker compose -p conductor-v2 -f docker-compose.v2.yml up -d --build
+#   # v2 at http://localhost:5403 ; live app stays on http://localhost:5402
+#   docker compose -p conductor-v2 -f docker-compose.v2.yml down   # tear down after cutover
+#
+# IMPORTANT: only ever --build THIS (conductor-v2) project during the Track B build.
+# Never rebuild the default 5402 project until cutover.
+
+services:
+  conductor:
+    build: .
+    ports:
+      - "5403:3000"
+    env_file:
+      - .env
+    environment:
+      # Same shared `postgres` container + real data as the live app (additive schema,
+      # so old 5402 and new 5403 both run against it safely).
+      DATABASE_URL: postgresql://conductor:localdev@postgres:5432/conductor
+      NODE_ENV: production
+      UPLOAD_DIR: /opt/conductor/uploads
+      NEXTAUTH_URL: http://localhost:5403
+      LOCAL_AI_BASE_URL: ${LOCAL_AI_BASE_URL:-http://host.docker.internal:11436/v1}
+      LOCAL_AI_MODEL: ${LOCAL_AI_MODEL:-mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit}
+    volumes:
+      - uploads-v2:/opt/conductor/uploads
+    networks:
+      - default
+      - shared-postgres
+    restart: unless-stopped
+    # No cron sidecar here — the live 5402 stack's cron already runs the hourly syncs;
+    # a second one would double-sync.
+
+volumes:
+  uploads-v2:
+
+networks:
+  shared-postgres:
+    external: true
+    name: postgres_default

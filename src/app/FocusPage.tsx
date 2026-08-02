@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import { FocusView } from "@/components/FocusView";
+import { TodayCockpit } from "@/components/TodayCockpit";
+import { MobileCapture } from "@/components/MobileCapture";
 
 interface BlockInfo {
   id: string;
@@ -50,7 +51,13 @@ export function FocusPage() {
       currentBlock={currentBlock}
       nextBlocks={nextBlocks}
     >
-      <FocusView currentBlock={currentBlock} nextBlocks={nextBlocks} allBlocks={allBlocks} offClockMessage={offClockMessage} />
+      {/* Phone: pure capture. Desktop: the full cockpit. */}
+      <div className="lg:hidden">
+        <MobileCapture currentBlock={currentBlock} />
+      </div>
+      <div className="hidden lg:block">
+        <TodayCockpit currentBlock={currentBlock} nextBlocks={nextBlocks} offClockMessage={offClockMessage} />
+      </div>
     </AppShell>
   );
 }

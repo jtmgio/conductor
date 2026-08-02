@@ -184,7 +184,7 @@ Personal
 
 #### 5e. Install the LaunchAgent
 
-The LaunchAgent runs hourly on the hour (7 AM - 4 PM, weekdays) on your Mac, reads Calendar events via EventKit, and POSTs to the Docker container.
+The LaunchAgent runs every 10 minutes, around the clock, on your Mac. It reads a rolling 14-day window of Calendar events via EventKit and POSTs each day to the Docker container.
 
 ```bash
 # Create logs directory
@@ -217,7 +217,7 @@ Calendar sync success — {"meetingsFound":13,"meetingsCreated":13,...}
 ```
 
 The sync:
-- Runs hourly on the hour during working hours (7 AM - 4 PM, weekdays)
+- Runs every 10 minutes, 24/7 (per-day hashing makes off-hours runs nearly free — unchanged days skip the API call)
 - Hashes event data — skips API call if nothing changed (saves cost)
 - Uses Claude Haiku for prep task generation (~$0.001/call)
 - AgendaStrip on the Focus page auto-refreshes within 15 seconds
@@ -438,10 +438,11 @@ Qwen3 30B (local MLX, current default), Sonnet 4.6, Haiku 4.5, Opus 4.6, GPT-5.4
 - Dedup: `sourceType="granola"`, `sourceId="granola-{noteId}"`
 
 ### Calendar (macOS EventKit)
-- **Hourly sync** via macOS LaunchAgent (`cron/com.conductor.calendar-sync.plist`) — runs on the hour, 7 AM - 4 PM weekdays
+- **10-minute sync** via macOS LaunchAgent (`cron/com.conductor.calendar-sync.plist`) — runs 24/7 over a rolling `CALENDAR_WINDOW_DAYS` (default 14) day window, so future meetings are queryable. Set `CALENDAR_WORK_HOURS_ONLY=1` to restore the old 7AM-4PM weekday guard.
 - Reads events directly from macOS Calendar via **EventKit** (`cron/calendar-events.swift`) — no screenshots needed
 - Maps calendar accounts to roles (e.g., `you@acme-corp.com → Acme Corp`) configured in Settings > Integrations > Calendar
 - Generates prep tasks for each non-ignored meeting via Claude Haiku (text, not vision — cheap)
+- **`CALENDAR_PREP_TASKS="off"`** (env, currently set) disables prep tasks entirely: meetings still sync to the AgendaStrip but no Task rows are created and the AI call is skipped (sync response reports `summary: "prep tasks disabled"` so hash caching still works). Remove the env var + rebuild to re-enable.
 - 3-phase reconciliation: upsert new/changed meetings, remove deleted meetings, preserve completed prep tasks
 - Dedup: `sourceType="calendar"`, `sourceId="cal-{date}-{normalizedTitle}"`
 - Hash-based change detection: hashes event data, skips API call if calendar unchanged
@@ -467,7 +468,7 @@ Qwen3 30B (local MLX, current default), Sonnet 4.6, Haiku 4.5, Opus 4.6, GPT-5.4
 
 4. **Configure ignore patterns** in Settings > Integrations > Calendar (OOO, Busy, Deep Work, etc.)
 
-5. **Install the LaunchAgent** (runs hourly on the hour, guards for weekday working hours 7AM-4PM):
+5. **Install the LaunchAgent** (runs every 10 minutes, 24/7):
    ```bash
    cp cron/com.conductor.calendar-sync.plist ~/Library/LaunchAgents/
    launchctl load ~/Library/LaunchAgents/com.conductor.calendar-sync.plist
@@ -484,18 +485,51 @@ Qwen3 30B (local MLX, current default), Sonnet 4.6, Haiku 4.5, Opus 4.6, GPT-5.4
 1. **Rebuilding `cron/calendar-events` revokes its macOS Calendar (TCC) grant.** After any `bash cron/build-calendar-events.sh`, run `./cron/calendar-events` once interactively and grant the permission prompt — otherwise the next launchd run hangs forever on an invisible prompt.
 2. **A hung run wedges the whole schedule.** launchd runs one instance per label; a stuck sync silently blocks all future runs. The script has a 90s watchdog, but if `launchctl list | grep calendar-sync` shows a long-lived PID, kill it.
 3. **`tasksCreated: 0` with no `summary` in the result = the Haiku prep-task call failed** — usually Anthropic credits exhausted. Meetings still sync; the script skips hash-caching so prep tasks retry hourly once credits are restored.
-4. **Force a full re-sync:** `rm -f /tmp/conductor-calendar-last-hash && bash cron/calendar-sync.sh`
+4. **Force a full re-sync:** `rm -f /tmp/conductor-calendar-hash-* && bash cron/calendar-sync.sh` (hashes are per-day: `/tmp/conductor-calendar-hash-YYYY-MM-DD`)
 5. The repo plist is a template (`/path/to/conductor` placeholders); the live copy in `~/Library/LaunchAgents/` has real paths.
 
 #### Key files
 - `docs/RUNBOOK_CALENDAR_SYNC.md` — operational runbook (read this first when sync breaks)
 - `cron/calendar-events.swift` — Swift source; compiled by `cron/build-calendar-events.sh` into the `calendar-events` binary that holds the TCC grant
 - `cron/calendar-sync.sh` — Bash wrapper: reads events (90s watchdog), guards date drift, hashes events+date, POSTs to API
-- `cron/com.conductor.calendar-sync.plist` — macOS LaunchAgent (hourly, 7 AM–4 PM weekdays)
+- `cron/com.conductor.calendar-sync.plist` — macOS LaunchAgent (every 10 min, 24/7)
 - `src/app/api/calendar/process/route.ts` — Accepts structured events or screenshot, reconciles with DB
 - `src/app/api/calendar/last-sync/route.ts` — Returns last sync timestamp (polled by AgendaStrip)
 - `src/app/api/calendar/accounts/route.ts` — Discovers calendar accounts (macOS only, not in Docker)
 - `src/components/AgendaStrip.tsx` — Displays today's meetings, polls for sync updates
+
+## Task keys
+
+Every task has a human-addressable key so it can be named out loud instead of by cuid —
+"close WRI-12" rather than pasting `cmd8x2p9k…`. This is what makes the MCP surface usable
+conversationally.
+
+- `Role.taskPrefix` (unique, 2-4 chars, editable in Settings > Roles) + `Role.taskSeq`, a
+  monotonic per-company counter. `Task.number` is unique per role; the key renders as
+  `${prefix}-${number}` via `taskKey()` in `src/lib/task-key.ts`.
+- **Allocation lives in a Prisma client extension** in `src/lib/prisma.ts`, not in the
+  routes — there are seven `task.create` call sites and centralizing it means a new one
+  can't silently produce a keyless task. The counter bump is an atomic
+  `UPDATE ... RETURNING`, so concurrent creates can't collide.
+- **Numbers are never reused.** Deleting VQ-14 leaves it dead; gaps are correct.
+- `Task.externalKey` holds an upstream system's own key and wins over prefix/number, so a
+  Linear issue stays `MED-54` instead of getting a second Conductor identity. The extension
+  skips allocation when `externalKey` is set. Linear sync no longer prefixes titles.
+- New companies get a prefix auto-derived from the name (`uniquePrefix()`, camelCase-aware:
+  vQuip -> VQ, HealthMe -> HM), collision-checked against existing prefixes.
+- MCP accepts a key anywhere it accepts an id (`resolveTaskId()`, case-insensitive) and
+  returns `key` as the first field of every task. ⌘K search matches keys too.
+
+## MCP server (external agents)
+
+Conductor exposes an MCP endpoint at `/api/mcp/[transport]` (`src/app/api/mcp/[transport]/route.ts`, built on `mcp-handler`) so external agents — Claude Code on any Tailscale device — can work the task system.
+
+- **URL**: `http://joshuas-mac-pro.tail842fd4.ts.net:5402/api/mcp/mcp` (streamable HTTP)
+- **Auth**: `Authorization: Bearer $MCP_API_TOKEN` (env var; fails closed if unset). NextAuth does not apply here.
+- **Tools**: `get_context`, `list_tasks`, `create_task`, `update_task`, `create_followup`, `add_note`, `search`, `format_message`
+- Tools resolve roles by (partial) name, tasks created get `sourceType: "mcp"` and default to backlog (not today)
+- `create_task` AI-refines raw text by default via `src/lib/task-refine.ts` (shared with `/api/tasks/refine`): short title, notes, checklist, resolved dueDate. When no role is given, local AI infers it from the role directory + staff names and must quote its evidence; `evidenceMatchesRole()` verifies the quote in code (topic overlap like "dashboard" doesn't pass). Unverifiable → the tool returns `needsClarification` (task NOT created) with role options + bestGuess + currentBlockRole so the client asks the user. `refine: false` saves verbatim. `update_task` accepts `role` to move a misfiled task.
+- Registered in Claude Code user scope: `claude mcp add --scope user --transport http conductor <url> --header "Authorization: Bearer <token>"`
 
 ## Conversations
 

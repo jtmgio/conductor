@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { TaskDetailDrawer } from "@/components/TaskDetailDrawer";
 import { STATUS_CONFIG, STATUS_ORDER, BOARD_COLUMNS } from "@/components/TaskItem";
 import { cn } from "@/lib/utils";
+import { taskKey } from "@/lib/task-key";
 import { useToast } from "@/components/ui/toast";
 
 const DONE_COL = {
@@ -36,7 +37,9 @@ interface BoardTask {
   checklist?: ChecklistItem[] | null;
   scheduledFor?: string | null;
   tags?: TagRelation[];
-  role: { id: string; name: string; color: string };
+  number?: number | null;
+  externalKey?: string | null;
+  role: { id: string; name: string; color: string; taskPrefix?: string | null };
 }
 
 interface Role {
@@ -196,28 +199,28 @@ export function BoardPage() {
 
   return (
     <AppShell>
-      <div className="py-6">
-        <h1 className="text-[32px] font-semibold text-[var(--text-primary)] mb-1">Board</h1>
-        <p className="text-[15px] text-[var(--text-tertiary)] mb-6">Kanban view of all tasks by status. Drag to reorder, filter by role.</p>
+      <div className="pt-1">
+        <h1 className="text-[26px] font-bold tracking-tight text-[var(--text-primary)]">Board</h1>
+        <p className="mt-1 text-[14px] text-[var(--text-tertiary)]">One company at a time. Drag a card to move it.</p>
 
-        {/* Role tabs + done toggle */}
-        <div className="flex items-center gap-3 mb-8">
+        {/* Company tabs + done toggle */}
+        <div className="mt-5 mb-7 flex items-center gap-3">
           <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 flex-1">
             {roles.map((role) => (
               <button
                 key={role.id}
                 onClick={() => { setActiveRoleId(role.id); setMobileFilter("all"); }}
                 className={cn(
-                  "px-4 py-1.5 rounded-full text-[15px] font-medium whitespace-nowrap transition-colors shrink-0 flex items-center gap-1.5",
+                  "min-h-[36px] px-3.5 rounded-xl text-[13px] font-medium whitespace-nowrap transition-colors shrink-0 flex items-center gap-1.5 border",
                   activeRoleId === role.id
-                    ? "text-white"
-                    : "border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)]"
+                    ? "bg-[var(--surface-raised)] text-[var(--text-primary)]"
+                    : "border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
                 )}
-                style={activeRoleId === role.id ? { backgroundColor: role.color } : undefined}
+                style={activeRoleId === role.id ? { borderColor: role.color } : undefined}
               >
                 <span
                   className="w-2 h-2 rounded-full shrink-0"
-                  style={{ backgroundColor: activeRoleId === role.id ? "white" : role.color }}
+                  style={{ backgroundColor: role.color }}
                 />
                 {role.name}
               </button>
@@ -226,7 +229,7 @@ export function BoardPage() {
           <button
             onClick={() => setShowDone(!showDone)}
             className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition-colors shrink-0",
+              "flex items-center gap-1.5 min-h-[36px] px-3.5 rounded-xl text-[13px] font-medium whitespace-nowrap transition-colors shrink-0 border border-transparent",
               showDone
                 ? "bg-[#22c55e]/15 text-[#22c55e]"
                 : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-raised)]"
@@ -282,9 +285,6 @@ export function BoardPage() {
                     style={{ color: STATUS_CONFIG[status].text }}
                   >
                     {STATUS_CONFIG[status].label}
-                    <span className="text-[var(--text-tertiary)] font-normal ml-2">
-                      ({board[status]?.length || 0})
-                    </span>
                   </div>
                   <div className="space-y-2 flex-1 overflow-y-auto hide-scrollbar">
                     <AnimatePresence mode="popLayout">
@@ -342,11 +342,6 @@ export function BoardPage() {
                   style={{ color: DONE_COL.text }}
                 >
                   {DONE_COL.label}
-                  {showDone && board.done && (
-                    <span className="text-[var(--text-tertiary)] font-normal ml-2">
-                      ({board.done.length})
-                    </span>
-                  )}
                 </div>
                 {showDone && board.done && board.done.length > 0 ? (
                   <div className="space-y-2 flex-1 overflow-y-auto hide-scrollbar">
@@ -410,26 +405,26 @@ export function BoardPage() {
                 <button
                   onClick={() => setMobileFilter("all")}
                   className={cn(
-                    "px-4 py-1.5 rounded-full text-[15px] font-medium whitespace-nowrap transition-colors shrink-0",
+                    "min-h-[36px] px-3.5 rounded-xl text-[13px] font-medium whitespace-nowrap transition-colors shrink-0 border",
                     mobileFilter === "all"
-                      ? "bg-[var(--accent-blue)] text-white"
-                      : "border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)]"
+                      ? "border-[var(--border-strong)] bg-[var(--surface-raised)] text-[var(--text-primary)]"
+                      : "border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
                   )}
                 >
-                  All ({allTasks.length})
+                  All
                 </button>
                 {BOARD_COLUMNS.map((s) => (
                   <button
                     key={s}
                     onClick={() => setMobileFilter(s)}
                     className={cn(
-                      "px-4 py-1.5 rounded-full text-[15px] font-medium whitespace-nowrap transition-colors shrink-0",
+                      "min-h-[36px] px-3.5 rounded-xl text-[13px] font-medium whitespace-nowrap transition-colors shrink-0 border",
                       mobileFilter === s
-                        ? "bg-[var(--accent-blue)] text-white"
-                        : "border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)]"
+                        ? "border-[var(--border-strong)] bg-[var(--surface-raised)] text-[var(--text-primary)]"
+                        : "border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
                     )}
                   >
-                    {STATUS_CONFIG[s].label} ({board[s]?.length || 0})
+                    {STATUS_CONFIG[s].label}
                   </button>
                 ))}
               </div>
@@ -535,6 +530,9 @@ function BoardCard({
                   <span className="text-[11px] font-bold tracking-wide text-red-400 uppercase">URGENT</span>
                 )}
                 <p className="text-[15px] font-medium text-[var(--text-primary)] leading-snug">{task.title}</p>
+                {taskKey(task, task.role) && (
+                  <p className="mt-1 font-mono text-[11px] text-[var(--text-tertiary)]">{taskKey(task, task.role)}</p>
+                )}
                 <div className="flex gap-1.5 flex-wrap mt-2">
                   <span
                     className="text-[11px] font-medium px-2 py-0.5 rounded-full"

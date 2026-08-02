@@ -171,8 +171,10 @@ async function processStructuredEvents(
     }
   }
 
-  // Use text AI (Haiku — cheap) to generate prep tasks for non-ignored meetings
-  if (nonIgnored.length > 0) {
+  // Use text AI (Haiku — cheap) to generate prep tasks for non-ignored meetings.
+  // CALENDAR_PREP_TASKS=off disables the whole prep pipeline: no AI call here, and
+  // meetings without a prepTask never become Task rows in reconcileAndSave.
+  if (nonIgnored.length > 0 && process.env.CALENDAR_PREP_TASKS !== "off") {
     try {
       const meetingList = nonIgnored.map((m) => {
         const parts = [`- ${m.event.startTime}-${m.event.endTime}: ${m.event.title}`];
@@ -340,6 +342,12 @@ async function reconcileAndSave(
   trigger: SyncTrigger,
   syncStart: Date,
 ) {
+  // Prep tasks disabled → strip them before reconciliation so no path (structured
+  // sync, screenshot fallback, or backfill) creates Task rows for meetings.
+  if (process.env.CALENDAR_PREP_TASKS === "off") {
+    for (const m of parsed.meetings) m.prepTask = undefined;
+  }
+
   function normalize(s: string): string {
     return s.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 50);
   }
@@ -478,14 +486,24 @@ async function reconcileAndSave(
     }
   }
 
-  // Phase 3: Remove stale meetings
-  const now = new Date();
+  // Phase 3: Remove stale meetings. currentTimeStr MUST be local wall-clock — meeting
+  // start/end times are local ("14:30"), but the container runs UTC, so now.getHours()
+  // would be the UTC hour and wrongly mark afternoon meetings as already-ended (so a
+  // moved/deleted meeting would never get removed). Compute in the configured tz.
+  const tz = process.env.TIMEZONE || "America/New_York";
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
   const currentTimeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  // The "already-ended, preserve it" guard is a TODAY-only concern (don't yank a
+  // meeting that already happened this morning). For future/past days in the rolling
+  // window, time-of-day is meaningless — always reconcile so moved/deleted meetings
+  // actually get removed.
+  const localTodayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const isProcessingToday = date === localTodayStr;
   const removedMeetings: { id: string }[] = [];
 
   for (const existing of existingMeetings) {
     if (parsedSourceIds.has(existing.sourceId)) continue;
-    if (existing.endTime <= currentTimeStr) continue;
+    if (isProcessingToday && existing.endTime <= currentTimeStr) continue;
 
     if (existing.prepTask && !existing.prepTask.done) {
       await prisma.task.delete({ where: { id: existing.prepTask.id } });
@@ -551,6 +569,8 @@ async function reconcileAndSave(
     meetingsIgnored,
     tasksCreated: createdTasks.length,
     conflicts: parsed.conflicts,
-    summary: parsed.summary,
+    // When prep tasks are disabled there is no AI summary by design — report that
+    // in the response so calendar-sync.sh caches the hash instead of retrying hourly
+    summary: parsed.summary ?? (process.env.CALENDAR_PREP_TASKS === "off" ? "prep tasks disabled" : undefined),
   });
 }
