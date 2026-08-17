@@ -36,6 +36,42 @@ function evidenceMatchesRole(
 }
 
 /**
+ * Split a brain dump into a card WITHOUT AI — first sentence becomes the title, the
+ * whole text goes to notes.
+ *
+ * The fallback for every path that would otherwise use the raw input as the title:
+ * `refine: false` callers (external agents that pass a fully-written paragraph), and
+ * refine failures. A 500-character title is never the right answer — VQ-150 and HM-81
+ * were both filed that way, unreadable on the board. Nothing is lost: the complete
+ * original always lands in notes.
+ */
+export function splitRawTask(rawText: string): { title: string; notes: string | null } {
+  const full = rawText.trim();
+  const oneLine = full.replace(/\s+/g, " ");
+
+  // Short and single-line: it's already a title.
+  if (oneLine.length <= 100 && !full.includes("\n")) return { title: oneLine, notes: null };
+
+  // Prefer a real first sentence, but only if it's title-shaped on its own.
+  const sentence = oneLine.match(/^(.{15,110}?)[.!?](?:\s|$)/);
+  let title = sentence?.[1]?.trim() ?? "";
+
+  if (!title) {
+    // No usable sentence break — take whole words up to the limit.
+    const words = oneLine.split(" ");
+    title = "";
+    for (const w of words) {
+      if ((title + " " + w).trim().length > 80) break;
+      title = (title + " " + w).trim();
+    }
+    if (!title) title = oneLine.slice(0, 80);
+    title += "…";
+  }
+
+  return { title, notes: full };
+}
+
+/**
  * Parse a raw brain-dump into a structured task card (short title, notes,
  * checklist, priority, resolved dueDate). Shared by /api/tasks/refine and the
  * MCP create_task tool.

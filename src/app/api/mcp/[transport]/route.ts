@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentBlock, getTimeLabel } from "@/lib/schedule";
 import { today, formatDateOnly } from "@/lib/dates";
 import { invalidateRebalanceCache } from "@/lib/schedule-rebalance";
-import { refineTask, type RefinedTask } from "@/lib/task-refine";
+import { refineTask, splitRawTask, type RefinedTask } from "@/lib/task-refine";
 import { formatMessage } from "@/lib/format-message";
 import { taskKey, parseTaskKey, looksLikeTaskKey } from "@/lib/task-key";
 
@@ -255,11 +255,15 @@ const handler = createMcpHandler(
           });
         }
 
+        // No AI title (refine:false, or refinement failed)? Split it deterministically
+        // rather than making the whole paragraph the title.
+        const fallback = refined?.title ? null : splitRawTask(text);
+
         const task = await prisma.task.create({
           data: {
             roleId: resolved.id,
-            title: refined?.title || text,
-            notes: refined?.notes || undefined,
+            title: refined?.title || fallback!.title,
+            notes: refined?.notes || fallback?.notes || undefined,
             checklist: refined?.checklist || undefined,
             priority: priority || refined?.priority || "normal",
             status: "backlog",
@@ -274,6 +278,7 @@ const handler = createMcpHandler(
           created: taskShape(task),
           roleWasInferred: !role,
           refined: !!refined,
+          ...(fallback?.notes ? { titleShortened: "Long text split — title is the first sentence, full text is in notes" } : {}),
           ...(refineError ? { warning: `AI refinement unavailable (${refineError}) — saved verbatim` } : {}),
           ...(refined?.checklist?.length ? { checklist: refined.checklist.map((c) => c.text) } : {}),
         });

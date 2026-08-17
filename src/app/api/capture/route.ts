@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { refineTask, type RefinedTask } from "@/lib/task-refine";
+import { refineTask, splitRawTask, type RefinedTask } from "@/lib/task-refine";
 import { getCurrentBlock } from "@/lib/schedule";
 import { today } from "@/lib/dates";
 import { taskKey } from "@/lib/task-key";
@@ -95,11 +95,15 @@ export async function POST(req: Request) {
   }
   if (!roleId) return NextResponse.json({ error: "No company to file under" }, { status: 400 });
 
+  // Refine unavailable? Split deterministically instead of titling the task with the
+  // entire dump (see splitRawTask).
+  const fallback = refined?.title ? null : splitRawTask(text);
+
   const task = await prisma.task.create({
     data: {
       roleId,
-      title: refined?.title || text,
-      notes: refined?.notes || undefined,
+      title: refined?.title || fallback!.title,
+      notes: refined?.notes || fallback?.notes || undefined,
       checklist: refined?.checklist || undefined,
       priority: refined?.priority || "normal",
       status: "backlog",
