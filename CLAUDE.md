@@ -285,7 +285,7 @@ rsync -avz old-machine:/path/to/uploads/ ./uploads/
 | Stop everything | `docker compose down` |
 | Run database migrations | `docker compose restart conductor` (entrypoint runs migrate) |
 | Manual calendar sync | `bash cron/calendar-sync.sh` |
-| Quick-capture a task | ⌘Space → `conductor` → Enter (or `bash mac/conductor-capture.sh "..."`) |
+| Quick-capture a task | ⌘Space → `todo` → Enter (or `bash mac/conductor-capture.sh "..."`) |
 | Rebuild the capture app | `bash mac/build-capture-app.sh` |
 | Check LaunchAgent status | `launchctl list \| grep conductor` |
 | Reload LaunchAgent | `launchctl unload ~/Library/LaunchAgents/com.conductor.calendar-sync.plist && launchctl load ~/Library/LaunchAgents/com.conductor.calendar-sync.plist` |
@@ -502,25 +502,29 @@ Qwen3 30B (local MLX, current default), Sonnet 4.6, Haiku 4.5, Opus 4.6, GPT-5.4
 
 ## Spotlight quick capture (macOS)
 
-⌘Space → `conductor` → Enter → type the task → Enter. Files it through the same MLX refine
-and company inference as MCP `create_task`, then shows an auto-dismissing alert naming the
-company it landed in.
+⌘Space → `todo` → Enter. A SwiftUI window: what to do, which company, today or backlog —
+all keyboard (`⌘1…9` company, `⌘T` today/backlog, `Enter` add, `Esc` cancel). Files through
+the same MLX refine as MCP `create_task` and confirms with the task key ("Added to vQuip · VQ-156").
 
-- `POST /api/capture` (`src/app/api/capture/route.ts`) is the backend — bearer-authed with
-  `MCP_API_TOKEN`, no NextAuth session needed. Also serves the iOS Siri Shortcut. Tasks land
-  in backlog (never today) with `sourceType: "siri"`.
-- `mac/conductor-capture.sh` — the client. Token lookup order: `~/.conductor/capture-token`,
-  then `MCP_API_TOKEN` in the repo `.env`. Override the target with `CONDUCTOR_URL`. Logs
-  every attempt (success and failure) to `logs/capture.log`.
-- `mac/ConductorCapture.applescript` + `mac/build-capture-app.sh` — compiles
-  `/Applications/Conductor Capture.app`, which Spotlight indexes. Run the build script once
-  per machine and again after editing the AppleScript; it bakes the absolute helper path in,
-  so moving the repo means rebuilding.
-- The helper is launched **detached** — a cold MLX refine takes up to ~30s and a modal dialog
-  frozen that long reads as a hung app. The input dialog closes instantly; the confirmation
-  arrives when the task lands.
-- Stock Spotlight can't pass arguments after an app name, so `conductor buy milk` on one line
-  isn't possible. That form needs Raycast/Alfred pointed at the same helper.
+**Named `Todo`, not `Conductor`, on purpose** — Spotlight ranks open windows above apps, so
+the running Conductor browser window always won the "conductor" match. `todo` has no competitor.
+
+- `src/app/api/capture/route.ts` — bearer-authed with `MCP_API_TOKEN`, no NextAuth session.
+  `GET` returns active companies + the current schedule block's `currentRoleId` (what the app
+  preselects). `POST` takes `{ text, role?, today? }`: an explicit `role` skips AI company
+  inference entirely, `today: true` sets `scheduledFor`. Also serves the iOS Siri Shortcut,
+  where both are omitted and inference still runs. Tasks get `sourceType: "siri"`.
+- `mac/todo-app/main.swift` + `mac/build-capture-app.sh` — builds `/Applications/Todo.app`.
+  Run once per machine, and again after editing the Swift. Needs the Xcode command line tools
+  (`xcode-select --install`). The build script also seeds `~/.conductor/{url,capture-token}`
+  and embeds `public/icon-512.png` as the app icon.
+- `mac/conductor-capture.sh` — the CLI equivalent (no picker; inference decides the company).
+  Useful for testing and for scripting captures. Logs to `logs/capture.log` in the repo, or
+  `~/.conductor/capture.log` on a client machine.
+- **Client machines** (laptop → tower) need only the repo clone plus `~/.conductor/url`
+  pointing at `http://joshuas-mac-pro.tail842fd4.ts.net:5402` and `~/.conductor/capture-token`
+  holding the tower's `MCP_API_TOKEN`. No Docker, no Postgres, no `.env`. Config lives outside
+  the repo because a Spotlight-launched app inherits no shell profile.
 
 ## Task keys
 
