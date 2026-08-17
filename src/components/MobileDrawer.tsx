@@ -13,6 +13,7 @@ const navLinks = [
   { href: "/board", label: "Board", icon: Columns3 },
   { href: "/tracker", label: "Tracker", icon: ListChecks },
   { href: "/formatter", label: "Formatter", icon: Send },
+  { href: "/meetings", label: "Meetings", icon: CalendarDays },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

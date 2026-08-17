@@ -179,6 +179,14 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
       action: async () => { setOpen(false); router.push("/tracker"); },
     },
     {
+      id: "go-meetings",
+      label: "Go to Meetings",
+      description: "Calendar history, prep, and transcripts",
+      icon: Calendar,
+      keywords: ["meetings", "calendar", "agenda", "transcript", "prep"],
+      action: async () => { setOpen(false); router.push("/meetings"); },
+    },
+    {
       id: "go-settings",
       label: "Go to Settings",
       description: "Roles, integrations, reminders",
