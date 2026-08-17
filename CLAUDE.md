@@ -285,6 +285,8 @@ rsync -avz old-machine:/path/to/uploads/ ./uploads/
 | Stop everything | `docker compose down` |
 | Run database migrations | `docker compose restart conductor` (entrypoint runs migrate) |
 | Manual calendar sync | `bash cron/calendar-sync.sh` |
+| Quick-capture a task | ⌘Space → `conductor` → Enter (or `bash mac/conductor-capture.sh "..."`) |
+| Rebuild the capture app | `bash mac/build-capture-app.sh` |
 | Check LaunchAgent status | `launchctl list \| grep conductor` |
 | Reload LaunchAgent | `launchctl unload ~/Library/LaunchAgents/com.conductor.calendar-sync.plist && launchctl load ~/Library/LaunchAgents/com.conductor.calendar-sync.plist` |
 | Reset stuck tasks | Settings > System > Actions > Reset today's tasks |
@@ -497,6 +499,28 @@ Qwen3 30B (local MLX, current default), Sonnet 4.6, Haiku 4.5, Opus 4.6, GPT-5.4
 - `src/app/api/calendar/last-sync/route.ts` — Returns last sync timestamp (polled by AgendaStrip)
 - `src/app/api/calendar/accounts/route.ts` — Discovers calendar accounts (macOS only, not in Docker)
 - `src/components/AgendaStrip.tsx` — Displays today's meetings, polls for sync updates
+
+## Spotlight quick capture (macOS)
+
+⌘Space → `conductor` → Enter → type the task → Enter. Files it through the same MLX refine
+and company inference as MCP `create_task`, then shows an auto-dismissing alert naming the
+company it landed in.
+
+- `POST /api/capture` (`src/app/api/capture/route.ts`) is the backend — bearer-authed with
+  `MCP_API_TOKEN`, no NextAuth session needed. Also serves the iOS Siri Shortcut. Tasks land
+  in backlog (never today) with `sourceType: "siri"`.
+- `mac/conductor-capture.sh` — the client. Token lookup order: `~/.conductor/capture-token`,
+  then `MCP_API_TOKEN` in the repo `.env`. Override the target with `CONDUCTOR_URL`. Logs
+  every attempt (success and failure) to `logs/capture.log`.
+- `mac/ConductorCapture.applescript` + `mac/build-capture-app.sh` — compiles
+  `/Applications/Conductor Capture.app`, which Spotlight indexes. Run the build script once
+  per machine and again after editing the AppleScript; it bakes the absolute helper path in,
+  so moving the repo means rebuilding.
+- The helper is launched **detached** — a cold MLX refine takes up to ~30s and a modal dialog
+  frozen that long reads as a hung app. The input dialog closes instantly; the confirmation
+  arrives when the task lands.
+- Stock Spotlight can't pass arguments after an app name, so `conductor buy milk` on one line
+  isn't possible. That form needs Raycast/Alfred pointed at the same helper.
 
 ## Task keys
 
