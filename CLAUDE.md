@@ -564,9 +564,12 @@ Conductor exposes an MCP endpoint at `/api/mcp/[transport]` (`src/app/api/mcp/[t
 
 - **URL**: `http://joshuas-mac-pro.tail842fd4.ts.net:5402/api/mcp/mcp` (streamable HTTP)
 - **Auth**: `Authorization: Bearer $MCP_API_TOKEN` (env var; fails closed if unset). NextAuth does not apply here.
-- **Tools**: `get_context`, `list_tasks`, `create_task`, `update_task`, `create_followup`, `add_note`, `search`, `format_message`
+- **Tools**: `get_context`, `list_tasks`, `create_task`, `update_task`, `refine_task`, `delete_task`, `create_followup`, `add_note`, `search`, `format_message`, `get_meetings`
 - Tools resolve roles by (partial) name, tasks created get `sourceType: "mcp"` and default to backlog (not today)
-- `create_task` AI-refines raw text by default via `src/lib/task-refine.ts` (shared with `/api/tasks/refine`): short title, notes, checklist, resolved dueDate. When no role is given, local AI infers it from the role directory + staff names and must quote its evidence; `evidenceMatchesRole()` verifies the quote in code (topic overlap like "dashboard" doesn't pass). Unverifiable → the tool returns `needsClarification` (task NOT created) with role options + bestGuess + currentBlockRole so the client asks the user. `refine: false` saves verbatim. `update_task` accepts `role` to move a misfiled task.
+- `create_task` AI-refines raw text by default via `src/lib/task-refine.ts` (shared with `/api/tasks/refine`): short title, notes, checklist, resolved dueDate. When no role is given, local AI infers it from the role directory + staff names and must quote its evidence; `evidenceMatchesRole()` verifies the quote in code (topic overlap like "dashboard" doesn't pass). Unverifiable → the tool returns `needsClarification` (task NOT created) with role options + bestGuess + currentBlockRole so the client asks the user. `refine: false` skips the AI. `update_task` accepts `role` to move a misfiled task.
+- **A task is never titled with the whole brain dump.** When there's no AI title — `refine: false`, or refinement failed — `splitRawTask()` (`src/lib/task-refine.ts`) takes the first sentence as the title and puts the complete original in notes. Both MCP `create_task` and `/api/capture` use it; MCP reports `titleShortened` when it fires. This exists because VQ-150 and HM-81 landed as 506- and 662-character titles.
+- `refine_task` rewrites an existing task's title/notes/checklist through the same refiner — the repair path for anything already filed raw. Keeps key, company, status, due date and priority; won't overwrite a checklist that's already in progress.
+- `update_task` takes `checklist` as plain strings (`[]` clears it). Steps whose text is unchanged keep their tick, so rewording a list doesn't un-tick finished work.
 - Registered in Claude Code user scope: `claude mcp add --scope user --transport http conductor <url> --header "Authorization: Bearer <token>"`
 
 ## Conversations

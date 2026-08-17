@@ -80,6 +80,21 @@ async function resolveTaskId(ref: string): Promise<string> {
   return task.id;
 }
 
+interface ChecklistItem { text: string; done: boolean }
+
+/**
+ * Rewrite a task's checklist from plain strings, carrying over the done state of any
+ * step whose text is unchanged — rewording a list shouldn't silently un-tick the work
+ * already finished. An empty array clears the list.
+ */
+async function mergeChecklist(taskId: string, steps: string[]): Promise<ChecklistItem[] | null> {
+  if (steps.length === 0) return null;
+  const existing = await prisma.task.findUnique({ where: { id: taskId }, select: { checklist: true } });
+  const previous = Array.isArray(existing?.checklist) ? (existing!.checklist as unknown as ChecklistItem[]) : [];
+  const doneByText = new Map(previous.filter((i) => i?.text).map((i) => [i.text.trim(), !!i.done]));
+  return steps.map((text) => ({ text, done: doneByText.get(text.trim()) ?? false }));
+}
+
 const handler = createMcpHandler(
   (server) => {
     server.registerTool(
@@ -300,11 +315,13 @@ const handler = createMcpHandler(
           isToday: z.boolean().optional().describe("true = today's plan, false = back to backlog"),
           dueDate: z.string().nullable().optional().describe("YYYY-MM-DD, or null to clear"),
           notes: z.string().optional(),
+          checklist: z.array(z.string()).optional().describe("Replace the checklist with these steps; [] clears it. Steps already ticked keep their tick if the text is unchanged."),
           blockedReason: z.string().optional().describe('Why it is blocked, e.g. "waiting on Jeff to approve the slate". Set this whenever you set status to blocked — a blocked task with no reason is just a lost task.'),
           role: z.string().optional().describe("Move the task to a different role/company (name or id)"),
         },
       },
-      async ({ taskId, title, status, done, priority, isToday, dueDate, notes, role, blockedReason }) => {
+      async ({ taskId, title, status, done, priority, isToday, dueDate, notes, checklist, role, blockedReason }) => {
+        const id = await resolveTaskId(taskId);
         const data: Record<string, unknown> = {};
         if (role !== undefined) data.roleId = (await resolveRole(role)).id;
         if (title !== undefined) data.title = title;
@@ -330,13 +347,70 @@ const handler = createMcpHandler(
         }
         if (isToday !== undefined) data.scheduledFor = isToday ? today() : null;
         if (dueDate !== undefined) data.dueDate = dueDate ? new Date(`${dueDate}T00:00:00`) : null;
+        if (checklist !== undefined) data.checklist = await mergeChecklist(id, checklist);
         const task = await prisma.task.update({
-          where: { id: await resolveTaskId(taskId) },
+          where: { id },
           data,
           include: { role: { select: { name: true, taskPrefix: true } } },
         });
         if (done !== undefined || isToday !== undefined) invalidateRebalanceCache();
         return ok({ updated: taskShape(task) });
+      }
+    );
+
+    server.registerTool(
+      "refine_task",
+      {
+        title: "Refine task",
+        description:
+          "Rewrite an existing task's title, notes and checklist with AI — for tasks that came in as one long paragraph (a create_task with refine:false, or a create that ran while the AI was unavailable). Reads the task's current title + notes, files the detail into notes, and leaves a short imperative title. Keeps the task's key, company, status, due date and priority untouched.",
+        inputSchema: {
+          taskId: z.string().describe('Task key like "VQ-14" (preferred), or the raw id'),
+        },
+      },
+      async ({ taskId }) => {
+        const id = await resolveTaskId(taskId);
+        const existing = await prisma.task.findUnique({
+          where: { id },
+          include: { role: { select: { id: true, name: true, taskPrefix: true } } },
+        });
+        if (!existing) return ok({ error: `No task ${taskId}` });
+
+        // Feed the whole card back in — for a raw task everything is in the title, but
+        // a half-refined one has detail in notes worth keeping.
+        const source = [existing.title, existing.notes].filter(Boolean).join("\n\n");
+
+        let refined: RefinedTask;
+        try {
+          refined = await refineTask({ rawText: source, roleId: existing.roleId });
+        } catch (e) {
+          return ok({
+            refined: false,
+            error: `AI refinement unavailable (${e instanceof Error ? e.message : "failed"}) — task unchanged`,
+          });
+        }
+
+        const task = await prisma.task.update({
+          where: { id },
+          data: {
+            title: refined.title,
+            notes: refined.notes || existing.notes,
+            // Don't wipe a checklist someone is part way through.
+            ...(refined.checklist?.length && !Array.isArray(existing.checklist)
+              ? { checklist: refined.checklist }
+              : {}),
+          },
+          include: { role: { select: { name: true, taskPrefix: true } } },
+        });
+
+        return ok({
+          refined: true,
+          before: { title: existing.title },
+          updated: taskShape(task),
+          ...(refined.checklist?.length && Array.isArray(existing.checklist)
+            ? { note: "Existing checklist left alone — pass the new steps to update_task if you want them replaced" }
+            : {}),
+        });
       }
     );
 
