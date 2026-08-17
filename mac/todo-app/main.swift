@@ -145,7 +145,7 @@ struct CaptureView: View {
             }
         }
         .padding(18)
-        .frame(width: 540, alignment: .leading)
+        .frame(width: 600, alignment: .leading)
         .task { await loadCompanies() }
     }
 
@@ -166,24 +166,26 @@ struct CaptureView: View {
                     .foregroundStyle(.tertiary)
                     .frame(height: 24)
             } else {
-                HStack(spacing: 6) {
+                // Prefix + its ⌘number. Nine of these have to fit on one row, so the
+                // number is a bare digit here and the ⌘ is explained in the footer.
+                HStack(spacing: 5) {
                     ForEach(Array(companies.prefix(9).enumerated()), id: \.element.id) { i, c in
                         chip(
                             label: c.taskPrefix ?? String(c.name.prefix(2)).uppercased(),
-                            hint: "⌘\(i + 1)",
+                            hint: "\(i + 1)",
                             tint: Color(hex: c.color),
                             active: selected == c.id
                         ) { selected = c.id }
                             .help(c.name)
                             .keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: .command)
                     }
-                    Spacer()
+                    Spacer(minLength: 0)
                 }
             }
 
             HStack(spacing: 10) {
                 chip(label: scheduleToday ? "Today" : "Backlog",
-                     hint: "⌘T",
+                     hint: nil,
                      tint: scheduleToday ? .orange : .secondary,
                      active: scheduleToday) { scheduleToday.toggle() }
                     .keyboardShortcut("t", modifiers: .command)
@@ -191,8 +193,9 @@ struct CaptureView: View {
                 Text(selectedName)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
 
-                Spacer()
+                Spacer(minLength: 8)
 
                 if phase == .saving {
                     ProgressView().controlSize(.small)
@@ -203,6 +206,10 @@ struct CaptureView: View {
                         .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+
+            Text("⌘1–9 company · ⌘T today · ↩ add · esc cancel")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
 
             // Esc cancels
             Button("") { NSApp.terminate(nil) }
@@ -225,13 +232,16 @@ struct CaptureView: View {
         companies.first { $0.id == selected }?.name ?? ""
     }
 
-    private func chip(label: String, hint: String, tint: Color, active: Bool, action: @escaping () -> Void) -> some View {
+    private func chip(label: String, hint: String?, tint: Color, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Text(label).font(.system(size: 12, weight: .semibold))
-                Text(hint).font(.system(size: 10)).opacity(0.55)
+                if let hint {
+                    Text(hint).font(.system(size: 9, weight: .medium)).opacity(0.5)
+                }
             }
-            .padding(.horizontal, 9)
+            .fixedSize()  // never let the row compress a chip into an ellipsis
+            .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(active ? tint.opacity(0.25) : Color.secondary.opacity(0.10), in: Capsule())
             .overlay(Capsule().strokeBorder(active ? tint : .clear, lineWidth: 1))
@@ -275,7 +285,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ n: Notification) {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 540, height: 170),
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 185),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false

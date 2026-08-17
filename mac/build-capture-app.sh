@@ -70,6 +70,29 @@ cat > "$APP_PATH/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <!--
+    Conductor is served over plain http on the LAN and over Tailscale, and App Transport
+    Security blocks http from a native app by default (curl and shell scripts are exempt,
+    which is why the CLI helper never hit this). Scoped exceptions rather than
+    NSAllowsArbitraryLoads: local networking covers localhost/.local, and ts.net covers the
+    tower over Tailscale — where the traffic is already inside an encrypted WireGuard tunnel.
+  -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key><true/>
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>ts.net</key>
+      <dict>
+        <key>NSIncludesSubdomains</key><true/>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key><true/>
+      </dict>
+      <key>localhost</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key><true/>
+      </dict>
+    </dict>
+  </dict>
 </dict>
 </plist>
 PLIST
