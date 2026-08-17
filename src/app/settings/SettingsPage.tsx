@@ -11,6 +11,7 @@ import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import { getMeetingAlertLead, setMeetingAlertLead } from "@/components/MeetingAlert";
 
 interface Staff { id: string; name: string; title: string; relationship?: string; commNotes?: string; email?: string; slackHandle?: string; }
 interface AiContextFields { aiRecentNotesCount?: number | null; aiRecentTranscriptsCount?: number | null; aiConversationHistoryLimit?: number | null; aiNoteChunkSize?: number | null; aiTranscriptChunkSize?: number | null; aiPinnedNoteChunkSize?: number | null; }
@@ -241,6 +242,9 @@ Based on the above, provide:`;
   const [systemAiContext, setSystemAiContext] = useState<Record<string, string>>({});
   const [roleAiContext, setRoleAiContext] = useState<Record<string, Record<string, string>>>({});
   const [savingAiContext, setSavingAiContext] = useState(false);
+  // localStorage-backed, so read it after mount to keep SSR output stable
+  const [meetingAlertLead, setMeetingAlertLeadState] = useState(2);
+  useEffect(() => { setMeetingAlertLeadState(getMeetingAlertLead()); }, []);
   const { toast } = useToast();
 
   const SKILL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -1281,6 +1285,28 @@ Based on the above, provide:`;
                   <div>
                     <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-3">Notifications</p>
                     <div className="border border-[var(--border-subtle)] rounded-xl p-5 bg-[var(--surface-raised)] space-y-3">
+                      <div className="flex items-center gap-3 pb-3 border-b border-[var(--border-subtle)]">
+                        <label className="text-[14px] text-[var(--text-secondary)]" htmlFor="meeting-alert-lead">
+                          In-app meeting alert
+                        </label>
+                        <select
+                          id="meeting-alert-lead"
+                          value={meetingAlertLead}
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value, 10);
+                            setMeetingAlertLead(v);
+                            setMeetingAlertLeadState(v);
+                          }}
+                          className="bg-[var(--surface)] border border-[var(--border-subtle)] rounded-lg px-2 py-1.5 text-[14px] text-[var(--text-primary)]"
+                        >
+                          {[1, 2, 3, 5, 10, 15].map((n) => (
+                            <option key={n} value={n}>{n}</option>
+                          ))}
+                        </select>
+                        <span className="text-[13px] text-[var(--text-tertiary)]">
+                          minutes before start — always fires, no browser permission needed
+                        </span>
+                      </div>
                       <p className="text-[14px] text-[var(--text-secondary)]">
                         Meeting reminders via browser notifications.
                         {typeof window !== "undefined" && "Notification" in window && (

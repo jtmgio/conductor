@@ -8,6 +8,7 @@ import { MobileDrawer } from "./MobileDrawer";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { GlobalSearch } from "./GlobalSearch";
 import { Reminders } from "./Reminders";
+import { MeetingAlert } from "./MeetingAlert";
 import { BlockTransition, type TransitionBlock } from "./BlockTransition";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 import { cn } from "@/lib/utils";
@@ -178,6 +179,9 @@ export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNe
 
       {/* Mandatory health/routine reminders — banner at/after each reminder's time on its days */}
       <Reminders />
+
+      {/* Meeting starting soon — same unmissable modal, fires on every page */}
+      <MeetingAlert />
 
       {/* Block-transition ritual — full-screen reset between company blocks */}
       <AnimatePresence>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Pill, Syringe, GlassWater, PersonStanding, Check, Play, Clock } from "lucide-react";
+import { Pill, Syringe, GlassWater, PersonStanding, Check, Play, Clock, Armchair } from "lucide-react";
 import { playSound } from "@/lib/sounds";
 
 interface Reminder {
@@ -25,6 +25,15 @@ const ICONS: Record<string, typeof Pill> = {
 };
 
 const SNOOZE_MS = 300_000; // "snooze 5 min" on a critical reminder
+
+/** A finished timer shouldn't just vanish — it earns a closing instruction. */
+const DONE_MS = 120_000; // auto-clears if you walked away from the desk
+
+function doneMessage(label: string): string {
+  if (/stand/i.test(label)) return "Time to sit down";
+  if (/stretch/i.test(label)) return "Nice — back to it";
+  return "Done";
+}
 
 function isDue(r: Reminder, now: Date): boolean {
   if (r.ackedToday) return false;
@@ -56,10 +65,13 @@ export function Reminders() {
   const [acked, setAcked] = useState<Set<string>>(new Set());
   const [running, setRunning] = useState<Record<string, number>>({}); // id -> seconds left
   const [snoozedUntil, setSnoozedUntil] = useState<Record<string, number>>({});
+  const [completed, setCompleted] = useState<{ id: string; label: string } | null>(null);
   const [, setTick] = useState(0);
   const prevDueRef = useRef<Set<string>>(new Set());
   const runningRef = useRef(running);
   runningRef.current = running;
+  const remindersRef = useRef(reminders);
+  remindersRef.current = reminders;
 
   const fetchReminders = useCallback(async () => {
     try {
@@ -113,7 +125,9 @@ export function Reminders() {
       }
       setRunning(next);
       done.forEach((id) => {
-        playSound("checkin");
+        playSound("bell");
+        const label = remindersRef.current.find((r) => r.id === id)?.label ?? "";
+        setCompleted({ id, label });
         acknowledge(id);
       });
     }, 1000);
@@ -134,7 +148,56 @@ export function Reminders() {
     if (isNew) playSound("checkin");
   }, [due]);
 
+  useEffect(() => {
+    if (!completed) return;
+    const t = setTimeout(() => setCompleted(null), DONE_MS);
+    return () => clearTimeout(t);
+  }, [completed]);
+
+  // A finished timer announces itself, then clears itself if you're away from the desk
   const active = due[0] ?? null;
+
+  if (completed) {
+    const isStand = /stand/i.test(completed.label);
+    const DoneIcon = isStand ? Armchair : Check;
+    return (
+      <AnimatePresence>
+        <motion.div
+          key={`${completed.id}-done`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-emerald-950/40 p-5 backdrop-blur-xl"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 12 }}
+            transition={{ type: "spring", damping: 24, stiffness: 300 }}
+            className="w-full max-w-sm rounded-3xl border border-emerald-500/40 bg-[var(--surface)] p-8 text-center shadow-2xl"
+          >
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/15">
+              <DoneIcon className="h-8 w-8 text-emerald-400" />
+            </div>
+            <p className="text-[12px] font-semibold uppercase tracking-wider text-emerald-400/80">
+              {completed.label} complete
+            </p>
+            <h2 className="mt-1.5 text-[24px] font-bold tracking-tight text-[var(--text-primary)]">
+              {doneMessage(completed.label)}
+            </h2>
+            <button
+              onClick={() => setCompleted(null)}
+              className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 py-3.5 text-[15px] font-bold text-emerald-950 transition-opacity hover:opacity-90"
+            >
+              <Check className="h-4 w-4" />
+              Got it
+            </button>
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
   if (!active) return null;
 
   const Icon = ICONS[active.icon ?? ""] ?? Pill;
@@ -143,6 +206,36 @@ export function Reminders() {
   const isTimed = !!active.durationMin;
   const isCritical = active.tier === "critical";
   const actionLabel = active.icon === "pill" || active.icon === "syringe" ? "Taken" : "Done";
+
+  // A running timer shouldn't block the app — compact pill top-right, keep working.
+  if (isTimed && isRunning) {
+    return (
+      <AnimatePresence>
+        <motion.div
+          key={`${active.id}-timer`}
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -12 }}
+          transition={{ type: "spring", damping: 24, stiffness: 300 }}
+          className="fixed right-4 top-4 z-[80] flex items-center gap-3 rounded-2xl border border-amber-500/40 bg-[var(--surface)] py-2.5 pl-3.5 pr-2.5 shadow-2xl"
+        >
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15">
+            <Icon className="h-5 w-5 text-amber-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10.5px] font-semibold uppercase tracking-wider text-amber-400/80">{active.label}</p>
+            <p className="text-[20px] font-bold leading-tight tabular-nums text-amber-400">{mmss(secsLeft)}</p>
+          </div>
+          <button
+            onClick={() => acknowledge(active.id)}
+            className="ml-1 rounded-lg border border-[var(--border-subtle)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+          >
+            Finish
+          </button>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
 
   return (
     <AnimatePresence>
@@ -164,20 +257,7 @@ export function Reminders() {
             <Icon className="h-8 w-8 text-amber-400" />
           </div>
 
-          {isTimed && isRunning ? (
-            <>
-              <p className="text-[12px] font-semibold uppercase tracking-wider text-amber-400/80">In progress</p>
-              <h2 className="mt-1.5 text-[24px] font-bold tracking-tight text-[var(--text-primary)]">{active.label}</h2>
-              <div className="mt-5 text-[56px] font-bold leading-none tabular-nums text-amber-400">{mmss(secsLeft)}</div>
-              <button
-                onClick={() => acknowledge(active.id)}
-                className="mt-7 w-full rounded-xl border border-[var(--border-subtle)] py-3 text-[13px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
-              >
-                Finish now
-              </button>
-            </>
-          ) : (
-            <>
+          <>
               <p className="text-[12px] font-semibold uppercase tracking-wider text-amber-400/80">
                 {isCritical ? "Don't skip this" : isTimed ? "Time to move" : "Reminder"}
               </p>
@@ -223,8 +303,7 @@ export function Reminders() {
                   </button>
                 )}
               </div>
-            </>
-          )}
+          </>
         </motion.div>
       </motion.div>
     </AnimatePresence>

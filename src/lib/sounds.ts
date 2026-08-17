@@ -1,4 +1,4 @@
-type SoundType = "checkin" | "overtime" | "meeting" | "transition";
+type SoundType = "checkin" | "overtime" | "meeting" | "transition" | "bell";
 
 const STORAGE_KEY = "conductor-sounds-enabled";
 
@@ -44,6 +44,7 @@ const C5 = 523.25;
 const E5 = 659.25;
 const G4 = 392.0;
 const C6 = 1046.5;
+const E6 = 1318.5;
 
 const SOUNDS: Record<SoundType, (ctx: AudioContext) => void> = {
   // Two-note ascending chime (C5 → E5)
@@ -71,6 +72,17 @@ const SOUNDS: Record<SoundType, (ctx: AudioContext) => void> = {
   transition: (ctx) => {
     const t = ctx.currentTime;
     playTone(ctx, C6, t, 0.2, 0.08);
+  },
+
+  // Insistent triple bell — deliberately hard to miss (timer completions).
+  // Each strike is C6 + E6 layered for a bell-like shimmer, louder than the chimes.
+  bell: (ctx) => {
+    const t = ctx.currentTime;
+    for (let i = 0; i < 3; i++) {
+      const strike = t + i * 0.45;
+      playTone(ctx, C6, strike, 0.4, 0.25);
+      playTone(ctx, E6, strike + 0.02, 0.35, 0.14);
+    }
   },
 };
 
