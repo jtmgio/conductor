@@ -145,7 +145,7 @@ struct CaptureView: View {
             }
         }
         .padding(18)
-        .frame(width: 600, alignment: .leading)
+        .frame(width: 640, alignment: .leading)
         .task { await loadCompanies() }
     }
 
@@ -153,7 +153,7 @@ struct CaptureView: View {
         VStack(alignment: .leading, spacing: 13) {
             TextField("What do you need to do?", text: $text)
                 .textFieldStyle(.plain)
-                .font(.system(size: 19))
+                .font(.system(size: 23))
                 .focused($fieldFocused)
                 .onSubmit(submit)
                 .onAppear { fieldFocused = true }
@@ -162,7 +162,7 @@ struct CaptureView: View {
 
             if companies.isEmpty {
                 Text("Loading companies…")
-                    .font(.system(size: 12))
+                    .font(.system(size: 14))
                     .foregroundStyle(.tertiary)
                     .frame(height: 24)
             } else {
@@ -191,7 +191,7 @@ struct CaptureView: View {
                     .keyboardShortcut("t", modifiers: .command)
 
                 Text(selectedName)
-                    .font(.system(size: 12))
+                    .font(.system(size: 14))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
@@ -208,7 +208,7 @@ struct CaptureView: View {
             }
 
             Text("⌘1–9 company · ⌘T today · ↩ add · esc cancel")
-                .font(.system(size: 10))
+                .font(.system(size: 12))
                 .foregroundStyle(.tertiary)
 
             // Esc cancels
@@ -221,8 +221,8 @@ struct CaptureView: View {
 
     private func result(icon: String, tint: Color, text: String) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: icon).font(.system(size: 20)).foregroundStyle(tint)
-            Text(text).font(.system(size: 15, weight: .medium))
+            Image(systemName: icon).font(.system(size: 23)).foregroundStyle(tint)
+            Text(text).font(.system(size: 17, weight: .medium))
             Spacer()
         }
         .frame(height: 40)
@@ -235,14 +235,14 @@ struct CaptureView: View {
     private func chip(label: String, hint: String?, tint: Color, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Text(label).font(.system(size: 12, weight: .semibold))
+                Text(label).font(.system(size: 14, weight: .semibold))
                 if let hint {
-                    Text(hint).font(.system(size: 9, weight: .medium)).opacity(0.5)
+                    Text(hint).font(.system(size: 11, weight: .medium)).opacity(0.5)
                 }
             }
             .fixedSize()  // never let the row compress a chip into an ellipsis
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(active ? tint.opacity(0.25) : Color.secondary.opacity(0.10), in: Capsule())
             .overlay(Capsule().strokeBorder(active ? tint : .clear, lineWidth: 1))
             .foregroundStyle(active ? tint : Color.secondary)
@@ -285,7 +285,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ n: Notification) {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 185),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 210),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
