@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Keeps Todo.app resident in the background so ⌃⌥Space opens the capture window from
+  anywhere. No window until the hotkey is pressed; the app is an accessory (no Dock icon).
+
+  Template — install with mac/install-hotkey.sh, which substitutes __APP_BINARY__ and
+  loads it. Don't load this file directly.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.conductor.todo-hotkey</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__APP_BINARY__</string>
+    <string>--daemon</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/conductor-todo-hotkey.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/conductor-todo-hotkey.log</string>
+</dict>
+</plist>

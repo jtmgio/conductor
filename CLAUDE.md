@@ -285,7 +285,8 @@ rsync -avz old-machine:/path/to/uploads/ ./uploads/
 | Stop everything | `docker compose down` |
 | Run database migrations | `docker compose restart conductor` (entrypoint runs migrate) |
 | Manual calendar sync | `bash cron/calendar-sync.sh` |
-| Quick-capture a task | ⌘Space → `todo` → Enter (or `bash mac/conductor-capture.sh "..."`) |
+| Quick-capture a task | `⌃⌥Space` (or ⌘Space → `todo` → Enter, or `bash mac/conductor-capture.sh "..."`) |
+| Install the capture hotkey | `bash mac/install-hotkey.sh` |
 | Rebuild the capture app | `bash mac/build-capture-app.sh` |
 | Check LaunchAgent status | `launchctl list \| grep conductor` |
 | Reload LaunchAgent | `launchctl unload ~/Library/LaunchAgents/com.conductor.calendar-sync.plist && launchctl load ~/Library/LaunchAgents/com.conductor.calendar-sync.plist` |
@@ -514,7 +515,16 @@ the running Conductor browser window always won the "conductor" match. `todo` ha
   preselects). `POST` takes `{ text, role?, today? }`: an explicit `role` skips AI company
   inference entirely, `today: true` sets `scheduledFor`. Also serves the iOS Siri Shortcut,
   where both are omitted and inference still runs. Tasks get `sourceType: "siri"`.
+**Global hotkey: `⌃⌥Space`** opens the window from anywhere, no Spotlight round-trip.
+`bash mac/install-hotkey.sh` installs the `com.conductor.todo-hotkey` LaunchAgent, which
+keeps `Todo.app --daemon` resident (accessory app, no Dock icon, no window until the hotkey).
+Uses Carbon `RegisterEventHotKey` — the one global-hotkey API that needs no Accessibility
+grant. `--uninstall` removes it; Spotlight still works either way. To change the combo, edit
+`registerHotKey()` in the Swift, rebuild, re-run the installer.
+
 - `mac/todo-app/main.swift` + `mac/build-capture-app.sh` — builds `/Applications/Todo.app`.
+  `--daemon` makes it resident for the hotkey; without it, it's the one-shot Spotlight launch
+  that quits when the capture is done.
   Run once per machine, and again after editing the Swift. Needs the Xcode command line tools
   (`xcode-select --install`). The build script also seeds `~/.conductor/{url,capture-token}`
   and embeds `public/icon-512.png` as the app icon.

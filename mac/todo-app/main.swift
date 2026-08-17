@@ -12,6 +12,7 @@
 //   token: ~/.conductor/capture-token (written by build-capture-app.sh from the repo .env)
 
 import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 
 // MARK: - Config
@@ -125,6 +126,9 @@ enum Phase: Equatable {
 
 struct CaptureView: View {
     let cfg: Config
+    /// What "done here" means depends on how we were launched: quit (one-shot) or
+    /// just hide the window (daemon waiting on the hotkey).
+    let dismiss: () -> Void
 
     @State private var text = ""
     @State private var companies: [Company] = []
@@ -212,7 +216,7 @@ struct CaptureView: View {
                 .foregroundStyle(.tertiary)
 
             // Esc cancels
-            Button("") { NSApp.terminate(nil) }
+            Button("") { dismiss() }
                 .keyboardShortcut(.cancelAction)
                 .frame(width: 0, height: 0)
                 .opacity(0)
@@ -273,7 +277,7 @@ struct CaptureView: View {
                 phase = .failed(error.localizedDescription)
                 try? await Task.sleep(for: .seconds(3))
             }
-            NSApp.terminate(nil)
+            dismiss()
         }
     }
 }
@@ -281,26 +285,81 @@ struct CaptureView: View {
 // MARK: - App
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var window: NSWindow!
+    private var window: NSWindow?
+    private var hotKeyRef: EventHotKeyRef?
+
+    /// --daemon: stay resident and open the window on ⌃⌥Space (launchd keeps it alive).
+    /// Without it, this is the one-shot Spotlight launch: window now, quit when done.
+    private let isDaemon = CommandLine.arguments.contains("--daemon")
 
     func applicationDidFinishLaunching(_ n: Notification) {
-        window = NSWindow(
+        if isDaemon {
+            registerHotKey()
+        } else {
+            showWindow()
+        }
+    }
+
+    func showWindow() {
+        if let existing = window {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let w = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 218),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.isMovableByWindowBackground = true
-        window.contentView = NSHostingView(rootView: CaptureView(cfg: Config.load()))
-        window.center()
-        window.level = .floating
-        window.makeKeyAndOrderFront(nil)
+        w.titlebarAppearsTransparent = true
+        w.titleVisibility = .hidden
+        w.isMovableByWindowBackground = true
+        w.isReleasedWhenClosed = false
+        w.contentView = NSHostingView(
+            rootView: CaptureView(cfg: Config.load(), dismiss: { [weak self] in self?.dismiss() })
+        )
+        w.center()
+        w.level = .floating
+        w.makeKeyAndOrderFront(nil)
+        window = w
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
+    private func dismiss() {
+        guard isDaemon else { NSApp.terminate(nil); return }
+        // Drop the window so the next ⌃⌥Space gets a clean field, not last capture's text.
+        window?.orderOut(nil)
+        window = nil
+    }
+
+    /// ⌃⌥Space, via Carbon — the one global-hotkey API that needs no Accessibility grant.
+    private func registerHotKey() {
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, _, userData in
+                guard let userData else { return noErr }
+                let me = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
+                DispatchQueue.main.async { me.showWindow() }
+                return noErr
+            },
+            1, &spec, Unmanaged.passUnretained(self).toOpaque(), nil
+        )
+
+        let id = EventHotKeyID(signature: OSType(0x434E4454), id: 1)  // 'CNDT'
+        RegisterEventHotKey(
+            UInt32(kVK_Space),
+            UInt32(controlKey | optionKey),
+            id,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+    }
+
+    // One-shot mode quits with its window; the daemon outlives every window it opens.
+    func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { !isDaemon }
 }
 
 let app = NSApplication.shared
