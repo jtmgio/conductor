@@ -153,7 +153,7 @@ struct CaptureView: View {
         VStack(alignment: .leading, spacing: 13) {
             TextField("What do you need to do?", text: $text)
                 .textFieldStyle(.plain)
-                .font(.system(size: 23))
+                .font(.system(size: 26))
                 .focused($fieldFocused)
                 .onSubmit(submit)
                 .onAppear { fieldFocused = true }
@@ -285,7 +285,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ n: Notification) {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 210),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 218),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
