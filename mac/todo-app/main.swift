@@ -326,6 +326,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Spotlight (or the Dock, or `open -a`) launching an app that is already running sends a
+    /// reopen — not a fresh launch. Without this, the resident hotkey daemon just activated
+    /// itself with no window, and ⌘Space → "todo" appeared to do nothing.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { showWindow() }
+        return true
+    }
+
     private func dismiss() {
         guard isDaemon else { NSApp.terminate(nil); return }
         // Drop the window so the next ⌃⌥Space gets a clean field, not last capture's text.
