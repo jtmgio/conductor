@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { Check, Plus, ChevronRight, Moon, X } from "lucide-react";
 import { AgendaStrip } from "./AgendaStrip";
 import { CommsCoverStrip } from "./CommsCoverStrip";
 import { TaskDetail } from "./TaskDetail";
+import { nextWorkday } from "@/lib/next-workday";
+import { useToast } from "@/components/ui/toast";
 import { TaskKeyChip } from "./TaskKeyChip";
 import { refineTaskInBackground } from "@/lib/capture-refine";
 
@@ -226,6 +228,30 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     } catch {}
   }, []);
 
+  // Off today, onto the next working day — for work that simply isn't actionable yet
+  // ("we don't meet until tomorrow"). Not a status change: it stays exactly as it is,
+  // it just stops competing for attention today.
+  const { toast } = useToast();
+  const deferLabel = useMemo(() => nextWorkday().label, []);
+
+  const deferTask = useCallback(
+    async (id: string) => {
+      const { iso, label } = nextWorkday();
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      try {
+        await fetch(`/api/tasks/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scheduledFor: iso }),
+        });
+        toast(`Moved to ${label.toLowerCase()}`, "success");
+      } catch {
+        fetchTasks();
+      }
+    },
+    [toast, fetchTasks]
+  );
+
   const blockTask = useCallback(
     async (id: string) => {
       const reason = window.prompt("What's blocking this?");
@@ -375,7 +401,13 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
       (!t.blockedAt || (Date.now() - new Date(t.blockedAt).getTime()) / 86_400_000 >= BLOCKED_STALE_DAYS)
   );
   const inFlight = (t: Task) => t.status === "in_progress" || t.status === "in_review";
-  const todayTasks = actionable.filter((t) => inFlight(t) || (!!t.scheduledFor && ymd(t.scheduledFor) === todayStr));
+  // Work you've started stays in front of you — unless you've explicitly parked it on a
+  // later day. An in_progress task scheduled for tomorrow used to ignore that date and sit
+  // on today anyway, which made deferring it look broken.
+  const deferred = (t: Task) => !!t.scheduledFor && ymd(t.scheduledFor) > todayStr;
+  const todayTasks = actionable.filter(
+    (t) => !deferred(t) && (inFlight(t) || (!!t.scheduledFor && ymd(t.scheduledFor) === todayStr))
+  );
   const carriedOver = actionable.filter((t) => !inFlight(t) && !!t.scheduledFor && ymd(t.scheduledFor) < todayStr);
   const backlog = actionable.filter((t) => !inFlight(t) && !t.scheduledFor);
   // Your one thing has to be the most *urgent* thing, not just the first row the
@@ -542,6 +574,12 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                       {isToday(one.dueDate, now) && (
                         <span className="rounded-full border border-amber-500/30 bg-amber-500/[0.13] px-2.5 py-1 text-[11.5px] font-semibold text-amber-400">Due today</span>
                       )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deferTask(one.id); }}
+                        className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold text-[var(--text-tertiary)] transition-colors hover:border-[color:var(--text-secondary)] hover:text-[var(--text-secondary)]"
+                      >
+                        {deferLabel}
+                      </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); blockTask(one.id); }}
                         className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold text-[var(--text-tertiary)] transition-colors hover:border-amber-500/40 hover:text-amber-400"
@@ -727,6 +765,8 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
         color={color}
         onClose={() => setSelectedTask(null)}
         onComplete={complete}
+        onDefer={deferTask}
+        deferLabel={deferLabel}
         onDelete={deleteTask}
         onToggleChecklist={toggleChecklist}
       />

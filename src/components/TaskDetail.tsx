@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Check, Trash2 } from "lucide-react";
+import { X, Check, Trash2, CalendarArrowDown } from "lucide-react";
 import { TaskKeyChip } from "./TaskKeyChip";
 
 export interface ChecklistItem {
@@ -39,6 +39,8 @@ export function TaskDetail({
   color,
   onClose,
   onComplete,
+  onDefer,
+  deferLabel,
   onDelete,
   onToggleChecklist,
 }: {
@@ -46,6 +48,9 @@ export function TaskDetail({
   color: string;
   onClose: () => void;
   onComplete: (id: string) => void;
+  /** Push the task to the next working day. Omitted where deferring makes no sense. */
+  onDefer?: (id: string) => void;
+  deferLabel?: string;
   onDelete: (id: string) => void;
   onToggleChecklist: (id: string, idx: number) => void;
 }) {
@@ -133,6 +138,18 @@ export function TaskDetail({
                 <Check className="h-4 w-4" />
                 Complete
               </button>
+              {onDefer && (
+                <button
+                  onClick={() => {
+                    onDefer(task.id);
+                    onClose();
+                  }}
+                  className="flex items-center justify-center gap-1.5 rounded-xl border border-[var(--border-subtle)] px-3.5 text-[13.5px] font-semibold text-[var(--text-tertiary)] transition-colors hover:border-[color:var(--text-secondary)] hover:text-[var(--text-secondary)]"
+                >
+                  <CalendarArrowDown className="h-4 w-4" />
+                  {deferLabel ?? "Tomorrow"}
+                </button>
+              )}
               <button
                 onClick={() => {
                   onDelete(task.id);
