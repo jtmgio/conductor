@@ -19,9 +19,8 @@ const SNOOZE_MS = 300_000; // 5 minutes — an escape hatch for when you're mid-
  * "Go check your messages" as a modal you have to deal with, not a banner you can
  * scroll past.
  *
- * Deliberately says nothing about which company or which platform. The per-company
- * checklist this replaced didn't match how the sweep actually happens: one pass through
- * everything, in one panel, not six separate errands.
+ * One line, no per-company breakdown. The checklist this replaced didn't match how the
+ * sweep actually happens: one pass through everything, not six separate errands.
  *
  * Mounted in AppShell so it reaches you on any page — same as the health reminders.
  */
@@ -88,8 +87,9 @@ export function CommsSweepAlert() {
         </div>
 
         <p className="text-[12px] font-semibold uppercase tracking-wider text-amber-400/80">Comms sweep</p>
-        <h2 className="mt-1.5 text-[24px] font-bold tracking-tight text-[var(--text-primary)]">Check your messages</h2>
-        <p className="mt-1 text-[13.5px] text-[var(--text-tertiary)]">Everything, one pass. Reply or flag, then come back.</p>
+        <h2 className="mt-1.5 text-[24px] font-bold leading-tight tracking-tight text-[var(--text-primary)]">
+          Check Slack, Teams, and messages
+        </h2>
 
         <div className="mt-7 flex flex-col gap-2.5">
           <button
