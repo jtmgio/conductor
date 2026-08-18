@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { AppShell } from "./AppShell";
+import { useSchedule } from "@/components/ScheduleContext";
 import { useFormatMessage } from "@/hooks/useFormatMessage";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -44,6 +44,7 @@ function mrkdwnToMarkdown(text: string): string {
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function FormatterPage() {
+  const { currentBlock, loaded: scheduleLoaded } = useSchedule();
   const [roles, setRoles] = useState<Role[]>([]);
   const [roleId, setRoleId] = useState("");
   const [input, setInput] = useState("");
@@ -70,26 +71,21 @@ export function FormatterPage() {
   const platform = ((selectedRole?.platform || "Slack").toLowerCase()) as FormatType;
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/roles").then((r) => (r.ok ? r.json() : [])),
-      fetch("/api/schedule").then((r) => (r.ok ? r.json() : null)),
-    ])
-      .then(([rs, sched]) => {
+    fetch("/api/roles")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rs) => {
         const active = (rs as Role[]).filter((r) => r.active !== false);
         setRoles(active);
-        const blockRole = sched?.currentBlock?.roleId as string | undefined;
         // A nudge handed off from the Tracker picks the company and seeds the draft.
-        let handoffRole: string | undefined;
         try {
           const raw = sessionStorage.getItem("conductor-format-handoff");
           if (raw) {
             sessionStorage.removeItem("conductor-format-handoff");
             const h = JSON.parse(raw) as { text?: string; roleId?: string };
             if (h.text) setInput(h.text);
-            if (h.roleId && active.some((r) => r.id === h.roleId)) handoffRole = h.roleId;
+            if (h.roleId && active.some((r) => r.id === h.roleId)) setRoleId(h.roleId);
           }
         } catch {}
-        setRoleId((cur) => handoffRole || cur || (blockRole && active.some((r) => r.id === blockRole) ? blockRole : active[0]?.id) || "");
       })
       .catch(() => {});
     try {
@@ -99,6 +95,15 @@ export function FormatterPage() {
     // Focus the draft field on open
     setTimeout(() => textareaRef.current?.focus(), 120);
   }, []);
+
+  // Default the company to the block you're in. Separate from the roles fetch because the
+  // schedule arrives from context on its own timing — a mount-only effect would read it as
+  // null and always fall through to the first company.
+  useEffect(() => {
+    if (!scheduleLoaded || roles.length === 0 || roleId) return;
+    const blockRole = currentBlock?.roleId;
+    setRoleId((blockRole && roles.some((r) => r.id === blockRole) ? blockRole : roles[0]?.id) || "");
+  }, [scheduleLoaded, roles, roleId, currentBlock]);
 
   const run = () => {
     if (!input.trim() || !roleId) return;
@@ -124,7 +129,7 @@ export function FormatterPage() {
   const preview = fmt.formatted ? (platform === "slack" ? mrkdwnToMarkdown(fmt.formatted) : fmt.formatted) : "";
 
   return (
-    <AppShell>
+    <>
       <div className="mx-auto max-w-5xl pt-1">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -235,6 +240,6 @@ export function FormatterPage() {
           </div>
         )}
       </div>
-    </AppShell>
+    </>
   );
 }

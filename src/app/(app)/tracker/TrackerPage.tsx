@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
-import { AppShell } from "@/components/AppShell";
 import { FollowUpCard } from "@/components/FollowUpCard";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
@@ -65,7 +64,7 @@ export function TrackerPage() {
   const orderedGroups = roles.filter((r) => grouped[r.id]).map((r) => ({ role: r, items: grouped[r.id] }));
 
   return (
-    <AppShell>
+    <>
       <div className="mx-auto max-w-2xl pt-1">
         <h1 className="text-[26px] font-bold tracking-tight text-[var(--text-primary)]">Waiting on</h1>
         <p className="mt-1 text-[14px] text-[var(--text-tertiary)]">
@@ -117,6 +116,6 @@ export function TrackerPage() {
           ))}
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }

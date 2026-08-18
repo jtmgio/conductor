@@ -1,6 +1,5 @@
 "use client";
 
-import { AppShell } from "@/components/AppShell";
 import { Keyboard } from "lucide-react";
 
 interface Shortcut {
@@ -93,10 +92,10 @@ export function KeysContent() {
 
 export function KeysPage() {
   return (
-    <AppShell>
+    <>
       <div className="py-6">
         <KeysContent />
       </div>
-    </AppShell>
+    </>
   );
 }

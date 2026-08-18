@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { AppShell } from "./AppShell";
 import { Check, Plus, ArrowLeft, Trash2, Sunrise, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { refineTaskInBackground } from "@/lib/capture-refine";
+import { useSchedule } from "@/components/ScheduleContext";
 
 interface Role {
   id: string;
@@ -58,16 +58,14 @@ export function PlanTomorrowPage() {
   const [target, setTarget] = useState(() => computeTarget(9 * 60));
   const [finishing, setFinishing] = useState(false);
   const { toast } = useToast();
+  // Tomorrow's target is the earliest block start — read from the shell's poller.
+  const { allBlocks } = useSchedule();
   useEffect(() => {
-    fetch("/api/schedule")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((sched) => {
-        const blocks = (sched?.allBlocks || []) as Array<{ startHour: number; startMinute: number }>;
-        const starts = blocks.map((b) => b.startHour * 60 + b.startMinute).filter((n) => Number.isFinite(n));
-        setTarget(computeTarget(starts.length ? Math.min(...starts) : 9 * 60));
-      })
-      .catch(() => {});
-  }, []);
+    const starts = allBlocks
+      .map((b) => (b.startHour ?? 0) * 60 + (b.startMinute ?? 0))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    setTarget(computeTarget(starts.length ? Math.min(...starts) : 9 * 60));
+  }, [allBlocks]);
   const tomorrowIso = target.iso;
   const label = target.label;
 
@@ -183,7 +181,7 @@ export function PlanTomorrowPage() {
   }, [finishing, tomorrowIso, label, toast, router]);
 
   return (
-    <AppShell>
+    <>
       <div className="mx-auto max-w-2xl pt-1">
         <button onClick={() => router.push("/")} className="mb-4 flex items-center gap-1.5 text-[13px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
           <ArrowLeft className="h-4 w-4" />
@@ -278,6 +276,6 @@ export function PlanTomorrowPage() {
           )}
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }

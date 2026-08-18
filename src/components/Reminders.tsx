@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Pill, Syringe, GlassWater, PersonStanding, Check, Play, Clock, Armchair } from "lucide-react";
 import { playSound } from "@/lib/sounds";
 
@@ -240,18 +240,17 @@ export function Reminders() {
     const isStand = /stand/i.test(completed.label);
     const DoneIcon = isStand ? Armchair : Check;
     return (
-      <AnimatePresence>
+      <>
         <motion.div
-          key={`${completed.id}-done`}
+          key="completed"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
           className="fixed inset-0 z-[80] flex items-center justify-center bg-emerald-950/40 p-5 backdrop-blur-xl"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 12 }}
             transition={{ type: "spring", damping: 24, stiffness: 300 }}
             className="w-full max-w-sm rounded-3xl border border-emerald-500/40 bg-[var(--surface)] p-8 text-center shadow-2xl"
           >
@@ -273,7 +272,7 @@ export function Reminders() {
             </button>
           </motion.div>
         </motion.div>
-      </AnimatePresence>
+      </>
     );
   }
 
@@ -290,12 +289,11 @@ export function Reminders() {
   // A running timer shouldn't block the app — compact pill top-right, keep working.
   if (isTimed && isRunning) {
     return (
-      <AnimatePresence>
+      <>
         <motion.div
-          key={`${active.id}-timer`}
+          key="timer"
           initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -12 }}
           transition={{ type: "spring", damping: 24, stiffness: 300 }}
           className="fixed right-4 top-4 z-[80] flex items-center gap-3 rounded-2xl border border-amber-500/40 bg-[var(--surface)] py-2.5 pl-3.5 pr-2.5 shadow-2xl"
         >
@@ -313,23 +311,22 @@ export function Reminders() {
             Finish
           </button>
         </motion.div>
-      </AnimatePresence>
+      </>
     );
   }
 
   return (
-    <AnimatePresence>
+    <>
       <motion.div
-        key={active.id}
+        key="prompt"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        transition={{ duration: 0.18 }}
         className="fixed inset-0 z-[80] flex items-center justify-center bg-amber-950/40 p-5 backdrop-blur-xl"
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 12 }}
           transition={{ type: "spring", damping: 24, stiffness: 300 }}
           className="w-full max-w-sm rounded-3xl border border-amber-500/40 bg-[var(--surface)] p-8 text-center shadow-2xl"
         >
@@ -386,6 +383,6 @@ export function Reminders() {
           </>
         </motion.div>
       </motion.div>
-    </AnimatePresence>
+    </>
   );
 }

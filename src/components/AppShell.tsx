@@ -11,58 +11,31 @@ import { Reminders } from "./Reminders";
 import { MeetingAlert } from "./MeetingAlert";
 import { BlockTransition, type TransitionBlock } from "./BlockTransition";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
+import { ScheduleProvider, useSchedule, type BlockInfo } from "./ScheduleContext";
 import { cn } from "@/lib/utils";
-
-interface BlockInfo {
-  id?: string;
-  label: string;
-  timeLabel: string;
-  roleId: string | null;
-  roleName?: string;
-  roleColor?: string;
-  rolePlatform?: string;
-}
 
 function blockKey(b: BlockInfo): string {
   return `${b.id ?? ""}|${b.roleId ?? ""}|${b.timeLabel}`;
 }
 
-interface AppShellProps {
-  children: React.ReactNode;
-  currentBlock?: BlockInfo | null;
-  nextBlocks?: BlockInfo[];
+/**
+ * Mounted once by src/app/(app)/layout.tsx, not per page — see that file for why.
+ * The provider wraps the frame so pages rendered as `children` can read the schedule
+ * from context instead of each fetching it themselves.
+ */
+export function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <ScheduleProvider>
+      <AppFrame>{children}</AppFrame>
+    </ScheduleProvider>
+  );
 }
 
-export function AppShell({ children, currentBlock: propBlock, nextBlocks: propNextBlocks }: AppShellProps) {
+function AppFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [fetchedBlock, setFetchedBlock] = useState<BlockInfo | null>(null);
-  const [fetchedNextBlocks, setFetchedNextBlocks] = useState<BlockInfo[]>([]);
-  const [scheduleFetched, setScheduleFetched] = useState(false);
-
-  // Self-fetch schedule if not provided via props
-  useEffect(() => {
-    if (propBlock !== undefined) return; // parent provided it
-    function fetchSchedule() {
-      fetch("/api/schedule")
-        .then((r) => r.ok ? r.json() : null)
-        .then((data) => {
-          if (data) {
-            setFetchedBlock(data.currentBlock || null);
-            setFetchedNextBlocks(data.nextBlocks || []);
-          }
-          setScheduleFetched(true);
-        })
-        .catch(() => setScheduleFetched(true));
-    }
-    fetchSchedule();
-    const interval = setInterval(fetchSchedule, 60_000);
-    return () => clearInterval(interval);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const currentBlock = propBlock !== undefined ? propBlock : fetchedBlock;
-  const nextBlocks = propNextBlocks !== undefined ? propNextBlocks : fetchedNextBlocks;
+  const { currentBlock, nextBlocks } = useSchedule();
 
   // Block-transition ritual: fire the full-screen reset when the current work block
   // changes to a different one while the app is open. Mid-block opens don't fire

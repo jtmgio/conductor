@@ -2,11 +2,10 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { AppShell } from "@/components/AppShell";
 import { ScheduleGrid } from "@/components/ScheduleGrid";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Settings, ChevronDown, Pencil, Save, LogOut, User, Briefcase, Wrench, Calendar, Zap, Trash2, Plus, X, Mic, Send, AlertCircle, Target, Users, RefreshCw, XCircle, Link2, DollarSign, Download, Upload, Database, Clock, CheckCircle, AlertTriangle } from "lucide-react";
-import { CostsContent } from "@/app/costs/CostsPage";
+import { CostsContent } from "@/app/(app)/costs/CostsPage";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
@@ -527,7 +526,7 @@ Based on the above, provide:`;
   };
 
   return (
-    <AppShell>
+    <>
       <div className="py-6">
         {/* Header */}
         <div className="flex items-center gap-2.5 mb-6">
@@ -1828,7 +1827,7 @@ Based on the above, provide:`;
           </div>
         </DialogContent>
       </Dialog>
-    </AppShell>
+    </>
   );
 }
 

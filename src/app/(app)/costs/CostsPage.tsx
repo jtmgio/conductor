@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AppShell } from "@/components/AppShell";
 import { DollarSign } from "lucide-react";
 
 interface UsageData {
@@ -291,10 +290,10 @@ export function CostsContent() {
 
 export function CostsPage() {
   return (
-    <AppShell>
+    <>
       <div className="py-6">
         <CostsContent />
       </div>
-    </AppShell>
+    </>
   );
 }

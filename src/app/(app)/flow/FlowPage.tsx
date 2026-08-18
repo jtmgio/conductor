@@ -1,6 +1,5 @@
 "use client";
 
-import { AppShell } from "@/components/AppShell";
 import { Workflow } from "lucide-react";
 import Link from "next/link";
 
@@ -224,10 +223,10 @@ export function FlowContent() {
 
 export function FlowPage() {
   return (
-    <AppShell>
+    <>
       <div className="py-6">
         <FlowContent />
       </div>
-    </AppShell>
+    </>
   );
 }

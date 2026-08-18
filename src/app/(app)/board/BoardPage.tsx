@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Eye, EyeOff } from "lucide-react";
-import { AppShell } from "@/components/AppShell";
 import { TaskDetailDrawer } from "@/components/TaskDetailDrawer";
 import { STATUS_CONFIG, STATUS_ORDER, BOARD_COLUMNS } from "@/components/TaskItem";
 import { cn } from "@/lib/utils";
@@ -198,7 +197,7 @@ export function BoardPage() {
   const filteredTasks = mobileFilter === "all" ? allTasks : allTasks.filter((t) => t.status === mobileFilter);
 
   return (
-    <AppShell>
+    <>
       <div className="pt-1">
         <h1 className="text-[26px] font-bold tracking-tight text-[var(--text-primary)]">Board</h1>
         <p className="mt-1 text-[14px] text-[var(--text-tertiary)]">One company at a time. Drag a card to move it.</p>
@@ -459,7 +458,7 @@ export function BoardPage() {
         onComplete={completeTask}
         onDelete={deleteTask}
       />
-    </AppShell>
+    </>
   );
 }
 

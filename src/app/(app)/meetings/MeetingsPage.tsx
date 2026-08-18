@@ -15,7 +15,6 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { AppShell } from "@/components/AppShell";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
@@ -221,7 +220,7 @@ export function MeetingsPage() {
   ].filter((s) => s.items.length > 0);
 
   return (
-    <AppShell>
+    <>
       <div className="mx-auto max-w-3xl pt-1">
         <h1 className="text-[26px] font-bold tracking-tight text-[var(--text-primary)]">Meetings</h1>
         <p className="mt-1 text-[14px] text-[var(--text-tertiary)]">
@@ -341,7 +340,7 @@ export function MeetingsPage() {
           </div>
         )}
       </div>
-    </AppShell>
+    </>
   );
 }
 
