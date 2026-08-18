@@ -293,6 +293,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let isDaemon = CommandLine.arguments.contains("--daemon")
 
     func applicationDidFinishLaunching(_ n: Notification) {
+        installEditMenu()
         if isDaemon {
             registerHotKey()
         } else {
@@ -339,6 +340,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Drop the window so the next ⌃⌥Space gets a clean field, not last capture's text.
         window?.orderOut(nil)
         window = nil
+    }
+
+    /// ⌘V and friends are delivered by the main menu's key equivalents, not by the text
+    /// field itself — an app with no menu bar silently swallows them, which is why pasting
+    /// into the capture field did nothing. An accessory app never *shows* this menu; it
+    /// just needs it to exist for the shortcuts to route.
+    private func installEditMenu() {
+        let mainMenu = NSMenu()
+
+        // Conventional empty app menu — the first item is never treated as a real menu.
+        let appItem = NSMenuItem()
+        appItem.submenu = NSMenu()
+        mainMenu.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        edit.addItem(NSMenuItem.separator())
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = edit
+        mainMenu.addItem(editItem)
+
+        NSApp.mainMenu = mainMenu
     }
 
     /// ⌃⌥Space, via Carbon — the one global-hotkey API that needs no Accessibility grant.
