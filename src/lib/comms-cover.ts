@@ -1,11 +1,5 @@
 import { prisma } from "./prisma";
-import {
-  getScheduleBlocks,
-  localNow,
-  timeToMinutes,
-  getOffClockMessage,
-  type TimeBlock,
-} from "./schedule";
+import { localNow, timeToMinutes, getOffClockMessage } from "./schedule";
 
 const TIMEZONE = process.env.TIMEZONE || "America/New_York";
 
@@ -13,62 +7,35 @@ const TIMEZONE = process.env.TIMEZONE || "America/New_York";
 // Pure logic (unit-testable — no IO)
 // ---------------------------------------------------------------------------
 
-export interface SweepBoundary {
-  minutes: number; // end-of-block, minutes-of-day
-  blockId: string;
-}
-
 /**
- * Distinct end-of-block boundaries for the given weekday, ascending. Only blocks
- * with a role assigned that day count — those are the real work blocks, and each
- * block change is a natural moment to sweep comms.
+ * Minutes between sweeps.
+ *
+ * This used to key off schedule-block boundaries — sweep when you change companies. Neat
+ * in theory, but the real schedule has 60-minute blocks in the morning and three
+ * boundaries inside 30 minutes at midday, so the gap swung between an hour and a quarter
+ * of one. A flat interval is what "check messages regularly" actually means.
  */
-export function sweepBoundaries(blocks: TimeBlock[], dayOfWeek: number): SweepBoundary[] {
-  const seen = new Map<number, string>();
-  for (const b of blocks) {
-    const roleId = b.dayAssignments[String(dayOfWeek)];
-    if (!roleId) continue;
-    const end = timeToMinutes(b.endHour, b.endMinute);
-    if (!seen.has(end)) seen.set(end, b.id);
-  }
-  return Array.from(seen.entries())
-    .map(([minutes, blockId]) => ({ minutes, blockId }))
-    .sort((a, b) => a.minutes - b.minutes);
-}
+export const SWEEP_INTERVAL_MIN = 20;
 
 export interface SweepState {
   dueNow: boolean;
-  dueBlockId: string | null; // a boundary passed that hasn't been swept
-  nextSweepMinutes: number | null; // next upcoming boundary
-  nextSweepBlockId: string | null;
+  /** Minutes until the next sweep — 0 when one is due now. */
+  minutesUntilNext: number;
 }
 
 /**
- * `dueNow` when a block boundary has passed (<= now) since the last sweep.
- * `nextSweep*` always points at the next upcoming boundary (the covered-state label).
+ * Due when it's been SWEEP_INTERVAL_MIN since the last sweep. No sweep yet today means
+ * due immediately: the first check of the day is the one most worth doing.
  */
 export function computeSweepState(
-  boundaries: SweepBoundary[],
   nowMinutes: number,
-  lastSweepMinutesToday: number | null
+  lastSweepMinutesToday: number | null,
+  intervalMin: number = SWEEP_INTERVAL_MIN
 ): SweepState {
-  const lastRef = lastSweepMinutesToday ?? -1;
-
-  let dueBlockId: string | null = null;
-  for (const b of boundaries) {
-    if (b.minutes <= nowMinutes && b.minutes > lastRef) {
-      dueBlockId = b.blockId; // keep the most recent passed-and-unswept boundary
-    }
-  }
-
-  const next = boundaries.find((b) => b.minutes > nowMinutes) ?? null;
-
-  return {
-    dueNow: dueBlockId !== null,
-    dueBlockId,
-    nextSweepMinutes: next ? next.minutes : null,
-    nextSweepBlockId: next ? next.blockId : null,
-  };
+  if (lastSweepMinutesToday == null) return { dueNow: true, minutesUntilNext: 0 };
+  const elapsed = nowMinutes - lastSweepMinutesToday;
+  if (elapsed >= intervalMin) return { dueNow: true, minutesUntilNext: 0 };
+  return { dueNow: false, minutesUntilNext: intervalMin - elapsed };
 }
 
 /** "10:30" style label from minutes-of-day. */
@@ -101,10 +68,10 @@ export function lastSweepLocalMinutes(lastSweepAt: Date | null, nowLocal: Date):
 export interface CommsCoverPayload {
   offClock: boolean;
   dueNow: boolean;
-  dueBlockId: string | null;
+  /** When the next sweep lands, e.g. "10:40 AM". */
   nextSweepLabel: string | null;
   nextSweepInMin: number | null;
-  nextSweepBlockId: string | null;
+  intervalMin: number;
 }
 
 export async function getCommsCoverPayload(): Promise<CommsCoverPayload> {
@@ -112,8 +79,6 @@ export async function getCommsCoverPayload(): Promise<CommsCoverPayload> {
   const dayOfWeek = d.getDay();
   const offClock = getOffClockMessage(d) !== null || dayOfWeek === 0 || dayOfWeek === 6;
 
-  const blocks = await getScheduleBlocks(d);
-  const boundaries = sweepBoundaries(blocks, dayOfWeek);
   const nowMinutes = timeToMinutes(d.getHours(), d.getMinutes());
 
   const profile = await prisma.userProfile.findUnique({
@@ -122,14 +87,13 @@ export async function getCommsCoverPayload(): Promise<CommsCoverPayload> {
   });
   const lastMin = lastSweepLocalMinutes(profile?.lastSweepAt ?? null, d);
 
-  const state = computeSweepState(boundaries, nowMinutes, lastMin);
+  const state = computeSweepState(nowMinutes, lastMin);
 
   return {
     offClock,
     dueNow: !offClock && state.dueNow,
-    dueBlockId: state.dueBlockId,
-    nextSweepLabel: state.nextSweepMinutes != null ? labelForMinutes(state.nextSweepMinutes) : null,
-    nextSweepInMin: state.nextSweepMinutes != null ? Math.max(0, state.nextSweepMinutes - nowMinutes) : null,
-    nextSweepBlockId: state.nextSweepBlockId,
+    nextSweepInMin: state.minutesUntilNext,
+    nextSweepLabel: labelForMinutes(nowMinutes + state.minutesUntilNext),
+    intervalMin: SWEEP_INTERVAL_MIN,
   };
 }

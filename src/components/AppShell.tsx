@@ -9,6 +9,7 @@ import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { GlobalSearch } from "./GlobalSearch";
 import { Reminders } from "./Reminders";
 import { MeetingAlert } from "./MeetingAlert";
+import { CommsSweepAlert } from "./CommsSweepAlert";
 import { BlockTransition, type TransitionBlock } from "./BlockTransition";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 import { ScheduleProvider, useSchedule, type BlockInfo } from "./ScheduleContext";
@@ -155,6 +156,9 @@ function AppFrame({ children }: { children: React.ReactNode }) {
 
       {/* Meeting starting soon — same unmissable modal, fires on every page */}
       <MeetingAlert />
+
+      {/* Comms sweep due — go check your messages */}
+      <CommsSweepAlert />
 
       {/* Block-transition ritual — full-screen reset between company blocks */}
       <AnimatePresence>
