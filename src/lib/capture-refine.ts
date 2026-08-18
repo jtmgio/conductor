@@ -14,7 +14,8 @@ export function refineTaskInBackground(
   taskId: string,
   rawText: string,
   roleId: string,
-  onRefined?: (r: RefinedFields) => void
+  onRefined?: (r: RefinedFields) => void,
+  onSettled?: () => void // always fires, even when refine fails — for clearing spinners
 ): void {
   fetch("/api/tasks/refine", {
     method: "POST",
@@ -36,5 +37,6 @@ export function refineTaskInBackground(
         }),
       }).then(() => onRefined?.(r));
     })
-    .catch(() => {});
+    .catch(() => {})
+    .finally(() => onSettled?.());
 }

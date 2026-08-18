@@ -79,7 +79,8 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [clear, setClear] = useState<ClearRole[]>([]);
   const [now, setNow] = useState(() => new Date());
-  const [restOpen, setRestOpen] = useState(true);
+  const [restOpen, setRestOpen] = useState(false);
+  const [othersOpen, setOthersOpen] = useState(false);
   const router = useRouter();
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [capture, setCapture] = useState("");
@@ -583,33 +584,6 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
             )}
           </AnimatePresence>
 
-          {/* The rest — collapsed */}
-          {rest.length > 0 && (
-            <div className="mt-3">
-              <button onClick={() => setRestOpen((v) => !v)} className="flex items-center gap-1.5 px-1 py-1.5 text-[12.5px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
-                <ChevronRight className={`h-3.5 w-3.5 transition-transform ${restOpen ? "rotate-90" : ""}`} />
-                {rest.length} more for {focusName}
-              </button>
-              <AnimatePresence initial={false}>
-                {restOpen && (
-                  <motion.ul initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                    {rest.map((t) => (
-                      <li key={t.id} className="flex items-center gap-3 border-t border-[var(--border-subtle)] px-1 py-2.5">
-                        <button
-                          onClick={() => complete(t.id)}
-                          aria-label="Mark done"
-                          className="h-4 w-4 shrink-0 rounded border-[1.5px] border-[var(--border-strong)] transition-colors hover:border-[color:var(--text-secondary)]"
-                        />
-                        <span className="flex-1 cursor-pointer truncate text-[14px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]" onClick={() => setSelectedTask(t)}>{t.title}</span>
-                        {isToday(t.dueDate, now) && <span className="shrink-0 text-[11px] font-semibold text-amber-400">Due today</span>}
-                      </li>
-                    ))}
-                  </motion.ul>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
-
           {/* Blocked work that's been quiet too long — the only thing that pulls a
               blocked task back into view. Reason included so you can decide without
               opening it. */}
@@ -645,15 +619,48 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
             </div>
           )}
 
-          {/* Pull from backlog — deep backlog lives here + on the Board, not in the one-thing flow */}
-          {backlog.length > 0 && (
+          {/* Collapsed sections — one toggle row; whichever you open expands below it */}
+          {(rest.length > 0 || backlog.length > 0 || others.length > 0) && (
             <div className="mt-3">
-              <button onClick={() => setBacklogOpen((v) => !v)} className="flex items-center gap-1.5 px-1 py-1.5 text-[12.5px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
-                <ChevronRight className={`h-3.5 w-3.5 transition-transform ${backlogOpen ? "rotate-90" : ""}`} />
-                Pull from {focusName} backlog · {backlog.length}
-              </button>
+              <div className="flex flex-wrap items-center gap-x-4">
+                {rest.length > 0 && (
+                  <button onClick={() => setRestOpen((v) => !v)} className="flex items-center gap-1.5 px-1 py-1.5 text-[12.5px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
+                    <ChevronRight className={`h-3.5 w-3.5 transition-transform ${restOpen ? "rotate-90" : ""}`} />
+                    {rest.length} more for {focusName}
+                  </button>
+                )}
+                {backlog.length > 0 && (
+                  <button onClick={() => setBacklogOpen((v) => !v)} className="flex items-center gap-1.5 px-1 py-1.5 text-[12.5px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
+                    <ChevronRight className={`h-3.5 w-3.5 transition-transform ${backlogOpen ? "rotate-90" : ""}`} />
+                    Pull from {focusName} backlog · {backlog.length}
+                  </button>
+                )}
+                {others.length > 0 && (
+                  <button onClick={() => setOthersOpen((v) => !v)} className="flex items-center gap-1.5 px-1 py-1.5 text-[12.5px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
+                    <ChevronRight className={`h-3.5 w-3.5 transition-transform ${othersOpen ? "rotate-90" : ""}`} />
+                    Other companies
+                  </button>
+                )}
+              </div>
               <AnimatePresence initial={false}>
-                {backlogOpen && (
+                {restOpen && rest.length > 0 && (
+                  <motion.ul initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                    {rest.map((t) => (
+                      <li key={t.id} className="flex items-center gap-3 border-t border-[var(--border-subtle)] px-1 py-2.5">
+                        <button
+                          onClick={() => complete(t.id)}
+                          aria-label="Mark done"
+                          className="h-4 w-4 shrink-0 rounded border-[1.5px] border-[var(--border-strong)] transition-colors hover:border-[color:var(--text-secondary)]"
+                        />
+                        <span className="flex-1 cursor-pointer truncate text-[14px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]" onClick={() => setSelectedTask(t)}>{t.title}</span>
+                        {isToday(t.dueDate, now) && <span className="shrink-0 text-[11px] font-semibold text-amber-400">Due today</span>}
+                      </li>
+                    ))}
+                  </motion.ul>
+                )}
+              </AnimatePresence>
+              <AnimatePresence initial={false}>
+                {backlogOpen && backlog.length > 0 && (
                   <motion.ul initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                     {backlog.map((t) => (
                       <li key={t.id} className="flex items-center gap-3 border-t border-[var(--border-subtle)] px-1 py-2.5">
@@ -670,33 +677,35 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                   </motion.ul>
                 )}
               </AnimatePresence>
-            </div>
-          )}
-
-          {/* All-clear for the other companies */}
-          {others.length > 0 && (
-            <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 px-1">
-              {others.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => focusCompany({ id: c.id, name: c.name, color: c.color })}
-                  title={`Work ${c.name} now`}
-                  className="flex items-center gap-1.5 rounded-lg px-1.5 py-0.5 text-[12.5px] transition-colors hover:bg-[var(--surface-raised)]"
-                >
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: c.color, opacity: c.quiet ? 0.5 : 1 }} />
-                  {c.quiet ? (
-                    <span className="flex items-center gap-1 text-[var(--text-tertiary)]">
-                      {c.name}
-                      <Check className="h-3 w-3 text-emerald-500" />
-                      quiet
-                    </span>
-                  ) : (
-                    <span className="text-[var(--text-secondary)]">
-                      {c.name} · <b className="font-semibold text-[var(--text-primary)]">{c.dueToday ? `${c.dueToday} due today` : `${c.staleFollowups} waiting`}</b>
-                    </span>
-                  )}
-                </button>
-              ))}
+              <AnimatePresence initial={false}>
+                {othersOpen && others.length > 0 && (
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                    <div className="flex flex-wrap gap-x-5 gap-y-2 px-1 pt-1.5">
+                      {others.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => focusCompany({ id: c.id, name: c.name, color: c.color })}
+                          title={`Work ${c.name} now`}
+                          className="flex items-center gap-1.5 rounded-lg px-1.5 py-0.5 text-[12.5px] transition-colors hover:bg-[var(--surface-raised)]"
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: c.color, opacity: c.quiet ? 0.5 : 1 }} />
+                          {c.quiet ? (
+                            <span className="flex items-center gap-1 text-[var(--text-tertiary)]">
+                              {c.name}
+                              <Check className="h-3 w-3 text-emerald-500" />
+                              quiet
+                            </span>
+                          ) : (
+                            <span className="text-[var(--text-secondary)]">
+                              {c.name} · <b className="font-semibold text-[var(--text-primary)]">{c.dueToday ? `${c.dueToday} due today` : `${c.staleFollowups} waiting`}</b>
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           )}
 

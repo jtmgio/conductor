@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "./AppShell";
 import { Check, Plus, ArrowLeft, Trash2, Sunrise, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
+import { refineTaskInBackground } from "@/lib/capture-refine";
 
 interface Role {
   id: string;
@@ -53,6 +54,7 @@ export function PlanTomorrowPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [refining, setRefining] = useState<Set<string>>(new Set());
   const [target, setTarget] = useState(() => computeTarget(9 * 60));
   const [finishing, setFinishing] = useState(false);
   const { toast } = useToast();
@@ -109,11 +111,27 @@ export function PlanTomorrowPage() {
       if (!text) return;
       setDrafts((d) => ({ ...d, [roleId]: "" }));
       try {
-        await fetch("/api/tasks", {
+        const res = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ roleId, title: text, status: "backlog", scheduledFor: tomorrowIso }),
         });
+        if (res.ok) {
+          const t = await res.json();
+          setRefining((prev) => new Set(prev).add(t.id));
+          refineTaskInBackground(
+            t.id,
+            text,
+            roleId,
+            () => load(),
+            () =>
+              setRefining((prev) => {
+                const next = new Set(prev);
+                next.delete(t.id);
+                return next;
+              })
+          );
+        }
       } catch {}
       load();
     },
@@ -209,7 +227,11 @@ export function PlanTomorrowPage() {
                                 : "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-[var(--border-strong)]"
                             }
                           >
-                            <Check className={on ? "h-3 w-3 text-emerald-400" : "h-3 w-3 text-transparent"} />
+                            {refining.has(t.id) ? (
+                              <Loader2 className="h-3 w-3 animate-spin text-[var(--text-tertiary)]" />
+                            ) : (
+                              <Check className={on ? "h-3 w-3 text-emerald-400" : "h-3 w-3 text-transparent"} />
+                            )}
                           </span>
                           <span className={`flex-1 text-[14px] ${on ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}`}>{t.title}</span>
                         </button>
