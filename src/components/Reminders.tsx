@@ -29,6 +29,57 @@ const SNOOZE_MS = 300_000; // "snooze 5 min" on a critical reminder
 /** A finished timer shouldn't just vanish — it earns a closing instruction. */
 const DONE_MS = 120_000; // auto-clears if you walked away from the desk
 
+/**
+ * Reminder state that must outlive the component.
+ *
+ * Every page renders its own <AppShell>, so a client-side navigation unmounts
+ * <Reminders /> and takes its React state with it. Without this, walking from Focus to
+ * Board mid-stretch dropped the running timer, re-showed the "Start" modal, and a Skip
+ * there acked the reminder for the whole day — the stand-up simply vanished.
+ *
+ * Timers are stored as an absolute end time, not seconds remaining, so a restored
+ * countdown is still honest (and a throttled background tab can't stretch 15 minutes
+ * into 20).
+ */
+const STATE_KEY = "conductor-reminder-state";
+
+interface PersistedState {
+  date: string;                    // guards against yesterday's state leaking into today
+  timers: Record<string, number>;  // reminder id -> epoch ms the timer ends
+  snoozed: Record<string, number>; // reminder id -> epoch ms until it may return
+  acked: string[];
+  chimed: string[];                // already announced today; navigation shouldn't re-chime
+}
+
+function dayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function emptyState(): PersistedState {
+  return { date: dayKey(), timers: {}, snoozed: {}, acked: [], chimed: [] };
+}
+
+function loadState(): PersistedState {
+  if (typeof window === "undefined") return emptyState();
+  try {
+    const raw = localStorage.getItem(STATE_KEY);
+    if (!raw) return emptyState();
+    const parsed = JSON.parse(raw) as PersistedState;
+    if (parsed.date !== dayKey()) return emptyState();
+    return { ...emptyState(), ...parsed };
+  } catch {
+    return emptyState();
+  }
+}
+
+function saveState(state: PersistedState): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify(state));
+  } catch {}
+}
+
 function doneMessage(label: string): string {
   if (/stand/i.test(label)) return "Time to sit down";
   if (/stretch/i.test(label)) return "Nice — back to it";
@@ -63,11 +114,12 @@ function mmss(secs: number): string {
 export function Reminders() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [acked, setAcked] = useState<Set<string>>(new Set());
-  const [running, setRunning] = useState<Record<string, number>>({}); // id -> seconds left
+  const [running, setRunning] = useState<Record<string, number>>({}); // id -> epoch ms it ends
   const [snoozedUntil, setSnoozedUntil] = useState<Record<string, number>>({});
   const [completed, setCompleted] = useState<{ id: string; label: string } | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const [, setTick] = useState(0);
-  const prevDueRef = useRef<Set<string>>(new Set());
+  const [chimed, setChimed] = useState<Set<string>>(new Set());
   const runningRef = useRef(running);
   runningRef.current = running;
   const remindersRef = useRef(reminders);
@@ -85,6 +137,27 @@ export function Reminders() {
     const interval = setInterval(fetchReminders, 60_000);
     return () => clearInterval(interval);
   }, [fetchReminders]);
+
+  // Pick up where the last page left off
+  useEffect(() => {
+    const s = loadState();
+    setRunning(s.timers);
+    setSnoozedUntil(s.snoozed);
+    setAcked(new Set(s.acked));
+    setChimed(new Set(s.chimed));
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return; // never write the empty pre-hydration state over real state
+    saveState({
+      date: dayKey(),
+      timers: running,
+      snoozed: snoozedUntil,
+      acked: Array.from(acked),
+      chimed: Array.from(chimed),
+    });
+  }, [hydrated, running, snoozedUntil, acked, chimed]);
 
   // Re-evaluate the clock every 10s so a reminder appears promptly at its time
   useEffect(() => {
@@ -109,21 +182,25 @@ export function Reminders() {
   }, []);
 
   const startTimer = useCallback((id: string, mins: number) => {
-    setRunning((prev) => ({ ...prev, [id]: mins * 60 }));
+    setRunning((prev) => ({ ...prev, [id]: Date.now() + mins * 60_000 }));
   }, []);
 
-  // Countdown tick for timed reminders — auto-completes at zero
+  // Countdown tick for timed reminders — auto-completes when the deadline passes
   useEffect(() => {
     const interval = setInterval(() => {
       const cur = runningRef.current;
       if (Object.keys(cur).length === 0) return;
-      const next: Record<string, number> = {};
-      const done: string[] = [];
-      for (const [id, s] of Object.entries(cur)) {
-        if (s <= 1) done.push(id);
-        else next[id] = s - 1;
+      const nowMs = Date.now();
+      const done = Object.entries(cur).filter(([, endsAt]) => endsAt <= nowMs).map(([id]) => id);
+      if (done.length === 0) {
+        setTick((t) => t + 1); // redraw the mm:ss
+        return;
       }
-      setRunning(next);
+      setRunning((prev) => {
+        const next = { ...prev };
+        done.forEach((id) => delete next[id]);
+        return next;
+      });
       done.forEach((id) => {
         playSound("bell");
         const label = remindersRef.current.find((r) => r.id === id)?.label ?? "";
@@ -140,13 +217,15 @@ export function Reminders() {
     (r) => isDue(r, now) && !acked.has(r.id) && !(snoozedUntil[r.id] !== undefined && nowMs < snoozedUntil[r.id])
   );
 
-  // Chime once when a reminder newly becomes due
+  // Chime once per reminder per day — remounting on every page change shouldn't re-announce
+  const dueKey = due.map((r) => r.id).join(",");
   useEffect(() => {
-    const dueIds = due.map((r) => r.id);
-    const isNew = dueIds.some((id) => !prevDueRef.current.has(id));
-    prevDueRef.current = new Set(dueIds);
-    if (isNew) playSound("checkin");
-  }, [due]);
+    if (!hydrated || !dueKey) return;
+    const fresh = dueKey.split(",").filter((id) => !chimed.has(id));
+    if (fresh.length === 0) return;
+    setChimed((prev) => new Set([...Array.from(prev), ...fresh]));
+    playSound("checkin");
+  }, [hydrated, dueKey, chimed]);
 
   useEffect(() => {
     if (!completed) return;
@@ -201,8 +280,9 @@ export function Reminders() {
   if (!active) return null;
 
   const Icon = ICONS[active.icon ?? ""] ?? Pill;
-  const secsLeft = running[active.id];
-  const isRunning = secsLeft !== undefined;
+  const endsAt = running[active.id];
+  const isRunning = endsAt !== undefined;
+  const secsLeft = isRunning ? Math.max(0, Math.round((endsAt - Date.now()) / 1000)) : 0;
   const isTimed = !!active.durationMin;
   const isCritical = active.tier === "critical";
   const actionLabel = active.icon === "pill" || active.icon === "syringe" ? "Taken" : "Done";
