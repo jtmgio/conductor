@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getScheduleBlocks, getTimeLabel, getOffClockMessage, timeToMinutes, localNow } from "@/lib/schedule";
+import { getScheduleBlocks, getTimeLabel, getOffClockMessage, timeToMinutes, minutesToTime, localNow } from "@/lib/schedule";
 import { rebalanceBlocks } from "@/lib/schedule-rebalance";
 import { prisma } from "@/lib/prisma";
+
+/** Where "open time" runs to when nothing else is scheduled — the end of the on-clock day. */
+const OPEN_TIME_END_MIN = 17 * 60;
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -47,6 +50,50 @@ export async function GET() {
         nextBlocks.push({ block, roleId });
         if (nextBlocks.length >= 3) break;
       }
+    }
+  }
+
+  // Blocks don't cover the whole working day — you start before the first one and keep
+  // going after the last. Rather than showing "off the clock · nobody expects you" while
+  // you're plainly working with open tasks, fall through to the priority waterfall: the
+  // highest-priority company that still has work. Same rule a block with no role assigned
+  // already follows, applied to the edges of the day.
+  if (!currentBlock && !offClockMessage) {
+    const withWork = await prisma.task.groupBy({
+      by: ["roleId"],
+      where: { done: false, status: { not: "icebox" } },
+      _count: true,
+    });
+    const roleIdsWithWork = new Set(withWork.map((c) => c.roleId));
+    const waterfallRole = (
+      await prisma.role.findMany({
+        where: { active: true },
+        orderBy: { priority: "asc" },
+        select: { id: true },
+      })
+    ).find((r) => roleIdsWithWork.has(r.id));
+
+    if (waterfallRole) {
+      // Runs until the next scheduled block, or to the end of the working day.
+      const nextStart = allBlocks
+        .map((b) => timeToMinutes(b.startHour, b.startMinute))
+        .filter((m) => m > currentMinutes)
+        .sort((a, b) => a - b)[0];
+      const endMinutes = nextStart ?? OPEN_TIME_END_MIN;
+      const startTime = minutesToTime(Math.min(currentMinutes, endMinutes));
+      const endTime = minutesToTime(Math.max(endMinutes, currentMinutes + 1));
+
+      currentBlock = {
+        id: "open-time",
+        label: "Open time",
+        startHour: startTime.hour,
+        startMinute: startTime.minute,
+        endHour: endTime.hour,
+        endMinute: endTime.minute,
+        sortOrder: -1,
+        dayAssignments: { [String(dayOfWeek)]: waterfallRole.id },
+      };
+      currentRoleId = waterfallRole.id;
     }
   }
 

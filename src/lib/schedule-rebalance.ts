@@ -161,29 +161,55 @@ async function computeRebalance(
   for (const seg of segments) {
     if (seg.blocks.length === 0) continue;
 
-    // Subtract any short-fixed time within this segment so rebalanceable blocks
-    // don't get redistributed over their fixed neighbors.
-    const segShortFixedMin = shortFixed.reduce((sum, s) => {
-      const start = timeToMinutes(s.block.startHour, s.block.startMinute);
-      const end = timeToMinutes(s.block.endHour, s.block.endMinute);
-      if (start >= seg.startMinutes && start < seg.endMinutes) {
-        return sum + (end - start);
-      }
-      return sum;
-    }, 0);
+    // Short blocks stay exactly where they are, so they're islands the rebalanced blocks
+    // have to flow *around*. Subtracting their minutes from the total and then laying
+    // everything out contiguously from the segment start (the old approach) put a
+    // rebalanced block straight on top of them — vQuip 09:18-10:09 and Wris 09:39-09:54
+    // were live at the same time — and left the day 15 minutes short at the end.
+    const islands = shortFixed
+      .map((s) => ({
+        start: timeToMinutes(s.block.startHour, s.block.startMinute),
+        end: timeToMinutes(s.block.endHour, s.block.endMinute),
+      }))
+      .filter((i) => i.start >= seg.startMinutes && i.start < seg.endMinutes)
+      .sort((a, b) => a.start - b.start);
 
-    const totalMinutes = seg.endMinutes - seg.startMinutes - segShortFixedMin;
+    // The gaps between islands are what's actually available.
+    const free: Array<{ start: number; end: number }> = [];
+    let pos = seg.startMinutes;
+    for (const island of islands) {
+      if (island.start > pos) free.push({ start: pos, end: island.start });
+      pos = Math.max(pos, island.end);
+    }
+    if (pos < seg.endMinutes) free.push({ start: pos, end: seg.endMinutes });
+
+    const totalMinutes = free.reduce((sum, f) => sum + (f.end - f.start), 0);
     if (totalMinutes <= 0) continue;
-    const blockDuration = Math.floor(totalMinutes / seg.blocks.length);
-    const remainder = totalMinutes - blockDuration * seg.blocks.length;
 
-    let cursor = seg.startMinutes;
+    const blockDuration = Math.floor(totalMinutes / seg.blocks.length);
+
+    let slot = 0;
+    let cursor = free[0].start;
 
     for (let i = 0; i < seg.blocks.length; i++) {
       const { block, roleId } = seg.blocks[i];
-      const duration = blockDuration + (i === seg.blocks.length - 1 ? remainder : 0);
+      const isLast = i === seg.blocks.length - 1;
+
+      // Move to the next free gap once this one is used up
+      while (slot < free.length - 1 && cursor >= free[slot].end) {
+        slot++;
+        cursor = free[slot].start;
+      }
+
+      // A block never straddles an island: it takes what's left of this gap if the
+      // full share doesn't fit, and the next block picks up after the island.
+      const gapEnd = free[slot].end;
+      const wanted = isLast ? gapEnd - cursor : blockDuration;
+      const end = Math.min(cursor + wanted, gapEnd);
+      if (end <= cursor) continue;
+
       const startTime = minutesToTime(cursor);
-      const endTime = minutesToTime(cursor + duration);
+      const endTime = minutesToTime(end);
 
       rebalanced.push({
         id: block.id,
@@ -196,7 +222,7 @@ async function computeRebalance(
         dayAssignments: { [String(dayOfWeek)]: roleId },
       });
 
-      cursor += duration;
+      cursor = end;
     }
   }
 
