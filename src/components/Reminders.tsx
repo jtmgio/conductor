@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
-import { Pill, Syringe, GlassWater, PersonStanding, Check, Play, Clock, Armchair } from "lucide-react";
+import { Pill, Syringe, GlassWater, PersonStanding, Laptop, Check, Play, Clock, Armchair } from "lucide-react";
 import { playSound } from "@/lib/sounds";
 
 interface Reminder {
@@ -22,6 +22,7 @@ const ICONS: Record<string, typeof Pill> = {
   syringe: Syringe,
   shake: GlassWater,
   stretch: PersonStanding,
+  laptop: Laptop,
 };
 
 const SNOOZE_MS = 300_000; // "snooze 5 min" on a critical reminder
