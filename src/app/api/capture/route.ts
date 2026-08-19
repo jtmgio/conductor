@@ -16,15 +16,24 @@ function authorized(req: Request): boolean {
 /**
  * Companies for the capture client's picker, plus whichever one the current schedule
  * block points at so the app can preselect it. Same bearer auth as POST.
+ *
+ * `platform` is where that company's messages usually go, so the capture app's message
+ * mode can default the Slack/Teams pick to it. Role.platform is free text and can name
+ * both ("Slack, Teams"), so it's normalized here rather than in the client.
  */
 export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const companies = await prisma.role.findMany({
+  const roles = await prisma.role.findMany({
     where: { active: true },
     orderBy: { priority: "asc" },
-    select: { id: true, name: true, color: true, taskPrefix: true },
+    select: { id: true, name: true, color: true, taskPrefix: true, platform: true },
   });
+  const companies = roles.map(({ platform, ...r }) => ({
+    ...r,
+    // Teams only when it's the sole platform named — a role on both lives in Slack.
+    platform: /teams/i.test(platform || "") && !/slack/i.test(platform || "") ? "teams" : "slack",
+  }));
   const block = await getCurrentBlock();
 
   return NextResponse.json({ companies, currentRoleId: block?.roleId ?? null });

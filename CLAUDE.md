@@ -510,8 +510,27 @@ the same MLX refine as MCP `create_task` and confirms with the task key ("Added 
 **Named `Todo`, not `Conductor`, on purpose** — Spotlight ranks open windows above apps, so
 the running Conductor browser window always won the "conductor" match. `todo` has no competitor.
 
+### Message mode (`⌘M`)
+
+The same window flips to a formatter: rough draft in, the draft in Josh's voice out and **on
+the clipboard**. The whole flow is copy a draft → `⌃⌥Space` → `⌘M` → `Enter` → paste.
+
+- Switching to message mode **pulls the clipboard into the field and selects it**, since that
+  is the flow it exists for. Typing replaces it; it only auto-fills when the field is empty.
+- Company still picks the voice/tone (`⌘1…9`); `⌘P` cycles Slack → Teams → Email → SMS. The
+  platform preselects from `Role.platform`, normalized server-side in `GET /api/capture`
+  (a role on both Slack and Teams counts as Slack).
+- The result screen **does not auto-close** — the text is already copied, so the screen is
+  the read-back. `Enter`/`Esc` close it, `⌘M` goes back to edit.
+- `src/app/api/format/route.ts` — bearer-authed `POST { text, role?, platform? }`. Exists
+  because `/api/ai/format-message` is gated on a NextAuth session a Swift app can't hold;
+  both call the same `src/lib/format-message.ts`, so the voice guide applies either way.
+- Window sizing: the window uses an `NSHostingController`, not a bare `NSHostingView`, so it
+  grows for the multi-line field and the read-back. Don't call `setContentSize` on it.
+
 - `src/app/api/capture/route.ts` — bearer-authed with `MCP_API_TOKEN`, no NextAuth session.
-  `GET` returns active companies + the current schedule block's `currentRoleId` (what the app
+  `GET` returns active companies (with `platform`) + the current schedule block's
+  `currentRoleId` (what the app
   preselects). `POST` takes `{ text, role?, today? }`: an explicit `role` skips AI company
   inference entirely, `today: true` sets `scheduledFor`. Also serves the iOS Siri Shortcut,
   where both are omitted and inference still runs. Tasks get `sourceType: "siri"`.

@@ -20,6 +20,12 @@ DOMAIN="gui/$(id -u)"
 
 unload() {
   launchctl bootout "$DOMAIN/$LABEL" 2> /dev/null || true
+  # bootout returns before the job is actually gone; bootstrapping into that window fails
+  # with "Bootstrap failed: 5: Input/output error". Wait for the label to disappear.
+  for _ in $(seq 1 20); do
+    launchctl print "$DOMAIN/$LABEL" > /dev/null 2>&1 || return 0
+    sleep 0.25
+  done
 }
 
 if [ "${1:-}" = "--uninstall" ]; then

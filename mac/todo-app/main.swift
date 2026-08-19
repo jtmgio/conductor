@@ -1,11 +1,12 @@
 // Conductor quick capture — the ⌘Space front door ("todo").
 //
-// One window: what to do, which company, today or backlog. Everything is reachable
-// from the keyboard (⌘1…9 company, ⌘T today, Enter add, Esc cancel) because the whole
-// point is that your hands never leave the keys.
+// One window, two modes. Task: what to do, which company, today or backlog. Message
+// (⌘M): a rough draft in, the same draft in your voice out and on the clipboard.
+// Everything is reachable from the keyboard (⌘1…9 company, ⌘T today, ⌘P platform,
+// Enter go, Esc cancel) because the whole point is that your hands never leave the keys.
 //
 // Replaces the AppleScript dialog, which couldn't offer a picker. Talks to /api/capture
-// directly — GET for the company list, POST to file the task.
+// (GET for the company list, POST to file a task) and /api/format (message mode).
 //
 // Config (same as mac/conductor-capture.sh):
 //   URL:   $CONDUCTOR_URL, else ~/.conductor/url, else http://localhost:5402
@@ -45,6 +46,8 @@ struct Company: Decodable, Identifiable, Hashable {
     let name: String
     let color: String
     let taskPrefix: String?
+    /// Where this company's messages usually go — preselects the platform in message mode.
+    let platform: String?
 }
 
 struct OptionsResponse: Decodable {
@@ -57,6 +60,13 @@ struct CaptureResponse: Decodable {
     let title: String
     let company: String
     let key: String?
+}
+
+struct FormatResponse: Decodable {
+    let ok: Bool
+    let formatted: String
+    let company: String
+    let platform: String
 }
 
 enum API {
@@ -81,6 +91,20 @@ enum API {
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp)
         return try JSONDecoder().decode(CaptureResponse.self, from: data)
+    }
+
+    static func format(_ cfg: Config, text: String, roleId: String?, platform: String) async throws -> FormatResponse {
+        var req = URLRequest(url: URL(string: "\(cfg.baseURL)/api/format")!)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(cfg.token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 180  // a long message through a cold MLX can take a while
+        var body: [String: Any] = ["text": text, "platform": platform]
+        if let roleId { body["role"] = roleId }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp)
+        return try JSONDecoder().decode(FormatResponse.self, from: data)
     }
 
     private static func check(_ resp: URLResponse) throws {
@@ -119,8 +143,20 @@ enum Phase: Equatable {
     case editing
     case saving
     case done(String)
+    /// Message mode's result: the formatted text is already on the clipboard, this is the
+    /// read-back. Sticks around until dismissed instead of auto-closing — you want to see
+    /// what you're about to paste.
+    case copied(String, String)
     case failed(String)
 }
+
+enum Mode: Equatable {
+    case task
+    case message
+}
+
+/// The platforms /api/format understands, in ⌘P cycle order.
+let platforms = ["slack", "teams", "email", "sms"]
 
 // MARK: - View
 
@@ -134,6 +170,8 @@ struct CaptureView: View {
     @State private var companies: [Company] = []
     @State private var selected: String?
     @State private var scheduleToday = false
+    @State private var mode: Mode = .task
+    @State private var platform = "slack"
     @State private var phase: Phase = .editing
     @FocusState private var fieldFocused: Bool
 
@@ -142,6 +180,8 @@ struct CaptureView: View {
             switch phase {
             case .done(let msg):
                 result(icon: "checkmark.circle.fill", tint: .green, text: msg)
+            case .copied(let label, let body):
+                copiedResult(label: label, body: body)
             case .failed(let msg):
                 result(icon: "exclamationmark.triangle.fill", tint: .orange, text: msg)
             default:
@@ -155,12 +195,25 @@ struct CaptureView: View {
 
     private var editor: some View {
         VStack(alignment: .leading, spacing: 13) {
-            TextField("What do you need to do?", text: $text)
-                .textFieldStyle(.plain)
-                .font(.system(size: 26))
-                .focused($fieldFocused)
-                .onSubmit(submit)
-                .onAppear { fieldFocused = true }
+            modeRow
+
+            if mode == .message {
+                // Longer text, so a smaller face and room to grow. Return still submits —
+                // the Format button's key equivalent wins over the field's newline.
+                TextField("Rough draft…", text: $text, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 17))
+                    .lineLimit(2 ... 10)
+                    .focused($fieldFocused)
+                    .onAppear { fieldFocused = true }
+            } else {
+                TextField("What do you need to do?", text: $text)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 26))
+                    .focused($fieldFocused)
+                    .onSubmit(submit)
+                    .onAppear { fieldFocused = true }
+            }
 
             Divider().opacity(0.5)
 
@@ -179,7 +232,7 @@ struct CaptureView: View {
                             hint: "\(i + 1)",
                             tint: Color(hex: c.color),
                             active: selected == c.id
-                        ) { selected = c.id }
+                        ) { selected = c.id; platform = c.platform ?? "slack" }
                             .help(c.name)
                             .keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: .command)
                     }
@@ -188,11 +241,22 @@ struct CaptureView: View {
             }
 
             HStack(spacing: 10) {
-                chip(label: scheduleToday ? "Today" : "Backlog",
-                     hint: nil,
-                     tint: scheduleToday ? .orange : .secondary,
-                     active: scheduleToday) { scheduleToday.toggle() }
-                    .keyboardShortcut("t", modifiers: .command)
+                if mode == .message {
+                    // ⌘1–9 belong to the companies, so the platform cycles on ⌘P. Only the
+                    // active one carries the hint — four chips plus a company row is enough.
+                    ForEach(platforms, id: \.self) { p in
+                        chip(label: p == "sms" ? "SMS" : p.capitalized,
+                             hint: p == platform ? "⌘P" : nil,
+                             tint: .blue,
+                             active: p == platform) { platform = p }
+                    }
+                } else {
+                    chip(label: scheduleToday ? "Today" : "Backlog",
+                         hint: nil,
+                         tint: scheduleToday ? .orange : .secondary,
+                         active: scheduleToday) { scheduleToday.toggle() }
+                        .keyboardShortcut("t", modifiers: .command)
+                }
 
                 Text(selectedName)
                     .font(.system(size: 14))
@@ -204,16 +268,24 @@ struct CaptureView: View {
                 if phase == .saving {
                     ProgressView().controlSize(.small)
                 } else {
-                    Button("Add", action: submit)
+                    Button(mode == .message ? "Format" : "Add", action: submit)
                         .keyboardShortcut(.return, modifiers: [])
                         .buttonStyle(.borderedProminent)
                         .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
 
-            Text("⌘1–9 company · ⌘T today · ↩ add · esc cancel")
+            Text(mode == .message
+                 ? "⌘1–9 company · ⌘P platform · ↩ format + copy · esc cancel"
+                 : "⌘1–9 company · ⌘T today · ↩ add · esc cancel")
                 .font(.system(size: 12))
                 .foregroundStyle(.tertiary)
+
+            // ⌘P cycles the platform; only meaningful in message mode.
+            Button("") { if mode == .message { cyclePlatform() } }
+                .keyboardShortcut("p", modifiers: .command)
+                .frame(width: 0, height: 0)
+                .opacity(0)
 
             // Esc cancels
             Button("") { dismiss() }
@@ -221,6 +293,85 @@ struct CaptureView: View {
                 .frame(width: 0, height: 0)
                 .opacity(0)
         }
+    }
+
+    /// Task | Message, plus the invisible ⌘M that flips between them.
+    private var modeRow: some View {
+        HStack(spacing: 6) {
+            chip(label: "Task", hint: nil, tint: .orange, active: mode == .task) { setMode(.task) }
+            chip(label: "Message", hint: "⌘M", tint: .blue, active: mode == .message) { setMode(.message) }
+            Spacer(minLength: 0)
+        }
+        .overlay(
+            Button("") { setMode(mode == .task ? .message : .task) }
+                .keyboardShortcut("m", modifiers: .command)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+        )
+    }
+
+    /// Message mode's read-back. The text is already on the clipboard by the time this shows.
+    private func copiedResult(label: String, body: String) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 8) {
+                Image(systemName: "doc.on.clipboard.fill").font(.system(size: 15)).foregroundStyle(.green)
+                Text(label).font(.system(size: 14, weight: .medium)).foregroundStyle(.secondary)
+                Spacer()
+            }
+
+            ScrollView {
+                Text(body)
+                    .font(.system(size: 15))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 320)
+
+            HStack(spacing: 10) {
+                Text("copied · ↩ or esc to close")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                Button("Back") { phase = .editing }
+                    .keyboardShortcut("m", modifiers: .command)
+            }
+
+            Button("") { dismiss() }
+                .keyboardShortcut(.return, modifiers: [])
+                .frame(width: 0, height: 0)
+                .opacity(0)
+            Button("") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+        }
+    }
+
+    private func cyclePlatform() {
+        let i = platforms.firstIndex(of: platform) ?? 0
+        platform = platforms[(i + 1) % platforms.count]
+    }
+
+    /// Switching into message mode pulls whatever you just copied into the field and selects
+    /// it — the flow this exists for is copy a draft, hotkey, ⌘M, Enter. Typing replaces it.
+    private func setMode(_ m: Mode) {
+        guard mode != m else { return }
+        mode = m
+        if m == .message {
+            platform = defaultPlatform
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               let clip = NSPasteboard.general.string(forType: .string),
+               !clip.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                text = clip
+                DispatchQueue.main.async {
+                    NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                }
+            }
+        }
+    }
+
+    private var defaultPlatform: String {
+        companies.first { $0.id == selected }?.platform ?? "slack"
     }
 
     private func result(icon: String, tint: Color, text: String) -> some View {
@@ -259,6 +410,7 @@ struct CaptureView: View {
             let opts = try await API.options(cfg)
             companies = opts.companies
             selected = opts.currentRoleId ?? opts.companies.first?.id  // preselect the current block's company
+            platform = defaultPlatform
         } catch {
             phase = .failed(error.localizedDescription)
         }
@@ -270,6 +422,14 @@ struct CaptureView: View {
         phase = .saving
         Task {
             do {
+                if mode == .message {
+                    let r = try await API.format(cfg, text: t, roleId: selected, platform: platform)
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(r.formatted, forType: .string)
+                    // Message mode holds — you read it, then close. No auto-dismiss.
+                    phase = .copied("\(r.company) · \(r.platform)", r.formatted)
+                    return
+                }
                 let r = try await API.capture(cfg, text: t, roleId: selected, today: scheduleToday)
                 phase = .done("Added to \(r.company)" + (r.key.map { " · \($0)" } ?? ""))
                 try? await Task.sleep(for: .seconds(1.4))
@@ -317,9 +477,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         w.titleVisibility = .hidden
         w.isMovableByWindowBackground = true
         w.isReleasedWhenClosed = false
-        w.contentView = NSHostingView(
+        // A controller, not a bare hosting view, so the window grows to fit its content —
+        // message mode's read-back is much taller than the one-line capture field.
+        w.contentViewController = NSHostingController(
             rootView: CaptureView(cfg: Config.load(), dismiss: { [weak self] in self?.dismiss() })
         )
+        // No setContentSize — the controller sizes the window to its content, and message
+        // mode's field and read-back are both taller than a capture line.
         w.center()
         w.level = .floating
         w.makeKeyAndOrderFront(nil)
