@@ -221,11 +221,12 @@ export function toRichHtml(text: string, format: MessageFormat): string | null {
   }
   flush();
 
-  // Slack collapses adjacent <p> into single line breaks, so the blank line between
+  // Slack collapses adjacent blocks into single line breaks, so the blank line between
   // paragraphs disappears on paste. An explicit <br> between blocks restores it - the
-  // same thing useFormatMessage.copyToClipboard does for the web page. Lists are
-  // excluded: a <br> between list items breaks list rendering.
-  const html = blocks.join("").replace(/<\/(p|pre|blockquote)>(?=<)/g, "</$1><br>");
+  // same thing useFormatMessage.copyToClipboard does for the web page. Only CLOSING
+  // container tags match, never </li>: a <br> between list items breaks list rendering,
+  // but one after </ul> is what separates a list from the paragraph under it.
+  const html = blocks.join("").replace(/<\/(p|pre|blockquote|ul|ol)>(?=<)/g, "</$1><br>");
   return html.replace(/\u0001(\d+)\u0002/g, (_m, i) => stash[Number(i)]);
 }
 
