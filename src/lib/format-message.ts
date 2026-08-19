@@ -161,6 +161,70 @@ function restoreEmphasis(raw: string, out: string, format: MessageFormat): strin
   return result;
 }
 
+/**
+ * Render formatted output as HTML, for the clipboard's `text/html` flavor.
+ *
+ * Slack (and Teams) render a rich paste directly; a plain-text paste of the same message
+ * shows literal backticks and asks "Apply formatting?" instead. The web Formatter page has
+ * always copied both flavors — it lifts the HTML out of its rendered preview — so this is
+ * the same thing for clients that have no DOM to lift from (the Todo capture app).
+ *
+ * Not a general markdown renderer: it handles exactly what FORMAT_INSTRUCTIONS can produce.
+ */
+export function toRichHtml(text: string, format: MessageFormat): string | null {
+  if (format === "email") return text;  // already HTML
+  if (format === "sms") return null;    // plain by definition
+
+  const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const stash: string[] = [];
+  const keep = (html: string) => `\u0001${stash.push(html) - 1}\u0002`;
+
+  // Fenced blocks first, then inline code — both are held aside so emphasis rules can't
+  // reach inside them.
+  let out = text.replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (_m, body) =>
+    keep(`<pre><code>${escape(String(body).replace(/\n$/, ""))}</code></pre>`),
+  );
+  out = escape(out).replace(/`([^`\n]+)`/g, (_m, code) => keep(`<code>${code}</code>`));
+
+  if (format === "slack") {
+    out = out.replace(/(?<![\w*])\*([^*\n]+?)\*(?!\w)/g, "<b>$1</b>");
+    out = out.replace(/(?<![\w_])_([^_\n]+?)_(?!\w)/g, "<i>$1</i>");
+  } else {
+    out = out.replace(/\*\*([^*\n]+?)\*\*/g, "<b>$1</b>");
+    out = out.replace(/(?<![\w*])\*([^*\n]+?)\*(?!\w)/g, "<i>$1</i>");
+  }
+
+  // Blocks: runs of list lines become a list, everything else a paragraph.
+  const blocks: string[] = [];
+  let list: { ordered: boolean; items: string[] } | null = null;
+  const flush = () => {
+    if (!list) return;
+    const tag = list.ordered ? "ol" : "ul";
+    blocks.push(`<${tag}>${list.items.map((i) => `<li>${i}</li>`).join("")}</${tag}>`);
+    list = null;
+  };
+
+  for (const line of out.split("\n")) {
+    const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
+    const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (bullet || numbered) {
+      const ordered = !!numbered;
+      if (!list || list.ordered !== ordered) {
+        flush();
+        list = { ordered, items: [] };
+      }
+      list.items.push((bullet?.[1] ?? numbered?.[1] ?? "").trim());
+      continue;
+    }
+    flush();
+    if (line.trim()) blocks.push(`<p>${line}</p>`);
+  }
+  flush();
+
+  const html = blocks.join("");
+  return html.replace(/\u0001(\d+)\u0002/g, (_m, i) => stash[Number(i)]);
+}
+
 /** Rewrite a raw message in the user's voice for a role, with platform-correct
  *  formatting. Shared by /api/ai/format-message and the MCP format_message tool. */
 export async function formatMessage(opts: {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { formatMessage, MESSAGE_FORMATS, type MessageFormat } from "@/lib/format-message";
+import { formatMessage, toRichHtml, MESSAGE_FORMATS, type MessageFormat } from "@/lib/format-message";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +47,15 @@ export async function POST(req: Request) {
 
   try {
     const formatted = await formatMessage({ roleId: role.id, rawMessage: text, format: platform });
-    return NextResponse.json({ ok: true, formatted, company: role.name, platform });
+    // `html` is the rich-paste flavor. Slack renders it directly; without it a plain-text
+    // paste shows literal backticks and makes you click "Apply formatting?".
+    return NextResponse.json({
+      ok: true,
+      formatted,
+      html: toRichHtml(formatted, platform),
+      company: role.name,
+      platform,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

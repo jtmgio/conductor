@@ -535,6 +535,13 @@ the clipboard**. The whole flow is copy a draft → `⌃⌥Space` → `⌘M` →
 - `src/app/api/format/route.ts` — bearer-authed `POST { text, role?, platform? }`. Exists
   because `/api/ai/format-message` is gated on a NextAuth session a Swift app can't hold;
   both call the same `src/lib/format-message.ts`, so the voice guide applies either way.
+- **The clipboard carries two flavors, and it has to.** The response includes `html`
+  (`toRichHtml()`), and the app writes `public.html` alongside the plain string. Slack
+  renders the rich flavor into real code chips and bold; a plain-text-only paste shows
+  literal backticks and makes you click "Apply formatting?". The web Formatter page has
+  always done this (it lifts HTML out of its rendered preview via `ClipboardItem`) — which
+  is exactly why the same message looked right pasted from the browser and wrong pasted
+  from the app.
 - Window sizing: the window uses an `NSHostingController`, not a bare `NSHostingView`, so it
   grows for the multi-line field and the read-back. Don't call `setContentSize` on it.
 

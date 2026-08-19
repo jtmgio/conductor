@@ -65,6 +65,8 @@ struct CaptureResponse: Decodable {
 struct FormatResponse: Decodable {
     let ok: Bool
     let formatted: String
+    /// Rich-paste flavor. Slack renders this; the plain text alone pastes as literal backticks.
+    let html: String?
     let company: String
     let platform: String
 }
@@ -381,8 +383,16 @@ struct CaptureView: View {
             do {
                 if mode == .message {
                     let r = try await API.format(cfg, text: t, roleId: selected, platform: platform)
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(r.formatted, forType: .string)
+                    // Both flavors, HTML first. Slack pastes the rich one and renders code
+                    // chips and bold; anything that only understands text still gets the
+                    // mrkdwn. Plain text alone is what made Slack ask "Apply formatting?".
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    if let html = r.html, !html.isEmpty {
+                        pb.declareTypes([.html, .string], owner: nil)
+                        pb.setString(html, forType: .html)
+                    }
+                    pb.setString(r.formatted, forType: .string)
                     // On the clipboard is the whole point — flash it and get out of the way.
                     phase = .done("Copied · \(r.company) · \(r.platform)")
                     try? await Task.sleep(for: .seconds(1.1))
