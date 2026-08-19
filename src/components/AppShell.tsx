@@ -48,7 +48,11 @@ function AppFrame({ children }: { children: React.ReactNode }) {
     const cb = currentBlock;
     if (cb && cb.roleId) {
       const prev = prevBlockRef.current;
-      if (prev && prev.roleId && blockKey(prev) !== blockKey(cb)) {
+      // Only a genuine company switch earns the ritual. Comparing block keys alone let
+      // "vQuip complete → Start vQuip" fire whenever a block's identity changed underneath
+      // the same role — which is nonsense to read, and was the visible symptom of the
+      // open-time block's label churning every minute.
+      if (prev && prev.roleId && prev.roleId !== cb.roleId && blockKey(prev) !== blockKey(cb)) {
         const key = blockKey(cb);
         if (localStorage.getItem("conductor-transition-seen") !== key) {
           localStorage.setItem("conductor-transition-seen", key);

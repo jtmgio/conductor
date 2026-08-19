@@ -58,7 +58,10 @@ export async function GET() {
   // you're plainly working with open tasks, fall through to the priority waterfall: the
   // highest-priority company that still has work. Same rule a block with no role assigned
   // already follows, applied to the edges of the day.
-  if (!currentBlock && !offClockMessage) {
+  // Past the end of the working day there is no open time to offer — and synthesizing one
+  // anyway made the block end at "now", so it grew a minute at a time all evening and every
+  // poll looked like a different block.
+  if (!currentBlock && !offClockMessage && currentMinutes < OPEN_TIME_END_MIN) {
     const withWork = await prisma.task.groupBy({
       by: ["roleId"],
       where: { done: false, status: { not: "icebox" } },
@@ -80,8 +83,20 @@ export async function GET() {
         .filter((m) => m > currentMinutes)
         .sort((a, b) => a - b)[0];
       const endMinutes = nextStart ?? OPEN_TIME_END_MIN;
-      const startTime = minutesToTime(Math.min(currentMinutes, endMinutes));
-      const endTime = minutesToTime(Math.max(endMinutes, currentMinutes + 1));
+
+      // Start where the last block ended, NOT at "now". A start of "now" gave this block a
+      // new time label every minute, so the client saw a different block on every poll and
+      // re-fired the block-transition ritual once a minute. Before the first block of the
+      // day there's nothing to anchor to, so fall back to the top of the hour — stable for
+      // the same reason.
+      const prevEnd = allBlocks
+        .map((b) => timeToMinutes(b.endHour, b.endMinute))
+        .filter((m) => m <= currentMinutes)
+        .sort((a, b) => b - a)[0];
+      const startMinutes = prevEnd ?? currentMinutes - (currentMinutes % 60);
+
+      const startTime = minutesToTime(Math.min(startMinutes, endMinutes));
+      const endTime = minutesToTime(endMinutes);
 
       currentBlock = {
         id: "open-time",
