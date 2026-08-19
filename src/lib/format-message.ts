@@ -1,4 +1,5 @@
 import { assembleContext } from "@/lib/ai-context";
+import { voiceGuideBlock } from "@/lib/voice-guide";
 import { createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
@@ -80,15 +81,22 @@ STRUCTURE (critical — this is a light formatting pass, NOT a rewrite):
 - Do NOT add a title, header, subject line, or summary line the raw message doesn't have.
 - Do NOT bold, italicize, or split off the opening line/greeting — it stays plain prose exactly where it is.
 - Do NOT add emphasis the raw message doesn't have. Adding \`code\` backticks per the rules above is the ONLY formatting you introduce.
-- Do NOT compress sentences into fragments. Keep full sentences as written.
+- Do NOT drop or merge points. Every distinct point in the raw message survives.
 - Keep the paragraph breaks roughly where the raw message has them.
-- Your job is syntax (bold/italic/code/links for the platform) plus voice polish — not reorganization.
+- Your job is syntax (bold/italic/code/links for the platform) plus voice — not reorganization.
+
+VOICE vs STRUCTURE — which rule wins:
+- The VOICE GUIDE above governs wording, casing, punctuation, register, and rhythm. Apply it
+  in full: lowercase, short, no emoji, no greetings or sign-offs, none of the banned phrases.
+- These STRUCTURE rules govern content. The voice guide NEVER licenses dropping a point,
+  inventing one, reordering them, or turning a list into prose.
+- So: rewrite how it sounds, keep exactly what it says.
 
 IMPORTANT:
-- Match my communication style and tone exactly
 - Don't add content I didn't include
 - Don't remove important information
-- Keep the same level of formality/informality as my style dictates
+- Register comes from this role's tone and who the message is going to — peer, stakeholder,
+  or family — per the voice guide's registers section
 - Return ONLY the formatted message, no explanations or commentary
 - Do NOT wrap in markdown code fences
 
@@ -97,7 +105,9 @@ ${rawMessage}`;
 
   const result = await createCompletionWithLocalFallback({
     model: getDefaultTextModel(),
-    system: `${systemPrompt}\n\n[Context]\n${contextMessages}`,
+    // The voice guide goes last so it's the freshest thing in the system prompt — it is the
+    // whole point of this call, and role tone/profile context sit above it as modifiers.
+    system: `${systemPrompt}\n\n[Context]\n${contextMessages}\n\n[VOICE GUIDE — the source of truth for how the user writes. Match it exactly.]\n${voiceGuideBlock()}`,
     messages: [{ role: "user", content: prompt }],
     max_tokens: 2048,
     // Formatting is a fidelity task — without this the MLX server's default (~0.7)
@@ -114,6 +124,13 @@ ${rawMessage}`;
   if (formatted.startsWith("```") && formatted.endsWith("```") && fenceCount === 2) {
     formatted = formatted.replace(/^```(?:html|markdown|mrkdwn)?\n?/, "").replace(/\n?```$/, "").trim();
   }
+  // Em-dashes are banned by the voice guide and are the one tell models re-introduce no
+  // matter the instruction. Outside code blocks, normalize to his spaced hyphen.
+  formatted = formatted
+    .split(/(```[\s\S]*?```)/)
+    .map((seg) => (seg.startsWith("```") ? seg : seg.replace(/\s*—\s*/g, " - ")))
+    .join("");
+
   if (format === "slack") {
     // Safety net: models reflexively emit **markdown bold** and ### headers no matter
     // the instructions; Slack renders both as literal characters. Also normalize
