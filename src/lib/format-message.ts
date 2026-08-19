@@ -57,19 +57,33 @@ Do NOT use HTML tags.`,
 };
 
 /** How each platform writes emphasis. SMS has none, so nothing is restored there. */
-const EMPHASIS: Record<MessageFormat, { bold: (s: string) => string; italic: (s: string) => string } | null> = {
-  slack: { bold: (s) => `*${s}*`, italic: (s) => `_${s}_` },
-  teams: { bold: (s) => `**${s}**`, italic: (s) => `*${s}*` },
-  email: { bold: (s) => `<strong>${s}</strong>`, italic: (s) => `<em>${s}</em>` },
+const EMPHASIS: Record<
+  MessageFormat,
+  { bold: (s: string) => string; italic: (s: string) => string; code: (s: string) => string } | null
+> = {
+  slack: { bold: (s) => `*${s}*`, italic: (s) => `_${s}_`, code: (s) => `\`${s}\`` },
+  teams: { bold: (s) => `**${s}**`, italic: (s) => `*${s}*`, code: (s) => `\`${s}\`` },
+  email: { bold: (s) => `<strong>${s}</strong>`, italic: (s) => `<em>${s}</em>`, code: (s) => `<code>${s}</code>` },
   sms: null,
 };
 
-/** Bold and italic spans written in the raw message, in markdown. Bold is pulled out
- *  first so `**x**` isn't then read as an italic `*x*`. */
-function emphasizedSpans(raw: string): { bold: string[]; italic: string[] } {
+/**
+ * Code, bold and italic spans written in the raw message, in markdown.
+ *
+ * Order matters. Code comes out first and is removed, so an identifier like
+ * `physician_id` inside backticks is never mistaken for italics. Bold comes out before
+ * italics so `**x**` isn't then read as an italic `*x*`.
+ */
+function emphasizedSpans(raw: string): { code: string[]; bold: string[]; italic: string[] } {
+  const code: string[] = [];
   const bold: string[] = [];
   const italic: string[] = [];
-  const withoutBold = raw.replace(/\*\*(.+?)\*\*|__(.+?)__/g, (_m, a, b) => {
+
+  const withoutCode = raw.replace(/```[\s\S]*?```|`([^`\n]+)`/g, (_m, inline) => {
+    if (inline) code.push(String(inline).trim());
+    return " ";
+  });
+  const withoutBold = withoutCode.replace(/\*\*(.+?)\*\*|__(.+?)__/g, (_m, a, b) => {
     bold.push(String(a ?? b).trim());
     return " ";
   });
@@ -77,17 +91,21 @@ function emphasizedSpans(raw: string): { bold: string[]; italic: string[] } {
     italic.push(String(a ?? b).trim());
     return " ";
   });
-  return { bold, italic };
+  return { code, bold, italic };
 }
 
 /**
- * Put back emphasis the model dropped.
+ * Put back emphasis and code formatting the model dropped.
  *
  * The prompt asks for it and the local model (Qwen3 30B) still flattens `**Blocked**` to
- * plain "blocked" most of the time — it's pulled toward the voice guide's terseness, and no
- * amount of instruction reliably wins. So this is done in code: for each bold/italic span in
- * the raw message, find its first plain occurrence in the output and wrap it in the
- * platform's syntax.
+ * plain "blocked" and strips the backticks off `typeorm` most of the time — it's pulled
+ * toward the voice guide's terseness, and no amount of instruction reliably wins. So this is
+ * done in code: for each code/bold/italic span in the raw message, find its unwrapped
+ * occurrences in the output and wrap them in the platform's syntax.
+ *
+ * Backticks matter more than the emphasis did. A message about `physician_id` and
+ * `machine_*` reads as prose noise without them, and Slack's own formatting is the whole
+ * reason to run the message through a formatter.
  *
  * Deliberately conservative. Case-insensitive (the voice guide lowercases things), first
  * occurrence only, never inside code, and skipped entirely for spans under 3 characters or
@@ -100,31 +118,46 @@ function restoreEmphasis(raw: string, out: string, format: MessageFormat): strin
   const syntax = EMPHASIS[format];
   if (!syntax) return out;
 
-  const { bold, italic } = emphasizedSpans(raw);
+  const { code, bold, italic } = emphasizedSpans(raw);
   let result = out;
 
-  const apply = (span: string, wrap: (s: string) => string) => {
-    const s = span.trim();
-    if (s.length < 3 || s.length > 120) return;
-    if (result.toLowerCase().includes(wrap(s).toLowerCase())) return;  // already there
-
+  /** Wrap the first still-unwrapped occurrence. Returns false when there isn't one. */
+  const wrapOnce = (s: string, wrap: (v: string) => string): boolean => {
     const segments = result.split(/(```[\s\S]*?```|`[^`\n]*`)/);
     for (let i = 0; i < segments.length; i++) {
-      if (segments[i].startsWith("`")) continue;
+      if (segments[i].startsWith("`")) continue;  // already code
       const idx = segments[i].toLowerCase().indexOf(s.toLowerCase());
       if (idx === -1) continue;
       const before = segments[i][idx - 1] ?? "";
       const after = segments[i][idx + s.length] ?? "";
-      if ("*_>".includes(before) || "*_<".includes(after)) continue;  // already wrapped
+      if ("*_>`".includes(before) || "*_<`".includes(after)) continue;  // already emphasized
       segments[i] =
         segments[i].slice(0, idx) + wrap(segments[i].slice(idx, idx + s.length)) + segments[i].slice(idx + s.length);
       result = segments.join("");
-      return;
+      return true;
+    }
+    return false;
+  };
+
+  /** Restore a span as many times as the raw message emphasized it — a term mentioned
+   *  three times in backticks should come back in backticks all three times. */
+  const apply = (spans: string[], wrap: (s: string) => string, minLength = 3) => {
+    const counts = new Map<string, number>();
+    for (const raw of spans) {
+      const s = raw.trim();
+      if (s.length < minLength || s.length > 120) continue;
+      counts.set(s, (counts.get(s) ?? 0) + 1);
+    }
+    for (const [s, times] of Array.from(counts.entries())) {
+      for (let n = 0; n < times; n++) if (!wrapOnce(s, wrap)) break;
     }
   };
 
-  bold.forEach((s) => apply(s, syntax.bold));
-  italic.forEach((s) => apply(s, syntax.italic));
+  // Code first, so bold/italic can't land inside an identifier that's about to be
+  // backticked. Short identifiers are real (`id`, `ok`), so code has no 3-char floor.
+  apply(code, syntax.code, 1);
+  apply(bold, syntax.bold);
+  apply(italic, syntax.italic);
   return result;
 }
 
