@@ -520,8 +520,18 @@ the clipboard**. The whole flow is copy a draft → `⌃⌥Space` → `⌘M` →
 - Company still picks the voice/tone (`⌘1…9`); `⌘P` cycles Slack → Teams → Email → SMS. The
   platform preselects from `Role.platform`, normalized server-side in `GET /api/capture`
   (a role on both Slack and Teams counts as Slack).
-- The result screen **does not auto-close** — the text is already copied, so the screen is
-  the read-back. `Enter`/`Esc` close it, `⌘M` goes back to edit.
+- On success it flashes "Copied · company · platform" and **closes itself** (~1.1s). The
+  clipboard is the deliverable; the window has nothing left to do.
+- **Emphasis is restored in code, not by the model.** `restoreEmphasis()` in
+  `src/lib/format-message.ts` re-wraps every bold/italic span from the raw message in the
+  platform's syntax. The prompt asks for it too, but the local Qwen model flattens
+  `**Blocked**` to plain "blocked" most of the time no matter how it's asked — it's pulled
+  toward the voice guide's terseness. The pass is conservative (first plain occurrence,
+  never inside code, nothing under 3 chars). Gap: a header line the model deletes outright
+  can't be restored, since where it belonged is a guess.
+- **Rebuilding the app is not enough — restart the daemon.** The resident `--daemon` process
+  keeps running the old binary, so `open -a Todo` reopens the version you just replaced:
+  `launchctl kickstart -k gui/$(id -u)/com.conductor.todo-hotkey`.
 - `src/app/api/format/route.ts` — bearer-authed `POST { text, role?, platform? }`. Exists
   because `/api/ai/format-message` is gated on a NextAuth session a Swift app can't hold;
   both call the same `src/lib/format-message.ts`, so the voice guide applies either way.

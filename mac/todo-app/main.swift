@@ -143,10 +143,6 @@ enum Phase: Equatable {
     case editing
     case saving
     case done(String)
-    /// Message mode's result: the formatted text is already on the clipboard, this is the
-    /// read-back. Sticks around until dismissed instead of auto-closing — you want to see
-    /// what you're about to paste.
-    case copied(String, String)
     case failed(String)
 }
 
@@ -180,8 +176,6 @@ struct CaptureView: View {
             switch phase {
             case .done(let msg):
                 result(icon: "checkmark.circle.fill", tint: .green, text: msg)
-            case .copied(let label, let body):
-                copiedResult(label: label, body: body)
             case .failed(let msg):
                 result(icon: "exclamationmark.triangle.fill", tint: .orange, text: msg)
             default:
@@ -310,43 +304,6 @@ struct CaptureView: View {
         )
     }
 
-    /// Message mode's read-back. The text is already on the clipboard by the time this shows.
-    private func copiedResult(label: String, body: String) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack(spacing: 8) {
-                Image(systemName: "doc.on.clipboard.fill").font(.system(size: 15)).foregroundStyle(.green)
-                Text(label).font(.system(size: 14, weight: .medium)).foregroundStyle(.secondary)
-                Spacer()
-            }
-
-            ScrollView {
-                Text(body)
-                    .font(.system(size: 15))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxHeight: 320)
-
-            HStack(spacing: 10) {
-                Text("copied · ↩ or esc to close")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.tertiary)
-                Spacer()
-                Button("Back") { phase = .editing }
-                    .keyboardShortcut("m", modifiers: .command)
-            }
-
-            Button("") { dismiss() }
-                .keyboardShortcut(.return, modifiers: [])
-                .frame(width: 0, height: 0)
-                .opacity(0)
-            Button("") { dismiss() }
-                .keyboardShortcut(.cancelAction)
-                .frame(width: 0, height: 0)
-                .opacity(0)
-        }
-    }
-
     private func cyclePlatform() {
         let i = platforms.firstIndex(of: platform) ?? 0
         platform = platforms[(i + 1) % platforms.count]
@@ -426,8 +383,10 @@ struct CaptureView: View {
                     let r = try await API.format(cfg, text: t, roleId: selected, platform: platform)
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(r.formatted, forType: .string)
-                    // Message mode holds — you read it, then close. No auto-dismiss.
-                    phase = .copied("\(r.company) · \(r.platform)", r.formatted)
+                    // On the clipboard is the whole point — flash it and get out of the way.
+                    phase = .done("Copied · \(r.company) · \(r.platform)")
+                    try? await Task.sleep(for: .seconds(1.1))
+                    dismiss()
                     return
                 }
                 let r = try await API.capture(cfg, text: t, roleId: selected, today: scheduleToday)

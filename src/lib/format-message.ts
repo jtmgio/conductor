@@ -56,6 +56,78 @@ Do NOT use HTML tags.`,
 - Get to the point fast`,
 };
 
+/** How each platform writes emphasis. SMS has none, so nothing is restored there. */
+const EMPHASIS: Record<MessageFormat, { bold: (s: string) => string; italic: (s: string) => string } | null> = {
+  slack: { bold: (s) => `*${s}*`, italic: (s) => `_${s}_` },
+  teams: { bold: (s) => `**${s}**`, italic: (s) => `*${s}*` },
+  email: { bold: (s) => `<strong>${s}</strong>`, italic: (s) => `<em>${s}</em>` },
+  sms: null,
+};
+
+/** Bold and italic spans written in the raw message, in markdown. Bold is pulled out
+ *  first so `**x**` isn't then read as an italic `*x*`. */
+function emphasizedSpans(raw: string): { bold: string[]; italic: string[] } {
+  const bold: string[] = [];
+  const italic: string[] = [];
+  const withoutBold = raw.replace(/\*\*(.+?)\*\*|__(.+?)__/g, (_m, a, b) => {
+    bold.push(String(a ?? b).trim());
+    return " ";
+  });
+  withoutBold.replace(/(?<![\w*])\*([^*\n]+?)\*(?!\w)|(?<![\w_])_([^_\n]+?)_(?!\w)/g, (_m, a, b) => {
+    italic.push(String(a ?? b).trim());
+    return " ";
+  });
+  return { bold, italic };
+}
+
+/**
+ * Put back emphasis the model dropped.
+ *
+ * The prompt asks for it and the local model (Qwen3 30B) still flattens `**Blocked**` to
+ * plain "blocked" most of the time — it's pulled toward the voice guide's terseness, and no
+ * amount of instruction reliably wins. So this is done in code: for each bold/italic span in
+ * the raw message, find its first plain occurrence in the output and wrap it in the
+ * platform's syntax.
+ *
+ * Deliberately conservative. Case-insensitive (the voice guide lowercases things), first
+ * occurrence only, never inside code, and skipped entirely for spans under 3 characters or
+ * already-emphasized text — a wrong bold is worse than a missing one.
+ *
+ * Known gap: a header line the model deletes outright can't be restored, because where it
+ * belonged is a guess. Emphasis on surviving text is what this covers.
+ */
+function restoreEmphasis(raw: string, out: string, format: MessageFormat): string {
+  const syntax = EMPHASIS[format];
+  if (!syntax) return out;
+
+  const { bold, italic } = emphasizedSpans(raw);
+  let result = out;
+
+  const apply = (span: string, wrap: (s: string) => string) => {
+    const s = span.trim();
+    if (s.length < 3 || s.length > 120) return;
+    if (result.toLowerCase().includes(wrap(s).toLowerCase())) return;  // already there
+
+    const segments = result.split(/(```[\s\S]*?```|`[^`\n]*`)/);
+    for (let i = 0; i < segments.length; i++) {
+      if (segments[i].startsWith("`")) continue;
+      const idx = segments[i].toLowerCase().indexOf(s.toLowerCase());
+      if (idx === -1) continue;
+      const before = segments[i][idx - 1] ?? "";
+      const after = segments[i][idx + s.length] ?? "";
+      if ("*_>".includes(before) || "*_<".includes(after)) continue;  // already wrapped
+      segments[i] =
+        segments[i].slice(0, idx) + wrap(segments[i].slice(idx, idx + s.length)) + segments[i].slice(idx + s.length);
+      result = segments.join("");
+      return;
+    }
+  };
+
+  bold.forEach((s) => apply(s, syntax.bold));
+  italic.forEach((s) => apply(s, syntax.italic));
+  return result;
+}
+
 /** Rewrite a raw message in the user's voice for a role, with platform-correct
  *  formatting. Shared by /api/ai/format-message and the MCP format_message tool. */
 export async function formatMessage(opts: {
@@ -76,11 +148,17 @@ ${formatInstructions}
 STRUCTURE (critical — this is a light formatting pass, NOT a rewrite):
 - PRESERVE the original structure. If the raw message is conversational prose paragraphs, the output is conversational prose paragraphs.
 - Do NOT convert prose into bullet points. Only use a list if the raw message itself is already a list.
-- PRESERVE existing lists: every input line starting with -, *, •, or a number is a list item and MUST stay a list item in the output. Never flatten a list into prose, never drop items, never merge items. REPLACE the input's marker with "- " (never stack markers — output "- item", NOT "- * item").
+- PRESERVE existing lists: every input line starting with -, *, •, or a number is a list item and MUST stay a list item in the output. Never flatten a list into prose, never drop items, never merge items. A BULLETED input list stays bulleted — replace the input's marker with "- " (never stack markers — output "- item", NOT "- * item"). A NUMBERED input list stays numbered ("1. item"); never renumber it into dashes.
+- PRESERVE existing emphasis. This is the one thing you must carry over, translated into the platform's syntax:
+  - Input **bold** or __bold__ stays bold, in this platform's bold syntax.
+  - Input *italic* or _italic_ stays italic, in this platform's italic syntax.
+  - Input \`code\` and code blocks stay code.
+  - An input header line (#, ##, ###) is a real section label — keep it as its own line in the platform's nearest equivalent (bold line for Slack/SMS, header for email, bold for Teams). Never delete it, never fold it into the next sentence.
+  The rule below about not ADDING emphasis is about emphasis the input does not have. Emphasis the input DOES have is content, and dropping it loses meaning.
 - A line that does NOT start with a list marker is NOT a list item — keep it as a plain paragraph line even when it sits directly between two lists.
 - Do NOT add a title, header, subject line, or summary line the raw message doesn't have.
 - Do NOT bold, italicize, or split off the opening line/greeting — it stays plain prose exactly where it is.
-- Do NOT add emphasis the raw message doesn't have. Adding \`code\` backticks per the rules above is the ONLY formatting you introduce.
+- Do NOT add NEW emphasis the raw message doesn't have. Adding \`code\` backticks per the rules above is the only formatting you introduce on your own — everything else you only ever carry across.
 - Do NOT drop or merge points. Every distinct point in the raw message survives.
 - Keep the paragraph breaks roughly where the raw message has them.
 - Your job is syntax (bold/italic/code/links for the platform) plus voice — not reorganization.
@@ -99,6 +177,13 @@ IMPORTANT:
   or family — per the voice guide's registers section
 - Return ONLY the formatted message, no explanations or commentary
 - Do NOT wrap in markdown code fences
+
+CARRY-OVER CHECK — do this before you answer, silently:
+Every **bold** span, *italic* span, \`code\` span, header line, and numbered item in RAW MESSAGE
+must appear in your output, with the same emphasis, in this platform's syntax.
+Bold in -> bold out. Italic in -> italic out. Header line in -> its own emphasized line out
+(never deleted, never merged into the next sentence). "1." "2." in -> "1." "2." out.
+If your draft dropped any of them, put them back before returning it.
 
 RAW MESSAGE:
 ${rawMessage}`;
@@ -149,5 +234,8 @@ ${rawMessage}`;
       )
       .join("");
   }
-  return formatted;
+
+  // Last, so the platform's own syntax is already settled and nothing below rewrites what
+  // this puts back.
+  return restoreEmphasis(rawMessage, formatted, format);
 }
