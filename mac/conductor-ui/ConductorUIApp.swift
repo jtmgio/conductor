@@ -55,6 +55,7 @@ struct Shell: View {
     @State private var collapsed = false
     @StateObject private var queue = AlertQueue()
     @StateObject private var ui = UISettings()
+    @StateObject private var sheets = Sheets()
     @State private var palette = false
 
     var body: some View {
@@ -73,7 +74,6 @@ struct Shell: View {
             .background(T.ground)
             .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 46) }
         }
-        .environmentObject(ui)
         .id("shell-\(ui.theme.rawValue)-\(ui.scale)")
         .overlay(AlertOverlay(queue: queue))
         .overlay {
@@ -82,6 +82,16 @@ struct Shell: View {
             }
         }
         .overlay(alignment: .bottom) { demoTray }
+        .sheet(isPresented: $sheets.planning) {
+            PlanTomorrowSheet(isPresented: $sheets.planning).environmentObject(ui).environmentObject(sheets)
+        }
+        .sheet(item: $sheets.openJob) { job in
+            TaskDetailSheet(isPresented: Binding(
+                get: { sheets.openJob != nil },
+                set: { if !$0 { sheets.openJob = nil } }
+            ), job: job, company: sheets.openCompany)
+            .environmentObject(ui).environmentObject(sheets)
+        }
         .animation(T.quick, value: palette)
         .animation(T.ease, value: screen)
         .animation(T.ease, value: collapsed)
@@ -96,6 +106,10 @@ struct Shell: View {
             guard queue.current == nil else { return }
             palette = true
         }
+        // Outermost, so every overlay and sheet is inside the subtree that
+        // actually has these objects.
+        .environmentObject(ui)
+        .environmentObject(sheets)
     }
 
     @ViewBuilder private var content: some View {

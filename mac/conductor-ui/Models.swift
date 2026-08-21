@@ -72,6 +72,36 @@ enum Sample {
 
     static let backlog: [Job] = upNext
 
+    /// Per-company work, so a company's own keys show under its own heading.
+    /// Sharing one pool put VQ- keys under Zeta Global, which reads as a bug
+    /// even in a mock.
+    static let byCompany: [String: [Job]] = [
+        "vQuip": [
+            .init(key: "VQ-163", title: "Finalize Ops Engine planning", due: "Aug 18", overdue: true, inProgress: true),
+            .init(key: "VQ-177", title: "Schedule Deepesh transition sync", due: "Due yesterday", overdue: true, urgent: true),
+            .init(key: "VQ-165", title: "Determine UXCam recording strategy", due: "Aug 18", overdue: true),
+        ],
+        "Zeta Global": [
+            .init(key: "ZG-132", title: "Fix Offers footer silent discard of cap edits", due: "Aug 19", overdue: true, urgent: true),
+            .init(key: "ZG-134", title: "Migrate report_configs_v2 fixes to production", due: "Aug 19", overdue: true, urgent: true),
+            .init(key: "ZG-131", title: "Add timeout bounds to trinity v1/lp lead path", due: "Aug 19", overdue: true),
+        ],
+        "Healthmap Solutions": [
+            .init(key: "HS-68", title: "Deploy SK-2592 to QA and smoke test", due: "Sep 1", urgent: true),
+            .init(key: "HS-69", title: "Recommend auth token passing pattern for WFM", due: "Aug 19", overdue: true, urgent: true),
+        ],
+        "HealthMe": [
+            .init(key: "HM-98", title: "Test and review the express-row fix (HEA-906)", due: "Today", urgent: true),
+            .init(key: "HM-101", title: "Debug ICD10 search failure on staging", due: "Today"),
+            .init(key: "HM-65", title: "Marketplace v1 retirement — work the ladder", due: "Aug 2", overdue: true, urgent: true),
+        ],
+        "Wris": [
+            .init(key: "WRI-45", title: "Confirm RAD logos and brand colors"),
+            .init(key: "WRI-50", title: "Investigate med-working staleness flags", due: "Aug 18", overdue: true),
+            .init(key: "WRI-54", title: "Build Ralph loop on tickets"),
+        ],
+    ]
+
     static let meetings: [Sitting] = [
         .init(start: "10:30", end: "11:00", title: "API Team Daily",              company: "vQuip",               color: T.hex(0x2DD4B0), live: true),
         .init(start: "12:00", end: "12:30", title: "Code Review",                 company: "vQuip",               color: T.hex(0x2DD4B0)),

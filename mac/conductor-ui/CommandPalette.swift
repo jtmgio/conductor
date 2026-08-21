@@ -59,6 +59,7 @@ final class PaletteModel: ObservableObject {
 struct CommandPalette: View {
     @Binding var isPresented: Bool
     var onGo: (Screen) -> Void
+    @EnvironmentObject var sheets: Sheets
 
     @StateObject private var m = PaletteModel()
     @State private var monitor: Any?
@@ -464,7 +465,10 @@ struct CommandPalette: View {
         case "Format a message":
             withAnimation(T.quick) { m.mode = .formatMessage }
             return
-        case "Plan tomorrow":  onGo(.today)
+        case "Plan tomorrow":
+            close()
+            sheets.planning = true
+            return
         case "Go to Today":    onGo(.today)
         case "Go to Board":    onGo(.board)
         case "Go to Formatter": onGo(.formatter)

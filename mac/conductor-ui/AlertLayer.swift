@@ -292,6 +292,20 @@ struct AlertOverlay: View {
     }
 }
 
+/// What sheet, if any, is over the app. One owner, so a task detail can't
+/// open behind Plan tomorrow.
+@MainActor
+final class Sheets: ObservableObject {
+    @Published var planning = false
+    @Published var openJob: Job?
+    @Published var openCompany: Company = Sample.companies[0]
+
+    func open(_ job: Job, in company: Company) {
+        openCompany = company
+        openJob = job
+    }
+}
+
 /// The running stand-up timer, top right of the content area.
 struct TimerPill: View {
     @ObservedObject var queue: AlertQueue

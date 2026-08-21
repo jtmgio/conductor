@@ -2,6 +2,7 @@ import SwiftUI
 
 /// One company, one thing, everything else folded away.
 struct TodayView: View {
+    @EnvironmentObject var sheets: Sheets
     @State private var showNext = false
     @State private var showBacklog = false
     @State private var showOthers = false
@@ -40,8 +41,8 @@ struct TodayView: View {
                     .font(.system(size: T.s(14)).monospacedDigit())
                     .foregroundStyle(T.dim)
                 Spacer()
-                Button {} label: {
-                    Label("Plan tomorrow", systemImage: "arrow.counterclockwise")
+                Button { sheets.planning = true } label: {
+                    Label("Plan tomorrow", systemImage: "moon.stars")
                         .font(.system(size: T.s(13)))
                 }
                 .buttonStyle(GhostButton())
@@ -153,6 +154,8 @@ struct TodayView: View {
         .clipShape(RoundedRectangle(cornerRadius: T.radius))
         .overlay(RoundedRectangle(cornerRadius: T.radius).strokeBorder(T.line, lineWidth: 1))
         .fixedSize(horizontal: false, vertical: true)
+        .contentShape(Rectangle())
+        .onTapGesture { sheets.open(Sample.oneThing, in: company) }
     }
 
     private var capture: some View {
@@ -208,6 +211,8 @@ struct Disclosure: View {
 
 struct JobRow: View {
     let job: Job
+    var company: Company = Sample.companies[0]
+    @EnvironmentObject var sheets: Sheets
     @State private var hovering = false
 
     var body: some View {
@@ -229,6 +234,8 @@ struct JobRow: View {
         .padding(.vertical, 9).padding(.horizontal, 6)
         .background(RoundedRectangle(cornerRadius: 7).fill(hovering ? T.cardHover : .clear))
         .onHover { hovering = $0 }
+        .contentShape(Rectangle())
+        .onTapGesture { sheets.open(job, in: company) }
     }
 }
 

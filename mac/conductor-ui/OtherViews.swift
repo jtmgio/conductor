@@ -62,6 +62,8 @@ private struct Lane: View {
 
 private struct Card: View {
     let job: Job
+    var company: Company = Sample.companies[0]
+    @EnvironmentObject var sheets: Sheets
     @State private var hovering = false
 
     var body: some View {
@@ -91,6 +93,7 @@ private struct Card: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(hovering ? T.lineFirm : T.line, lineWidth: 1))
         .onHover { hovering = $0 }
+        .onTapGesture { sheets.open(job, in: company) }
     }
 }
 
