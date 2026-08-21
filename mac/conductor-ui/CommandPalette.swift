@@ -21,10 +21,21 @@ struct PaletteRow: Identifiable {
     var section: String
 }
 
+/// The palette is one window with three faces: search, capture a task, or
+/// format a message. Sub-modes rather than separate windows, because the
+/// point of ⌘K is that it's the same keystroke every time.
+enum PaletteMode { case search, addTask, formatMessage }
+
 struct CommandPalette: View {
     @Binding var isPresented: Bool
     var onGo: (Screen) -> Void
 
+    @State private var mode: PaletteMode = .search
+    @State private var draftTitle = ""
+    @State private var draftBody = ""
+    @State private var company = Sample.companies[0].id
+    @State private var when = "Backlog"
+    @State private var platform = "Slack"
     @State private var query = ""
     @State private var selected = 0
     @State private var monitor: Any?
@@ -90,7 +101,13 @@ struct CommandPalette: View {
                 .ignoresSafeArea()
                 .onTapGesture { close() }
 
-            panel
+            Group {
+                switch mode {
+                case .search:        panel
+                case .addTask:       addTaskPanel
+                case .formatMessage: formatPanel
+                }
+            }
                 .padding(.top, 96)
                 .transition(.scale(scale: 0.97).combined(with: .opacity))
         }
@@ -106,16 +123,23 @@ struct CommandPalette: View {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             switch event.keyCode {
             case 125:  // down
+                guard mode == .search else { return event }
                 move(1)
                 return nil
             case 126:  // up
+                guard mode == .search else { return event }
                 move(-1)
                 return nil
             case 36, 76:  // return, keypad enter
-                run(rows.indices.contains(selected) ? rows[selected] : nil)
-                return nil
+                if mode == .search {
+                    run(rows.indices.contains(selected) ? rows[selected] : nil)
+                    return nil
+                }
+                // In a composer, plain Return makes a newline; ⌘Return submits.
+                if event.modifierFlags.contains(.command) { close(); return nil }
+                return event
             case 53:  // escape
-                close()
+                back()
                 return nil
             default:
                 return event
@@ -205,6 +229,166 @@ struct CommandPalette: View {
         .onAppear { focused = true; selected = 0 }
     }
 
+
+    // ── Add task ─────────────────────────────────────────────────────────
+    private var addTaskPanel: some View {
+        VStack(spacing: 0) {
+            modeHeader(icon: "plus.circle", title: "Add task")
+
+            VStack(alignment: .leading, spacing: 14) {
+                TextField("What needs doing?", text: $draftTitle, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 17))
+                    .foregroundStyle(T.text)
+                    .lineLimit(1...4)
+                    .focused($focused)
+
+                if !draftTitle.isEmpty {
+                    TextField("Notes — anything you'd lose otherwise", text: $draftBody, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(T.dim)
+                        .lineLimit(1...3)
+                }
+
+                Cap("Company")
+                CompanyPicker(selected: $company)
+
+                Cap("When")
+                HStack(spacing: 6) {
+                    // Backlog first, and it's the default. A capture box that
+                    // defaults to Today is how today's list becomes a pile.
+                    ForEach(["Backlog", "Today", "Tomorrow", "Monday"], id: \.self) { w in
+                        Button { when = w } label: {
+                            Text(w)
+                                .font(.system(size: 12.5, weight: when == w ? .medium : .regular))
+                                .foregroundStyle(when == w ? T.text : T.dim)
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(
+                                    Capsule().fill(when == w ? T.card : T.sunken)
+                                        .overlay(Capsule().strokeBorder(when == w ? T.lineFirm : T.line, lineWidth: 1))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(18)
+
+            Divider().overlay(T.line)
+            HStack(spacing: 12) {
+                hint("esc", "back to search")
+                Spacer()
+                Text(refineNote)
+                    .font(.system(size: 11.5)).foregroundStyle(T.faint)
+                Button { close() } label: {
+                    HStack(spacing: 7) {
+                        Text("Add task").font(.system(size: 13.5, weight: .semibold))
+                        Text("⌘↩").font(.system(size: 11, weight: .semibold)).opacity(0.55)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(draftTitle.isEmpty ? T.sunken : T.accent, in: RoundedRectangle(cornerRadius: 9))
+                    .foregroundStyle(draftTitle.isEmpty ? T.faint : T.hex(0x17150F))
+                }
+                .buttonStyle(.plain)
+                .disabled(draftTitle.isEmpty)
+            }
+            .padding(.horizontal, 18).padding(.vertical, 12)
+        }
+        .frame(width: 620)
+        .background(T.card, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(T.lineFirm, lineWidth: 1))
+        .shadow(color: .black.opacity(0.45), radius: 44, y: 18)
+        .onAppear { focused = true }
+    }
+
+    /// The real capture path runs the raw text through a refiner, so say so —
+    /// otherwise a long brain-dump looks like it will land as a long title.
+    private var refineNote: String {
+        draftTitle.count > 90 ? "Long — it'll be shortened and the full text kept in notes" : ""
+    }
+
+    // ── Format a message ─────────────────────────────────────────────────
+    private var formatPanel: some View {
+        VStack(spacing: 0) {
+            modeHeader(icon: "paperplane", title: "Format a message")
+
+            VStack(alignment: .leading, spacing: 14) {
+                TextField("Paste your rough message…", text: $draftBody, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 14.5))
+                    .foregroundStyle(T.text)
+                    .lineLimit(4...10)
+                    .focused($focused)
+                    .padding(12)
+                    .background(T.sunken, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(T.line, lineWidth: 1))
+
+                Cap("Voice")
+                CompanyPicker(selected: $company)
+
+                Cap("Platform")
+                HStack(spacing: 3) {
+                    ForEach(["Slack", "Teams", "Email", "SMS"], id: \.self) { p in
+                        Button { platform = p } label: {
+                            Text(p)
+                                .font(.system(size: 12, weight: platform == p ? .medium : .regular))
+                                .foregroundStyle(platform == p ? T.text : T.faint)
+                                .padding(.horizontal, 11).padding(.vertical, 5)
+                                .background(RoundedRectangle(cornerRadius: 6).fill(platform == p ? T.card : .clear))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(3)
+                .background(T.sunken, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .padding(18)
+
+            Divider().overlay(T.line)
+            HStack(spacing: 12) {
+                hint("esc", "back to search")
+                Spacer()
+                // The clipboard is the deliverable — this is the whole flow.
+                Text("Lands on your clipboard").font(.system(size: 11.5)).foregroundStyle(T.faint)
+                Button { close() } label: {
+                    HStack(spacing: 7) {
+                        Text("Format & copy").font(.system(size: 13.5, weight: .semibold))
+                        Text("⌘↩").font(.system(size: 11, weight: .semibold)).opacity(0.55)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(draftBody.isEmpty ? T.sunken : T.accent, in: RoundedRectangle(cornerRadius: 9))
+                    .foregroundStyle(draftBody.isEmpty ? T.faint : T.hex(0x17150F))
+                }
+                .buttonStyle(.plain)
+                .disabled(draftBody.isEmpty)
+            }
+            .padding(.horizontal, 18).padding(.vertical, 12)
+        }
+        .frame(width: 620)
+        .background(T.card, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(T.lineFirm, lineWidth: 1))
+        .shadow(color: .black.opacity(0.45), radius: 44, y: 18)
+        .onAppear { focused = true }
+    }
+
+    private func modeHeader(icon: String, title: String) -> some View {
+        HStack(spacing: 11) {
+            Button { back() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(T.faint)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+            Image(systemName: icon).font(.system(size: 14)).foregroundStyle(T.accent)
+            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(T.text)
+            Spacer()
+        }
+        .padding(.horizontal, 14).padding(.vertical, 13)
+        .overlay(alignment: .bottom) { Rectangle().fill(T.line).frame(height: 1) }
+    }
+
     private func rowView(_ row: PaletteRow, active: Bool) -> some View {
         HStack(spacing: 12) {
             Image(systemName: row.icon)
@@ -252,20 +436,37 @@ struct CommandPalette: View {
     private func run(_ row: PaletteRow?) {
         guard let row else { close(); return }
         switch row.label {
-        case "Go to Today", "Plan tomorrow": onGo(.today)
-        case "Go to Board":                  onGo(.board)
-        case "Go to Formatter",
-             "Format a message":             onGo(.formatter)
-        case "Go to Meetings":               onGo(.meetings)
-        case "Go to Settings":               onGo(.settings)
+        case "Add task":
+            withAnimation(T.quick) { mode = .addTask }
+            return
+        case "Format a message":
+            withAnimation(T.quick) { mode = .formatMessage }
+            return
+        case "Plan tomorrow":  onGo(.today)
+        case "Go to Today":    onGo(.today)
+        case "Go to Board":    onGo(.board)
+        case "Go to Formatter": onGo(.formatter)
+        case "Go to Meetings": onGo(.meetings)
+        case "Go to Settings": onGo(.settings)
         default: break
         }
         close()
     }
 
+    /// Escape steps back to search before it closes the window — one keystroke
+    /// shouldn't throw away a half-typed task.
+    private func back() {
+        if mode == .search { close() }
+        else { withAnimation(T.quick) { mode = .search } }
+    }
+
     private func close() {
         query = ""
         selected = 0
+        draftTitle = ""
+        draftBody = ""
+        when = "Backlog"
+        mode = .search
         isPresented = false
     }
 }
