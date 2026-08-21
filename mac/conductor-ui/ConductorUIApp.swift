@@ -32,6 +32,10 @@ struct ConductorUIApp: App {
                 Button("Settings")  { NotificationCenter.default.post(name: .goTo, object: Screen.settings) }
                     .keyboardShortcut(",", modifiers: .command)
             }
+            CommandGroup(after: .toolbar) {
+                Button("Find Anything…") { NotificationCenter.default.post(name: .openPalette, object: nil) }
+                    .keyboardShortcut("k", modifiers: .command)
+            }
             CommandGroup(after: .sidebar) {
                 // ⌃⌘S is the macOS convention (Mail, Notes). ⌘[ is Back.
                 Button("Hide Sidebar") { NotificationCenter.default.post(name: .toggleSidebar, object: nil) }
@@ -43,6 +47,7 @@ struct ConductorUIApp: App {
 
 extension Notification.Name {
     static let goTo = Notification.Name("conductor.goTo")
+    static let openPalette = Notification.Name("conductor.openPalette")
     static let toggleSidebar = Notification.Name("conductor.toggleSidebar")
 }
 
@@ -50,6 +55,7 @@ struct Shell: View {
     @State private var screen: Screen = .today
     @State private var collapsed = false
     @StateObject private var queue = AlertQueue()
+    @State private var palette = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -68,7 +74,13 @@ struct Shell: View {
             .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 46) }
         }
         .overlay(AlertOverlay(queue: queue))
+        .overlay {
+            if palette {
+                CommandPalette(isPresented: $palette) { screen = $0 }
+            }
+        }
         .overlay(alignment: .bottom) { demoTray }
+        .animation(T.quick, value: palette)
         .animation(T.ease, value: screen)
         .animation(T.ease, value: collapsed)
         .onReceive(NotificationCenter.default.publisher(for: .goTo)) { note in
@@ -76,6 +88,11 @@ struct Shell: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
             collapsed.toggle()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openPalette)) { _ in
+            // Never open underneath an alert — that was the web version's bug.
+            guard queue.current == nil else { return }
+            palette = true
         }
     }
 
