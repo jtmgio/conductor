@@ -572,38 +572,6 @@ grant. `--uninstall` removes it; Spotlight still works either way. To change the
   holding the tower's `MCP_API_TOKEN`. No Docker, no Postgres, no `.env`. Config lives outside
   the repo because a Spotlight-launched app inherits no shell profile.
 
-## Native macOS shell (`Conductor.app`)
-
-A thin Swift window around the web app. The UI stays web — this process owns the
-window, the menu bar, and the failure states a `WKWebView` cannot express.
-
-- `mac/conductor-app/{main,WebWindow,ErrorView}.swift`, built by
-  `bash mac/build-conductor-app.sh` into `/Applications/Conductor.app`.
-  Separate from `Todo.app`, which keeps its own bundle, LaunchAgent and hotkey.
-- **Name collision to know about:** the Chrome web app is *also* called
-  Conductor (`~/Applications/Chrome Apps.localized/Conductor.app`), so
-  `open -a Conductor` matches that one. Open the shell by path, or from
-  `/Applications`.
-- Reads `~/.conductor/url` (shared with Todo.app), falling back to
-  `localhost:5402` then the Tailscale host. Backoff retry is automatic;
-  a failed load shows a **native** error view, because a webview that can't
-  load is otherwise a blank white rectangle.
-- **HTTP 5xx is caught in `decidePolicyFor navigationResponse`.** It is a
-  *successful* navigation as far as `didFail*` is concerned, so without that
-  check a broken tower renders a Next.js error page and the shell looks fine.
-- Session persists via `WKWebsiteDataStore.default()` — it asks for the
-  password once, not every launch.
-- Injects `document.documentElement.dataset.native = 'macos'` at document
-  start. The `[data-native="macos"]` block at the end of `globals.css` pads
-  `[data-sidebar-header]` clear of the inset traffic lights and declares the
-  drag region. Inert in any browser, where the attribute is absent.
-- Closing the window quits (`applicationShouldTerminateAfterLastWindowClosed`).
-  Deliberate while the alert layer is still four independent modals — closing
-  the window is currently the only way to escape them. Flip when the menu-bar
-  extra lands.
-- The build script quits a running copy first. `Todo.app` taught that lesson:
-  replace the binary under a live process and the next launch reopens the old one.
-
 ## Alert layer
 
 Four blocking overlays (`Reminders`, `MeetingAlert`, `CommsSweepAlert`,
