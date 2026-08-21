@@ -19,7 +19,8 @@ struct BoardView: View {
                 Lane(title: "Backlog", jobs: Sample.backlog)
                 Lane(title: "In progress", jobs: Sample.inProgress, tint: T.go)
                 Lane(title: "Done", jobs: [], tint: T.faint,
-                     empty: "Drop a card here to finish it.\nNothing stays — done work leaves the board.")
+                     empty: "Drop a card here to finish it.\nNothing stays — done work leaves the board.",
+                     addable: false)
             }
             .padding(.top, 20)
         }
@@ -32,6 +33,13 @@ private struct Lane: View {
     let jobs: [Job]
     var tint: Color = T.faint
     var empty: String? = nil
+    /// Done is a drop target, not somewhere you type new work into.
+    var addable: Bool = true
+
+    @State private var added: [Job] = []
+    @State private var composing = false
+    @State private var draft = ""
+    @FocusState private var focus: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -47,7 +55,8 @@ private struct Lane: View {
             } else {
                 ScrollView {
                     VStack(spacing: 8) {
-                        ForEach(jobs) { Card(job: $0) }
+                        ForEach(jobs + added) { Card(job: $0) }
+                        if addable { composer }
                     }
                     .padding(.trailing, 3)
                 }
@@ -58,6 +67,68 @@ private struct Lane: View {
         .background(T.sunken, in: RoundedRectangle(cornerRadius: T.radius))
         .overlay(RoundedRectangle(cornerRadius: T.radius).strokeBorder(T.line, lineWidth: 1))
     }
+}
+
+extension Lane {
+    /// Capture at the bottom of the lane it belongs to, so filing is the same
+    /// gesture as looking.
+    @ViewBuilder var composer: some View {
+        if composing {
+            VStack(alignment: .leading, spacing: 9) {
+                TextField("What needs doing?", text: $draft, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: T.s(14)))
+                    .foregroundStyle(T.text)
+                    .lineLimit(1...3)
+                    .focused($focus)
+                    .onSubmit { commit() }
+                HStack(spacing: 8) {
+                    Spacer()
+                    Button("Cancel") { cancel() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: T.s(12)))
+                        .foregroundStyle(T.faint)
+                    Button("Add") { commit() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: T.s(12.5), weight: .semibold))
+                        .foregroundStyle(T.hex(0x17150F))
+                        .padding(.horizontal, 11).padding(.vertical, 5)
+                        .background(T.accent, in: RoundedRectangle(cornerRadius: 7))
+                }
+            }
+            .padding(.horizontal, 13).padding(.vertical, 12)
+            .background(T.card, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(T.accent.opacity(0.5), lineWidth: 1))
+            .onExitCommand { cancel() }
+        } else {
+            Button { draft = ""; composing = true; focus = true } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: "plus").font(.system(size: T.s(11), weight: .semibold))
+                    Text("Add").font(.system(size: T.s(13)))
+                    Spacer()
+                }
+                .foregroundStyle(T.faint)
+                .padding(.horizontal, 13).padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(T.line, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    func commit() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { cancel(); return }
+        withAnimation(T.quick) {
+            added.append(Job(key: "VQ-new\(added.count + 1)", title: text))
+        }
+        draft = ""
+        focus = true   // adding one usually means adding two
+    }
+
+    func cancel() { draft = ""; composing = false; focus = false }
 }
 
 private struct Card: View {

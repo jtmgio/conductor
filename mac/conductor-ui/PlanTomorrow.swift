@@ -13,13 +13,18 @@ import SwiftUI
 struct PlanView: View {
     @EnvironmentObject var sheets: Sheets
     @State private var picked: Set<UUID> = []
+    /// Tasks typed straight into a company while planning.
+    @State private var added: [UUID: [Job]] = [:]
+    @State private var composingIn: UUID?
+    @State private var draft = ""
+    @FocusState private var composerFocus: Bool
 
     private let perCompany = 3
 
     private var offers: [(Company, [Job])] {
         Sample.companies.prefix(6).compactMap { c in
             guard let jobs = Sample.byCompany[c.name], !jobs.isEmpty else { return nil }
-            return (c, Array(jobs.prefix(perCompany)))
+            return (c, Array(jobs.prefix(perCompany)) + (added[c.id] ?? []))
         }
     }
 
@@ -89,8 +94,81 @@ struct PlanView: View {
                         }
                     }
                 }
+
+                // The thought that arrives *while* you plan is the one most
+                // likely to be lost — so capture it here rather than making
+                // you leave the screen you're deciding on.
+                composer(for: company)
             }
         }
+    }
+
+    @ViewBuilder
+    private func composer(for company: Company) -> some View {
+        if composingIn == company.id {
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(company.color, lineWidth: 1.5)
+                    .frame(width: 18, height: 18)
+                TextField("What needs doing?", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: T.s(14)))
+                    .foregroundStyle(T.text)
+                    .focused($composerFocus)
+                    .onSubmit { commit(to: company) }
+                Button("Cancel") { cancelComposer() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: T.s(12)))
+                    .foregroundStyle(T.faint)
+            }
+            .padding(.horizontal, 13).padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(T.card)
+                    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(company.color.opacity(0.5), lineWidth: 1))
+            )
+            .onExitCommand { cancelComposer() }
+        } else {
+            Button {
+                draft = ""
+                composingIn = company.id
+                composerFocus = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "plus").font(.system(size: T.s(11), weight: .semibold))
+                    Text("Add to \(company.name)").font(.system(size: T.s(13)))
+                    Spacer()
+                }
+                .foregroundStyle(T.faint)
+                .padding(.horizontal, 13).padding(.vertical, 9)
+                .background(
+                    RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(T.line, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func commit(to company: Company) {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { cancelComposer(); return }
+        let next = (added[company.id]?.count ?? 0) + 1
+        let job = Job(key: "\(company.prefix)-new\(next)", title: text)
+        withAnimation(T.quick) {
+            added[company.id, default: []].append(job)
+            // Typed here, on the planning screen — of course it's for tomorrow.
+            picked.insert(job.id)
+        }
+        draft = ""
+        // Stay open: adding one usually means adding two.
+        composerFocus = true
+    }
+
+    private func cancelComposer() {
+        draft = ""
+        composingIn = nil
+        composerFocus = false
     }
 
     private var footer: some View {
