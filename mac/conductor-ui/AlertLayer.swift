@@ -302,27 +302,38 @@ struct TimerPill: View {
         Group {
             if let ends = queue.timerEnds {
                 let left = max(0, ends.timeIntervalSince(now))
+                // Amber, not the card's own neutral. Something is running and
+                // you are meant to be on your feet — it should catch the corner
+                // of your eye from across the desk, not sit into the chrome.
                 HStack(spacing: 11) {
                     Circle()
                         .trim(from: 0, to: left / (15 * 60))
-                        .stroke(T.go, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .stroke(T.amber, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                         .frame(width: 20, height: 20)
-                        .background(Circle().strokeBorder(T.lineFirm, lineWidth: 3))
-                    Text(queue.timerLabel).font(.system(size: 13)).foregroundStyle(T.dim)
-                    Text(format(left)).font(.system(size: 14.5, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(T.text)
+                        .background(Circle().strokeBorder(T.amber.opacity(0.25), lineWidth: 3))
+                    Text(queue.timerLabel)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(T.amber.opacity(0.9))
+                    Text(format(left))
+                        .font(.system(size: 15, weight: .bold).monospacedDigit())
+                        .foregroundStyle(T.amber)
                     Button("Done") { queue.finishTimer() }
                         .buttonStyle(.plain)
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundStyle(T.dim)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(T.hex(0x17150F))
                         .padding(.horizontal, 11).padding(.vertical, 5)
-                        .background(T.sunken, in: Capsule())
+                        .background(T.amber, in: Capsule())
                 }
                 .padding(.leading, 13).padding(.trailing, 8).padding(.vertical, 7)
-                .background(T.card, in: Capsule())
-                .overlay(Capsule().strokeBorder(T.lineFirm, lineWidth: 1))
-                .shadow(color: .black.opacity(0.3), radius: 18, y: 6)
+                .background(
+                    Capsule()
+                        .fill(T.card)
+                        .overlay(Capsule().fill(T.amber.opacity(0.18)))
+                )
+                .overlay(Capsule().strokeBorder(T.amber.opacity(0.55), lineWidth: 1))
+                .shadow(color: T.amber.opacity(0.18), radius: 20, y: 6)
+                .shadow(color: .black.opacity(0.35), radius: 18, y: 6)
                 .onReceive(tick) { t in
                     now = t
                     if ends.timeIntervalSince(t) <= 0 { queue.finishTimer() }
