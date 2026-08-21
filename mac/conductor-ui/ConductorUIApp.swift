@@ -24,12 +24,10 @@ struct ConductorUIApp: App {
                     .keyboardShortcut("1", modifiers: .command)
                 Button("Board")     { NotificationCenter.default.post(name: .goTo, object: Screen.board) }
                     .keyboardShortcut("2", modifiers: .command)
-                Button("Tracker")   { NotificationCenter.default.post(name: .goTo, object: Screen.tracker) }
-                    .keyboardShortcut("3", modifiers: .command)
                 Button("Formatter") { NotificationCenter.default.post(name: .goTo, object: Screen.formatter) }
-                    .keyboardShortcut("4", modifiers: .command)
+                    .keyboardShortcut("3", modifiers: .command)
                 Button("Meetings")  { NotificationCenter.default.post(name: .goTo, object: Screen.meetings) }
-                    .keyboardShortcut("5", modifiers: .command)
+                    .keyboardShortcut("4", modifiers: .command)
                 Divider()
                 Button("Settings")  { NotificationCenter.default.post(name: .goTo, object: Screen.settings) }
                     .keyboardShortcut(",", modifiers: .command)
@@ -85,7 +83,6 @@ struct Shell: View {
         switch screen {
         case .today:     TodayView()
         case .board:     BoardView()
-        case .tracker:   TrackerView()
         case .formatter: FormatterView()
         case .meetings:  MeetingsView()
         case .settings:  SettingsView()

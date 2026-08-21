@@ -91,14 +91,13 @@ enum Sample {
 
 /// Which screen the sidebar is showing.
 enum Screen: String, CaseIterable, Identifiable {
-    case today, board, tracker, formatter, meetings, settings
+    case today, board, formatter, meetings, settings
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .today: return "Today"
         case .board: return "Board"
-        case .tracker: return "Tracker"
         case .formatter: return "Formatter"
         case .meetings: return "Meetings"
         case .settings: return "Settings"
@@ -109,7 +108,6 @@ enum Screen: String, CaseIterable, Identifiable {
         switch self {
         case .today: return "scope"
         case .board: return "rectangle.split.3x1"
-        case .tracker: return "checklist"
         case .formatter: return "paperplane"
         case .meetings: return "calendar"
         case .settings: return "gearshape"
@@ -120,9 +118,8 @@ enum Screen: String, CaseIterable, Identifiable {
         switch self {
         case .today: return "1"
         case .board: return "2"
-        case .tracker: return "3"
-        case .formatter: return "4"
-        case .meetings: return "5"
+        case .formatter: return "3"
+        case .meetings: return "4"
         case .settings: return ","
         }
     }

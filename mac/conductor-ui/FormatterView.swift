@@ -218,17 +218,3 @@ struct SettingsView: View {
         .padding(.leading, 30).padding(.top, 44)
     }
 }
-
-// ── Tracker placeholder ──────────────────────────────────────────────────
-struct TrackerView: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Tracker").font(.system(size: 30, weight: .semibold)).foregroundStyle(T.text)
-            Text("Not designed yet — deliberately left out of this pass.")
-                .font(.system(size: 14)).foregroundStyle(T.dim)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 30).padding(.top, 44)
-    }
-}

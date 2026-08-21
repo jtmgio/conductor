@@ -23,7 +23,7 @@ struct Sidebar: View {
                 .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
 
             VStack(spacing: 2) {
-                ForEach([Screen.today, .board, .tracker, .formatter, .meetings]) { s in
+                ForEach([Screen.today, .board, .formatter, .meetings]) { s in
                     NavRow(screen: s, active: screen == s, collapsed: collapsed) { screen = s }
                 }
             }
