@@ -65,12 +65,12 @@ export function TrackerPage() {
 
   return (
     <>
-      <div className="mx-auto max-w-2xl pt-1">
+      <div className="mx-auto max-w-5xl pt-1">
         <h1 className="text-[26px] font-bold tracking-tight text-[var(--text-primary)]">Waiting on</h1>
         <p className="mt-1 text-[14px] text-[var(--text-tertiary)]">
           Things other people owe you. Stale ones surface on their own — you don&apos;t have to check.
         </p>
-        <div className="mt-5 mb-7 flex gap-2 overflow-x-auto hide-scrollbar py-1">
+        <div className="mt-5 mb-7 flex flex-wrap gap-2 py-1">
           {["all", "stale"].map((key) => (
             <button key={key} onClick={() => setFilter(key)}
               className={cn("min-h-[36px] px-3.5 rounded-xl text-[13px] font-medium whitespace-nowrap transition-colors shrink-0 border",

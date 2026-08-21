@@ -371,3 +371,33 @@
   pointer-events: none;
   height: 0;
 }
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Running inside Conductor.app (the native macOS shell).
+
+   The shell injects `document.documentElement.dataset.native = 'macos'` at
+   document start, so everything below is scoped to [data-native] and is inert
+   in a browser or the Chrome web app, where the attribute is simply absent.
+
+   Two jobs. The window hides its title bar so the page reaches the top of the
+   frame, which puts the traffic lights over the sidebar's logo — so the header
+   is padded clear of them. And with no title bar there is nothing left to drag
+   the window by, so the header declares itself the drag region.
+   ────────────────────────────────────────────────────────────────────────── */
+[data-native="macos"] [data-sidebar-header] {
+  padding-top: 2.6rem;
+  -webkit-app-region: drag;
+}
+
+/* Controls inside a drag region stop receiving clicks unless they opt out. */
+[data-native="macos"] [data-sidebar-header] button,
+[data-native="macos"] [data-sidebar-header] a {
+  -webkit-app-region: no-drag;
+}
+
+/* The mobile top bar is never visible in the shell (it is desktop-width), but
+   guard anyway so a narrow window cannot end up with an undraggable frame. */
+[data-native="macos"] header[data-mobile-bar] {
+  -webkit-app-region: drag;
+}

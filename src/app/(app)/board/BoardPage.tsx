@@ -204,7 +204,7 @@ export function BoardPage() {
 
         {/* Company tabs + done toggle */}
         <div className="mt-5 mb-7 flex items-center gap-3">
-          <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 flex-1">
+          <div className="flex flex-wrap gap-2 py-1 flex-1">
             {roles.map((role) => (
               <button
                 key={role.id}
@@ -246,7 +246,7 @@ export function BoardPage() {
         ) : (
           <>
             {/* Desktop: horizontal scrolling kanban lanes */}
-            <div className="hidden md:flex gap-4 overflow-x-auto hide-scrollbar pb-4" style={{ minHeight: "calc(100vh - 260px)" }}>
+            <div className="hidden md:grid gap-4 pb-4" style={{ minHeight: "calc(100vh - 260px)", gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
               {BOARD_COLUMNS.map((status) => (
                 <div
                   key={status}
@@ -274,7 +274,7 @@ export function BoardPage() {
                     setDragTaskId(null);
                   }}
                   className={cn(
-                    "rounded-xl transition-colors flex-shrink-0 w-[280px] p-3 flex flex-col",
+                    "rounded-xl transition-colors min-w-0 p-3 flex flex-col",
                     "bg-[var(--surface-sunken)]/30 border border-[var(--border-subtle)]",
                     dragOverCol === status && dragTaskId && "bg-[var(--surface-raised)]/50 ring-2 ring-inset ring-[var(--accent-blue)]/30"
                   )}
@@ -330,7 +330,7 @@ export function BoardPage() {
                   setDragTaskId(null);
                 }}
                 className={cn(
-                  "rounded-xl transition-colors flex-shrink-0 w-[280px] p-3 flex flex-col",
+                  "rounded-xl transition-colors min-w-0 p-3 flex flex-col",
                   "bg-[var(--surface-sunken)]/30 border border-[var(--border-subtle)]",
                   dragOverCol === "done" && dragTaskId && "ring-2 ring-inset ring-[#22c55e]/40"
                 )}
@@ -400,7 +400,7 @@ export function BoardPage() {
             {/* Mobile: filtered list */}
             <div className="md:hidden">
               {/* Status filter pills */}
-              <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 mb-6">
+              <div className="flex flex-wrap gap-2 py-1 mb-6">
                 <button
                   onClick={() => setMobileFilter("all")}
                   className={cn(

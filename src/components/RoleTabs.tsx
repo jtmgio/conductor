@@ -7,7 +7,7 @@ interface RoleTabsProps { roles: Role[]; activeRoleId: string; onChange: (roleId
 
 export function RoleTabs({ roles, activeRoleId, onChange }: RoleTabsProps) {
   return (
-    <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-4">
+    <div className="flex flex-wrap gap-2 pb-4">
       {roles.map((role) => {
         const active = role.id === activeRoleId;
         return (

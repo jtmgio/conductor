@@ -535,7 +535,7 @@ Based on the above, provide:`;
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-8 border-b border-[var(--border-subtle)] overflow-x-auto hide-scrollbar">
+        <div className="flex flex-wrap gap-1 mb-8 border-b border-[var(--border-subtle)]">
           {TABS.map((tab) => (
             <button
               key={tab.id}
