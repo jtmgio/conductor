@@ -68,12 +68,13 @@ struct CommandPalette: View {
     private var actions: [PaletteRow] {
         [
             .init(icon: "plus.circle", label: "Add task", shortcut: "⌘N", section: "Actions"),
-            .init(icon: "paperplane", label: "Format a message", shortcut: "⌘3", section: "Actions"),
-            .init(icon: "moon.stars", label: "Plan tomorrow", section: "Actions"),
+            .init(icon: "paperplane", label: "Format a message", shortcut: "⌘4", section: "Actions"),
+            .init(icon: "moon.stars", label: "Plan tomorrow", shortcut: "⌘3", section: "Actions"),
             .init(icon: "scope", label: "Go to Today", shortcut: "⌘1", section: "Go"),
             .init(icon: "rectangle.split.3x1", label: "Go to Board", shortcut: "⌘2", section: "Go"),
-            .init(icon: "paperplane", label: "Go to Formatter", shortcut: "⌘3", section: "Go"),
-            .init(icon: "calendar", label: "Go to Meetings", shortcut: "⌘4", section: "Go"),
+            .init(icon: "moon.stars", label: "Go to Plan", shortcut: "⌘3", section: "Go"),
+            .init(icon: "paperplane", label: "Go to Formatter", shortcut: "⌘4", section: "Go"),
+            .init(icon: "calendar", label: "Go to Meetings", shortcut: "⌘5", section: "Go"),
             .init(icon: "gearshape", label: "Go to Settings", shortcut: "⌘,", section: "Go"),
         ]
     }
@@ -465,10 +466,7 @@ struct CommandPalette: View {
         case "Format a message":
             withAnimation(T.quick) { m.mode = .formatMessage }
             return
-        case "Plan tomorrow":
-            close()
-            sheets.planning = true
-            return
+        case "Plan tomorrow", "Go to Plan": onGo(.plan)
         case "Go to Today":    onGo(.today)
         case "Go to Board":    onGo(.board)
         case "Go to Formatter": onGo(.formatter)

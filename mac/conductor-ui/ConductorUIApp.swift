@@ -23,10 +23,12 @@ struct ConductorUIApp: App {
                     .keyboardShortcut("1", modifiers: .command)
                 Button("Board")     { NotificationCenter.default.post(name: .goTo, object: Screen.board) }
                     .keyboardShortcut("2", modifiers: .command)
-                Button("Formatter") { NotificationCenter.default.post(name: .goTo, object: Screen.formatter) }
+                Button("Plan")      { NotificationCenter.default.post(name: .goTo, object: Screen.plan) }
                     .keyboardShortcut("3", modifiers: .command)
-                Button("Meetings")  { NotificationCenter.default.post(name: .goTo, object: Screen.meetings) }
+                Button("Formatter") { NotificationCenter.default.post(name: .goTo, object: Screen.formatter) }
                     .keyboardShortcut("4", modifiers: .command)
+                Button("Meetings")  { NotificationCenter.default.post(name: .goTo, object: Screen.meetings) }
+                    .keyboardShortcut("5", modifiers: .command)
                 Divider()
                 Button("Settings")  { NotificationCenter.default.post(name: .goTo, object: Screen.settings) }
                     .keyboardShortcut(",", modifiers: .command)
@@ -82,9 +84,6 @@ struct Shell: View {
             }
         }
         .overlay(alignment: .bottom) { demoTray }
-        .sheet(isPresented: $sheets.planning) {
-            PlanTomorrowSheet(isPresented: $sheets.planning).environmentObject(ui).environmentObject(sheets)
-        }
         .sheet(item: $sheets.openJob) { job in
             TaskDetailSheet(isPresented: Binding(
                 get: { sheets.openJob != nil },
@@ -97,6 +96,9 @@ struct Shell: View {
         .animation(T.ease, value: collapsed)
         .onReceive(NotificationCenter.default.publisher(for: .goTo)) { note in
             if let s = note.object as? Screen { screen = s }
+        }
+        .onChange(of: sheets.planning) { wants in
+            if wants { screen = .plan; sheets.planning = false }
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
             collapsed.toggle()
@@ -116,6 +118,7 @@ struct Shell: View {
         switch screen {
         case .today:     TodayView()
         case .board:     BoardView()
+        case .plan:      PlanView()
         case .formatter: FormatterView()
         case .meetings:  MeetingsView()
         case .settings:  SettingsView()
