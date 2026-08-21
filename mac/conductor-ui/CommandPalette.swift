@@ -26,20 +26,42 @@ struct PaletteRow: Identifiable {
 /// point of ⌘K is that it's the same keystroke every time.
 enum PaletteMode { case search, addTask, formatMessage }
 
+/// Palette state lives in a reference type on purpose.
+///
+/// The key monitor is an escaping closure, and m.when this was @State on the
+/// view it captured a *copy* of the struct — so after switching to Add task
+/// the closure kept reading m.mode == .addTask forever. Coming back to search,
+/// `guard m.mode == .search` failed and the arrow keys fell through to the text
+/// field. A class is read live, every time.
+@MainActor
+final class PaletteModel: ObservableObject {
+    @Published var mode: PaletteMode = .search
+    @Published var query = ""
+    @Published var selected = 0
+    @Published var draftTitle = ""
+    @Published var draftBody = ""
+    @Published var when = "Backlog"
+    @Published var platform = "Slack"
+    @Published var company = Sample.companies[0].id
+    @Published var scrollTo: UUID?
+
+    func reset() {
+        mode = .search
+        query = ""
+        selected = 0
+        draftTitle = ""
+        draftBody = ""
+        when = "Backlog"
+        scrollTo = nil
+    }
+}
+
 struct CommandPalette: View {
     @Binding var isPresented: Bool
     var onGo: (Screen) -> Void
 
-    @State private var mode: PaletteMode = .search
-    @State private var draftTitle = ""
-    @State private var draftBody = ""
-    @State private var company = Sample.companies[0].id
-    @State private var when = "Backlog"
-    @State private var platform = "Slack"
-    @State private var query = ""
-    @State private var selected = 0
+    @StateObject private var m = PaletteModel()
     @State private var monitor: Any?
-    @State private var scrollTo: UUID?
     @FocusState private var focused: Bool
 
     private var actions: [PaletteRow] {
@@ -56,9 +78,9 @@ struct CommandPalette: View {
     }
 
     private var taskHits: [PaletteRow] {
-        guard !query.isEmpty else { return [] }
+        guard !m.query.isEmpty else { return [] }
         return Sample.upNext
-            .filter { $0.title.localizedCaseInsensitiveContains(query) || $0.key.localizedCaseInsensitiveContains(query) }
+            .filter { $0.title.localizedCaseInsensitiveContains(m.query) || $0.key.localizedCaseInsensitiveContains(m.query) }
             .prefix(5)
             .map { job in
                 PaletteRow(icon: "checkmark.circle", label: job.title,
@@ -69,25 +91,25 @@ struct CommandPalette: View {
     }
 
     private var followUpHits: [PaletteRow] {
-        guard !query.isEmpty else { return [] }
+        guard !m.query.isEmpty else { return [] }
         let waiting: [(String, String)] = [
             ("Champion slate blessing", "Jeff White"),
             ("Three blocking SME answers", "Luke Freudenthal"),
             ("Lower tier + credit on the renewal", "Milos · UXCam"),
         ]
         return waiting
-            .filter { $0.0.localizedCaseInsensitiveContains(query) || $0.1.localizedCaseInsensitiveContains(query) }
+            .filter { $0.0.localizedCaseInsensitiveContains(m.query) || $0.1.localizedCaseInsensitiveContains(m.query) }
             .map { PaletteRow(icon: "clock", label: $0.0, trailing: $0.1, section: "Waiting on") }
     }
 
     private var rows: [PaletteRow] {
-        let filteredActions = query.isEmpty
+        let filteredActions = m.query.isEmpty
             ? actions
-            : actions.filter { $0.label.localizedCaseInsensitiveContains(query) }
+            : actions.filter { $0.label.localizedCaseInsensitiveContains(m.query) }
         var all = filteredActions + taskHits + followUpHits
-        if !query.isEmpty {
+        if !m.query.isEmpty {
             all.append(.init(icon: "sparkles",
-                             label: "Ask AI about “\(query)”",
+                             label: "Ask AI about “\(m.query)”",
                              tint: T.accent,
                              section: "Ask"))
         }
@@ -102,7 +124,7 @@ struct CommandPalette: View {
                 .onTapGesture { close() }
 
             Group {
-                switch mode {
+                switch m.mode {
                 case .search:        panel
                 case .addTask:       addTaskPanel
                 case .formatMessage: formatPanel
@@ -123,16 +145,16 @@ struct CommandPalette: View {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             switch event.keyCode {
             case 125:  // down
-                guard mode == .search else { return event }
+                guard m.mode == .search else { return event }
                 move(1)
                 return nil
             case 126:  // up
-                guard mode == .search else { return event }
+                guard m.mode == .search else { return event }
                 move(-1)
                 return nil
             case 36, 76:  // return, keypad enter
-                if mode == .search {
-                    run(rows.indices.contains(selected) ? rows[selected] : nil)
+                if m.mode == .search {
+                    run(rows.indices.contains(m.selected) ? rows[m.selected] : nil)
                     return nil
                 }
                 // In a composer, plain Return makes a newline; ⌘Return submits.
@@ -155,8 +177,8 @@ struct CommandPalette: View {
     private func move(_ delta: Int) {
         guard !rows.isEmpty else { return }
         // Wraps, so holding down doesn't dead-end at the bottom.
-        selected = (selected + delta + rows.count) % rows.count
-        scrollTo = rows[selected].id
+        m.selected = (m.selected + delta + rows.count) % rows.count
+        m.scrollTo = rows[m.selected].id
     }
 
     private var panel: some View {
@@ -165,13 +187,13 @@ struct CommandPalette: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 15))
                     .foregroundStyle(T.faint)
-                TextField("Search tasks, follow-ups, notes, transcripts…", text: $query)
+                TextField("Search tasks, follow-ups, notes, transcripts…", text: $m.query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 16))
                     .foregroundStyle(T.text)
                     .focused($focused)
-                    .onSubmit { run(rows.indices.contains(selected) ? rows[selected] : nil) }
-                    .onChange(of: query) { _ in selected = 0 }
+                    .onSubmit { run(rows.indices.contains(m.selected) ? rows[m.selected] : nil) }
+                    .onChange(of: m.query) { _ in m.selected = 0 }
                 Text("esc")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(T.faint)
@@ -183,7 +205,7 @@ struct CommandPalette: View {
             Divider().overlay(T.line)
 
             if rows.isEmpty {
-                Text("Nothing matches “\(query)”")
+                Text("Nothing matches “\(m.query)”")
                     .font(.system(size: 13.5)).foregroundStyle(T.faint)
                     .frame(maxWidth: .infinity).padding(.vertical, 34)
             } else {
@@ -197,16 +219,16 @@ struct CommandPalette: View {
                                     .padding(.top, i == 0 ? 12 : 14)
                                     .padding(.bottom, 4)
                             }
-                            rowView(row, active: i == selected)
+                            rowView(row, active: i == m.selected)
                                 .id(row.id)
-                                .onHover { if $0 { selected = i } }
+                                .onHover { if $0 { m.selected = i } }
                                 .onTapGesture { run(row) }
                         }
                     }
                     .padding(.bottom, 10)
                   }
                   .frame(maxHeight: 380)
-                  .onChange(of: scrollTo) { target in
+                  .onChange(of: m.scrollTo) { target in
                       guard let target else { return }
                       withAnimation(T.quick) { proxy.scrollTo(target, anchor: .center) }
                   }
@@ -226,7 +248,7 @@ struct CommandPalette: View {
         .background(T.card, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(T.lineFirm, lineWidth: 1))
         .shadow(color: .black.opacity(0.45), radius: 44, y: 18)
-        .onAppear { focused = true; selected = 0 }
+        .onAppear { focused = true; m.selected = 0 }
     }
 
 
@@ -236,15 +258,15 @@ struct CommandPalette: View {
             modeHeader(icon: "plus.circle", title: "Add task")
 
             VStack(alignment: .leading, spacing: 14) {
-                TextField("What needs doing?", text: $draftTitle, axis: .vertical)
+                TextField("What needs doing?", text: $m.draftTitle, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.system(size: 17))
                     .foregroundStyle(T.text)
                     .lineLimit(1...4)
                     .focused($focused)
 
-                if !draftTitle.isEmpty {
-                    TextField("Notes — anything you'd lose otherwise", text: $draftBody, axis: .vertical)
+                if !m.draftTitle.isEmpty {
+                    TextField("Notes — anything you'd lose otherwise", text: $m.draftBody, axis: .vertical)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13.5))
                         .foregroundStyle(T.dim)
@@ -252,21 +274,21 @@ struct CommandPalette: View {
                 }
 
                 Cap("Company")
-                CompanyPicker(selected: $company)
+                CompanyPicker(selected: $m.company)
 
                 Cap("When")
                 HStack(spacing: 6) {
                     // Backlog first, and it's the default. A capture box that
                     // defaults to Today is how today's list becomes a pile.
                     ForEach(["Backlog", "Today", "Tomorrow", "Monday"], id: \.self) { w in
-                        Button { when = w } label: {
+                        Button { m.when = w } label: {
                             Text(w)
-                                .font(.system(size: 12.5, weight: when == w ? .medium : .regular))
-                                .foregroundStyle(when == w ? T.text : T.dim)
+                                .font(.system(size: 12.5, weight: m.when == w ? .medium : .regular))
+                                .foregroundStyle(m.when == w ? T.text : T.dim)
                                 .padding(.horizontal, 12).padding(.vertical, 6)
                                 .background(
-                                    Capsule().fill(when == w ? T.card : T.sunken)
-                                        .overlay(Capsule().strokeBorder(when == w ? T.lineFirm : T.line, lineWidth: 1))
+                                    Capsule().fill(m.when == w ? T.card : T.sunken)
+                                        .overlay(Capsule().strokeBorder(m.when == w ? T.lineFirm : T.line, lineWidth: 1))
                                 )
                         }
                         .buttonStyle(.plain)
@@ -287,11 +309,11 @@ struct CommandPalette: View {
                         Text("⌘↩").font(.system(size: 11, weight: .semibold)).opacity(0.55)
                     }
                     .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(draftTitle.isEmpty ? T.sunken : T.accent, in: RoundedRectangle(cornerRadius: 9))
-                    .foregroundStyle(draftTitle.isEmpty ? T.faint : T.hex(0x17150F))
+                    .background(m.draftTitle.isEmpty ? T.sunken : T.accent, in: RoundedRectangle(cornerRadius: 9))
+                    .foregroundStyle(m.draftTitle.isEmpty ? T.faint : T.hex(0x17150F))
                 }
                 .buttonStyle(.plain)
-                .disabled(draftTitle.isEmpty)
+                .disabled(m.draftTitle.isEmpty)
             }
             .padding(.horizontal, 18).padding(.vertical, 12)
         }
@@ -305,7 +327,7 @@ struct CommandPalette: View {
     /// The real capture path runs the raw text through a refiner, so say so —
     /// otherwise a long brain-dump looks like it will land as a long title.
     private var refineNote: String {
-        draftTitle.count > 90 ? "Long — it'll be shortened and the full text kept in notes" : ""
+        m.draftTitle.count > 90 ? "Long — it'll be shortened and the full text kept in notes" : ""
     }
 
     // ── Format a message ─────────────────────────────────────────────────
@@ -314,7 +336,7 @@ struct CommandPalette: View {
             modeHeader(icon: "paperplane", title: "Format a message")
 
             VStack(alignment: .leading, spacing: 14) {
-                TextField("Paste your rough message…", text: $draftBody, axis: .vertical)
+                TextField("Paste your rough message…", text: $m.draftBody, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.system(size: 14.5))
                     .foregroundStyle(T.text)
@@ -325,17 +347,17 @@ struct CommandPalette: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(T.line, lineWidth: 1))
 
                 Cap("Voice")
-                CompanyPicker(selected: $company)
+                CompanyPicker(selected: $m.company)
 
                 Cap("Platform")
                 HStack(spacing: 3) {
                     ForEach(["Slack", "Teams", "Email", "SMS"], id: \.self) { p in
-                        Button { platform = p } label: {
+                        Button { m.platform = p } label: {
                             Text(p)
-                                .font(.system(size: 12, weight: platform == p ? .medium : .regular))
-                                .foregroundStyle(platform == p ? T.text : T.faint)
+                                .font(.system(size: 12, weight: m.platform == p ? .medium : .regular))
+                                .foregroundStyle(m.platform == p ? T.text : T.faint)
                                 .padding(.horizontal, 11).padding(.vertical, 5)
-                                .background(RoundedRectangle(cornerRadius: 6).fill(platform == p ? T.card : .clear))
+                                .background(RoundedRectangle(cornerRadius: 6).fill(m.platform == p ? T.card : .clear))
                         }
                         .buttonStyle(.plain)
                     }
@@ -357,11 +379,11 @@ struct CommandPalette: View {
                         Text("⌘↩").font(.system(size: 11, weight: .semibold)).opacity(0.55)
                     }
                     .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(draftBody.isEmpty ? T.sunken : T.accent, in: RoundedRectangle(cornerRadius: 9))
-                    .foregroundStyle(draftBody.isEmpty ? T.faint : T.hex(0x17150F))
+                    .background(m.draftBody.isEmpty ? T.sunken : T.accent, in: RoundedRectangle(cornerRadius: 9))
+                    .foregroundStyle(m.draftBody.isEmpty ? T.faint : T.hex(0x17150F))
                 }
                 .buttonStyle(.plain)
-                .disabled(draftBody.isEmpty)
+                .disabled(m.draftBody.isEmpty)
             }
             .padding(.horizontal, 18).padding(.vertical, 12)
         }
@@ -437,10 +459,10 @@ struct CommandPalette: View {
         guard let row else { close(); return }
         switch row.label {
         case "Add task":
-            withAnimation(T.quick) { mode = .addTask }
+            withAnimation(T.quick) { m.mode = .addTask }
             return
         case "Format a message":
-            withAnimation(T.quick) { mode = .formatMessage }
+            withAnimation(T.quick) { m.mode = .formatMessage }
             return
         case "Plan tomorrow":  onGo(.today)
         case "Go to Today":    onGo(.today)
@@ -456,17 +478,12 @@ struct CommandPalette: View {
     /// Escape steps back to search before it closes the window — one keystroke
     /// shouldn't throw away a half-typed task.
     private func back() {
-        if mode == .search { close() }
-        else { withAnimation(T.quick) { mode = .search } }
+        if m.mode == .search { close() }
+        else { withAnimation(T.quick) { m.mode = .search } }
     }
 
     private func close() {
-        query = ""
-        selected = 0
-        draftTitle = ""
-        draftBody = ""
-        when = "Backlog"
-        mode = .search
+        m.reset()
         isPresented = false
     }
 }
