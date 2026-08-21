@@ -174,9 +174,19 @@ export function Reminders() {
       delete next[id];
       return next;
     });
+    // A swallowed failure here is worse than a re-shown modal: the reminder looks handled
+    // for the rest of the day but the server never records it, so nothing is actually
+    // acknowledged. Put it back and let it ask again.
     try {
-      await fetch(`/api/reminders/${id}/ack`, { method: "POST" });
-    } catch {}
+      const res = await fetch(`/api/reminders/${id}/ack`, { method: "POST" });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      setAcked((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   }, []);
 
   const snooze = useCallback((id: string) => {
@@ -215,9 +225,16 @@ export function Reminders() {
 
   const now = new Date();
   const nowMs = Date.now();
-  const due = reminders.filter(
-    (r) => isDue(r, now) && !acked.has(r.id) && !(snoozedUntil[r.id] !== undefined && nowMs < snoozedUntil[r.id])
-  );
+  // Only one reminder holds the screen at a time, so the queue order decides what you
+  // ever see. It used to be the API's order (sortOrder), which meant the earliest-created
+  // reminder won — "Take vitamins" (9:45) sat at the front unacknowledged and buried every
+  // stand-up from 9:45 AM onward. Sort by due time, latest first: whatever just fired takes
+  // the screen, and anything still outstanding resurfaces behind it instead of blocking it.
+  const due = reminders
+    .filter(
+      (r) => isDue(r, now) && !acked.has(r.id) && !(snoozedUntil[r.id] !== undefined && nowMs < snoozedUntil[r.id])
+    )
+    .sort((a, b) => b.hour * 60 + b.minute - (a.hour * 60 + a.minute));
 
   // Chime once per reminder per day — remounting on every page change shouldn't re-announce
   const dueKey = due.map((r) => r.id).join(",");
