@@ -30,6 +30,7 @@ model UserProfile {
   dayShiftDate           DateTime? @db.Date
   dayShiftMinutes        Int?
   lastSweepAt            DateTime? // last completed comms sweep (UTC instant)
+  lastRolloverOn         DateTime? @db.Date // last silent end-of-day rollover (UX rule #6)
   updatedAt              DateTime @updatedAt
 }
 

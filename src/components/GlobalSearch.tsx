@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { isAlertOpen } from "@/lib/alert-lock";
 import { Search, X, CheckSquare, Clock, FileText, MessageSquare, Sparkles, Loader2, RefreshCw, Calendar, Mic, Link2, Plus, PenLine, Copy, Check, Crosshair, Columns3, ListChecks, Settings, Moon } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { useTaskSuggestion } from "@/hooks/useTaskSuggestion";
@@ -297,6 +298,9 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
+        // GlobalSearch renders at z-[60], below every blocking alert. Opening
+        // it under one put focus in an input the user could not see.
+        if (isAlertOpen()) return;
         setOpen(true);
       }
       if (e.key === "Escape" && open) { setOpen(false); }

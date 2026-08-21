@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { acquireAlert, releaseAlert, isOutranked } from "@/lib/alert-lock";
 import { motion } from "framer-motion";
 import { ArrowRight, X } from "lucide-react";
 import { playSound } from "@/lib/sounds";
@@ -85,10 +86,21 @@ export function BlockTransition({
   }, [park, from, to, onClose]);
 
   useEffect(() => {
+    acquireAlert("blockTransition");
+    return () => releaseAlert("blockTransition");
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      // Enter parks and starts; Shift+Enter keeps its normal newline in the textarea.
-      if (e.key === "Enter" && !e.shiftKey) {
+      // This listener used to sit on window with `Enter && !shiftKey` submitting.
+      // Two things went wrong. The textarea says "Park it — one per line", but
+      // Enter closed the dialog, so line two was unreachable unless you guessed
+      // Shift+Enter (nothing said so). And because it was bound to window, it
+      // still fired while this dialog was occluded by another alert — pressing
+      // Enter at "Check Slack" silently started the next block instead.
+      if (isOutranked("blockTransition")) return;
+      if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         void start();
       }
@@ -103,7 +115,7 @@ export function BlockTransition({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-[var(--surface)]/85 backdrop-blur-xl p-4"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-[var(--surface)]/85 backdrop-blur-xl p-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div
@@ -134,7 +146,7 @@ export function BlockTransition({
           autoFocus
           value={park}
           onChange={(e) => setPark(e.target.value)}
-          placeholder="Park it — one per line. Files itself so you don't carry it into the next block."
+          placeholder="Park it — one per line. Enter makes a new line; ⌘Enter starts the block."
           className="mt-2 min-h-[58px] w-full resize-none rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3.5 py-2.5 text-[13.5px] text-[var(--text-primary)] outline-none focus-visible:border-[var(--border-strong)]"
         />
 
@@ -165,7 +177,7 @@ export function BlockTransition({
           <ArrowRight className="h-4 w-4" />
         </button>
         <p className="mt-2 text-center text-[11.5px] text-[var(--text-tertiary)]">
-          Enter to start · Esc to skip
+          ⌘Enter to start · Esc to skip
         </p>
       </motion.div>
     </motion.div>

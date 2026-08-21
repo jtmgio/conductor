@@ -29,7 +29,11 @@ export function useHotkeys(shortcuts: Shortcut[]) {
         const hasAlt = e.altKey;
 
         if (needsCmd !== hasCmd) continue;
-        if (needsShift !== hasShift) continue;
+        // Punctuation carries its own shift state: "?" cannot be produced
+        // without Shift, so requiring needsShift === hasShift meant the
+        // shortcuts sheet could never be opened by its own shortcut.
+        const shiftIsImplicit = s.key.length === 1 && !/[a-z0-9]/i.test(s.key);
+        if (!shiftIsImplicit && needsShift !== hasShift) continue;
         if (needsAlt !== hasAlt) continue;
 
         // Match key (case-insensitive, handle special keys)
@@ -55,39 +59,23 @@ export function useHotkeys(shortcuts: Shortcut[]) {
   }, [handler]);
 }
 
-// All shortcuts defined in one place for the overlay to reference
-export const SHORTCUT_DEFINITIONS: Omit<Shortcut, "action">[] = [
-  // Navigation
-  { key: "1", modifiers: ["cmd"], description: "Go to Focus", category: "Navigation" },
-  { key: "2", modifiers: ["cmd"], description: "Go to Inbox", category: "Navigation" },
-  { key: "3", modifiers: ["cmd"], description: "Go to Tracker", category: "Navigation" },
-  { key: "4", modifiers: ["cmd"], description: "Go to Board", category: "Navigation" },
-  { key: "5", modifiers: ["cmd"], description: "Go to AI", category: "Navigation" },
-  { key: "6", modifiers: ["cmd"], description: "Go to Documents", category: "Navigation" },
-  { key: "7", modifiers: ["cmd"], description: "Go to Drafts", category: "Navigation" },
-  { key: ",", modifiers: ["cmd"], description: "Go to Settings", category: "Navigation" },
+/**
+ * What the shortcuts sheet shows.
+ *
+ * This list used to be hand-maintained and had drifted badly: it documented
+ * ⌘2 as Inbox and ⌘4 as Board when the app binds ⌘2 to Board and ⌘4 to
+ * Formatter — exactly inverted — and 14 of its 22 entries were for features
+ * that were never built. Combined with "?" never matching (see the shift fix
+ * above), the help was both wrong and unopenable.
+ *
+ * AppShell now passes its live `shortcuts` array to KeyboardShortcuts, so the
+ * sheet renders what is actually bound. What remains here is only the set of
+ * bindings owned by other components, which the sheet cannot introspect.
+ */
+export const EXTERNAL_SHORTCUTS: Omit<Shortcut, "action">[] = [
   { key: "k", modifiers: ["cmd"], description: "Search", category: "Navigation" },
-
-  // Create
-  { key: "n", description: "Quick add task", category: "Create" },
-  { key: "n", modifiers: ["cmd"], description: "New task", category: "Create" },
-  { key: "n", modifiers: ["cmd", "shift"], description: "New follow-up", category: "Create" },
-
-  // Focus View
-  { key: "[", description: "Previous time block", category: "Focus" },
-  { key: "]", description: "Next time block", category: "Focus" },
-  { key: "l", modifiers: ["cmd"], description: "Toggle list / board view", category: "Focus" },
-
-  // Task Actions
-  { key: "Enter", modifiers: ["cmd"], description: "Complete selected task", category: "Tasks" },
-  { key: "t", modifiers: ["cmd"], description: "Mark as Today", category: "Tasks" },
-  { key: "Escape", description: "Close dialog / deselect", category: "Tasks" },
-
-  // AI Chat
   { key: "Enter", description: "Send message", category: "AI Chat", allowInInput: true },
   { key: "Enter", modifiers: ["shift"], description: "New line", category: "AI Chat", allowInInput: true },
   { key: "/", description: "Slash commands", category: "AI Chat", allowInInput: true },
-
-  // General
-  { key: "?", description: "Show keyboard shortcuts", category: "General" },
+  { key: "Enter", modifiers: ["cmd"], description: "Start the next block", category: "Focus" },
 ];
