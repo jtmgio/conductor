@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// ⌘K — one field that does everything.
 ///
@@ -26,6 +27,8 @@ struct CommandPalette: View {
 
     @State private var query = ""
     @State private var selected = 0
+    @State private var monitor: Any?
+    @State private var scrollTo: UUID?
     @FocusState private var focused: Bool
 
     private var actions: [PaletteRow] {
@@ -91,14 +94,45 @@ struct CommandPalette: View {
                 .padding(.top, 96)
                 .transition(.scale(scale: 0.97).combined(with: .opacity))
         }
-        .onExitCommand { close() }
-        .onMoveCommand { direction in
-            switch direction {
-            case .down: selected = min(selected + 1, max(0, rows.count - 1))
-            case .up:   selected = max(selected - 1, 0)
-            default: break
+        // onMoveCommand never fires here: the focused TextField consumes arrow
+        // keys to move its own insertion point, so the palette never sees them.
+        // A local monitor gets first refusal and swallows the ones we own.
+        .onAppear { installKeyMonitor() }
+        .onDisappear { removeKeyMonitor() }
+    }
+
+    private func installKeyMonitor() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            switch event.keyCode {
+            case 125:  // down
+                move(1)
+                return nil
+            case 126:  // up
+                move(-1)
+                return nil
+            case 36, 76:  // return, keypad enter
+                run(rows.indices.contains(selected) ? rows[selected] : nil)
+                return nil
+            case 53:  // escape
+                close()
+                return nil
+            default:
+                return event
             }
         }
+    }
+
+    private func removeKeyMonitor() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
+
+    private func move(_ delta: Int) {
+        guard !rows.isEmpty else { return }
+        // Wraps, so holding down doesn't dead-end at the bottom.
+        selected = (selected + delta + rows.count) % rows.count
+        scrollTo = rows[selected].id
     }
 
     private var panel: some View {
@@ -129,7 +163,8 @@ struct CommandPalette: View {
                     .font(.system(size: 13.5)).foregroundStyle(T.faint)
                     .frame(maxWidth: .infinity).padding(.vertical, 34)
             } else {
-                ScrollView {
+                ScrollViewReader { proxy in
+                  ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
                             if i == 0 || rows[i - 1].section != row.section {
@@ -139,13 +174,19 @@ struct CommandPalette: View {
                                     .padding(.bottom, 4)
                             }
                             rowView(row, active: i == selected)
+                                .id(row.id)
                                 .onHover { if $0 { selected = i } }
                                 .onTapGesture { run(row) }
                         }
                     }
                     .padding(.bottom, 10)
+                  }
+                  .frame(maxHeight: 380)
+                  .onChange(of: scrollTo) { target in
+                      guard let target else { return }
+                      withAnimation(T.quick) { proxy.scrollTo(target, anchor: .center) }
+                  }
                 }
-                .frame(maxHeight: 380)
             }
 
             Divider().overlay(T.line)
