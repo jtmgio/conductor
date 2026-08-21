@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { acquireAlert, releaseAlert } from "@/lib/alert-lock";
 import { motion, AnimatePresence } from "framer-motion";
 import { CalendarClock, Check, ClipboardList } from "lucide-react";
 import { playSound } from "@/lib/sounds";
@@ -130,6 +131,15 @@ export function MeetingAlert() {
   }, [dueIds]);
 
   const active = due[0] ?? null;
+
+  // Highest-priority alert — it holds the lock so lower ones stay off the
+  // screen and ⌘K stays shut while it is up.
+  useEffect(() => {
+    if (!active) return;
+    acquireAlert("meeting");
+    return () => releaseAlert("meeting");
+  });
+
   if (!active) return null;
 
   const until = minutesUntil(active.startTime, now);
@@ -143,7 +153,7 @@ export function MeetingAlert() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-5 backdrop-blur-xl"
+        className="fixed inset-0 z-[88] flex items-center justify-center bg-black/50 p-5 backdrop-blur-xl"
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 12 }}

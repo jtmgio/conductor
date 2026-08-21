@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { acquireAlert, releaseAlert } from "@/lib/alert-lock";
 import { motion } from "framer-motion";
 import { MessageSquareDashed, Check, Clock } from "lucide-react";
 import { playSound } from "@/lib/sounds";
@@ -68,13 +69,35 @@ export function CommsSweepAlert() {
     setSweeping(false);
   }, []);
 
+  // Hold the screen lock for exactly as long as this is rendered.
+  useEffect(() => {
+    if (!due) return;
+    acquireAlert("commsSweep");
+    return () => releaseAlert("commsSweep");
+  }, [due]);
+
+  // Escape snoozes. There was no keyboard path out of this at all — and with
+  // no role/aria-modal it was a visual blocker only, so everything behind it
+  // stayed tabbable while being invisible.
+  useEffect(() => {
+    if (!due) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); setSnoozedUntil(Date.now() + SNOOZE_MS); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [due, setSnoozedUntil]);
+
   if (!due) return null;
 
   return (
     <motion.div
+      role="alertdialog"
+      aria-modal="true"
+      aria-label="Comms sweep due"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 z-[75] flex items-center justify-center bg-amber-950/40 p-5 backdrop-blur-xl"
+      className="fixed inset-0 z-[76] flex items-center justify-center bg-amber-950/40 p-5 backdrop-blur-xl"
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 12 }}

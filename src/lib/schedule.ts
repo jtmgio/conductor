@@ -169,7 +169,10 @@ export function getOffClockMessage(now?: Date): string | null {
   const hour = d.getHours();
 
   if (day === 0 || day === 6) return "Weekend";
-  if (hour >= 17 && hour < 19) return "Family time";
+  // 17:00–19:59. This was `hour < 19` with the next rule at `hour >= 20`,
+  // which left 19:00–19:59 returning null — i.e. on the clock — so the comms
+  // sweep fired three more times between 7 and 8 PM, right after family time.
+  if (hour >= 17 && hour < 20) return "Family time";
   if (hour >= 20) return "Done for the day";
   if (hour < 7) return "Before hours";
 

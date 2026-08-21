@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { acquireAlert, releaseAlert } from "@/lib/alert-lock";
 import { motion } from "framer-motion";
 import { Pill, Syringe, GlassWater, PersonStanding, Laptop, Mail, Check, Play, Clock, Armchair } from "lucide-react";
 import { playSound } from "@/lib/sounds";
@@ -255,6 +256,15 @@ export function Reminders() {
   // A finished timer announces itself, then clears itself if you're away from the desk
   const active = due[0] ?? null;
 
+  // Register with the shared alert lock so ⌘K and the block transition can
+  // tell that this holds the screen — they previously could not.
+  useEffect(() => {
+    if (!active) return;
+    acquireAlert("reminder");
+    return () => releaseAlert("reminder");
+  });
+
+
   if (completed) {
     const isStand = /stand/i.test(completed.label);
     const DoneIcon = isStand ? Armchair : Check;
@@ -265,7 +275,7 @@ export function Reminders() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.18 }}
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-emerald-950/40 p-5 backdrop-blur-xl"
+          className="fixed inset-0 z-[84] flex items-center justify-center bg-emerald-950/40 p-5 backdrop-blur-xl"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 12 }}
@@ -314,7 +324,7 @@ export function Reminders() {
           initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ type: "spring", damping: 24, stiffness: 300 }}
-          className="fixed right-4 top-4 z-[80] flex items-center gap-3 rounded-2xl border border-amber-500/40 bg-[var(--surface)] py-2.5 pl-3.5 pr-2.5 shadow-2xl"
+          className="fixed right-4 top-4 z-[84] flex items-center gap-3 rounded-2xl border border-amber-500/40 bg-[var(--surface)] py-2.5 pl-3.5 pr-2.5 shadow-2xl"
         >
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15">
             <Icon className="h-5 w-5 text-amber-400" />
@@ -341,7 +351,7 @@ export function Reminders() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.18 }}
-        className="fixed inset-0 z-[80] flex items-center justify-center bg-amber-950/40 p-5 backdrop-blur-xl"
+        className="fixed inset-0 z-[84] flex items-center justify-center bg-amber-950/40 p-5 backdrop-blur-xl"
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 12 }}

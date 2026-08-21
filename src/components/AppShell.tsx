@@ -151,7 +151,7 @@ function AppFrame({ children }: { children: React.ReactNode }) {
         </div>
       </main>
 
-      <KeyboardShortcuts open={showShortcuts} onClose={closeShortcuts} />
+      <KeyboardShortcuts open={showShortcuts} onClose={closeShortcuts} shortcuts={shortcuts} />
       {/* GlobalSearch always mounted for ⌘K even when sidebar is collapsed */}
       {sidebarCollapsed && <GlobalSearch hideTrigger />}
 

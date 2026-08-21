@@ -2,11 +2,15 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
-import { SHORTCUT_DEFINITIONS } from "@/hooks/useHotkeys";
+import { EXTERNAL_SHORTCUTS, type Shortcut } from "@/hooks/useHotkeys";
 
 interface KeyboardShortcutsProps {
   open: boolean;
   onClose: () => void;
+  /** The bindings AppShell actually registered. The sheet used to hard-code
+   *  its own list, which had drifted to the point of documenting ⌘2 and ⌘4
+   *  as each other's opposite. */
+  shortcuts?: Shortcut[];
 }
 
 function KeyBadge({ children }: { children: string }) {
@@ -39,10 +43,12 @@ function formatKey(key: string, modifiers?: string[]): React.ReactNode {
   return <KeyBadge>{displayKey}</KeyBadge>;
 }
 
-export function KeyboardShortcuts({ open, onClose }: KeyboardShortcutsProps) {
+export function KeyboardShortcuts({ open, onClose, shortcuts = [] }: KeyboardShortcutsProps) {
+  const all = [...shortcuts, ...EXTERNAL_SHORTCUTS];
+
   // Group shortcuts by category
-  const grouped: Record<string, typeof SHORTCUT_DEFINITIONS> = {};
-  for (const s of SHORTCUT_DEFINITIONS) {
+  const grouped: Record<string, Omit<Shortcut, "action">[]> = {};
+  for (const s of all) {
     if (!grouped[s.category]) grouped[s.category] = [];
     grouped[s.category].push(s);
   }

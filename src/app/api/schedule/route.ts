@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { getScheduleBlocks, getTimeLabel, getOffClockMessage, timeToMinutes, minutesToTime, localNow } from "@/lib/schedule";
 import { rebalanceBlocks } from "@/lib/schedule-rebalance";
 import { prisma } from "@/lib/prisma";
+import { rolloverIfNewDay } from "@/lib/rollover";
 
 /** Where "open time" runs to when nothing else is scheduled — the end of the on-clock day. */
 const OPEN_TIME_END_MIN = 17 * 60;
@@ -11,6 +12,10 @@ const OPEN_TIME_END_MIN = 17 * 60;
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // First authenticated request of a new day clears yesterday's unfinished
+  // plan. Server-side and idempotent, so a second device can't undo it.
+  await rolloverIfNewDay();
 
   const baseBlocks = await getScheduleBlocks();
   const d = localNow();
