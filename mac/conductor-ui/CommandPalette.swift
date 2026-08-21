@@ -185,17 +185,17 @@ struct CommandPalette: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 15))
+                    .font(.system(size: T.s(15)))
                     .foregroundStyle(T.faint)
                 TextField("Search tasks, follow-ups, notes, transcripts…", text: $m.query)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 16))
+                    .font(.system(size: T.s(16)))
                     .foregroundStyle(T.text)
                     .focused($focused)
                     .onSubmit { run(rows.indices.contains(m.selected) ? rows[m.selected] : nil) }
                     .onChange(of: m.query) { _ in m.selected = 0 }
                 Text("esc")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: T.s(11), weight: .medium))
                     .foregroundStyle(T.faint)
                     .padding(.horizontal, 6).padding(.vertical, 3)
                     .background(T.sunken, in: RoundedRectangle(cornerRadius: 5))
@@ -206,7 +206,7 @@ struct CommandPalette: View {
 
             if rows.isEmpty {
                 Text("Nothing matches “\(m.query)”")
-                    .font(.system(size: 13.5)).foregroundStyle(T.faint)
+                    .font(.system(size: T.s(13.5))).foregroundStyle(T.faint)
                     .frame(maxWidth: .infinity).padding(.vertical, 34)
             } else {
                 ScrollViewReader { proxy in
@@ -260,7 +260,7 @@ struct CommandPalette: View {
             VStack(alignment: .leading, spacing: 14) {
                 TextField("What needs doing?", text: $m.draftTitle, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 17))
+                    .font(.system(size: T.s(17)))
                     .foregroundStyle(T.text)
                     .lineLimit(1...4)
                     .focused($focused)
@@ -268,7 +268,7 @@ struct CommandPalette: View {
                 if !m.draftTitle.isEmpty {
                     TextField("Notes — anything you'd lose otherwise", text: $m.draftBody, axis: .vertical)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 13.5))
+                        .font(.system(size: T.s(13.5)))
                         .foregroundStyle(T.dim)
                         .lineLimit(1...3)
                 }
@@ -283,7 +283,7 @@ struct CommandPalette: View {
                     ForEach(["Backlog", "Today", "Tomorrow", "Monday"], id: \.self) { w in
                         Button { m.when = w } label: {
                             Text(w)
-                                .font(.system(size: 12.5, weight: m.when == w ? .medium : .regular))
+                                .font(.system(size: T.s(12.5), weight: m.when == w ? .medium : .regular))
                                 .foregroundStyle(m.when == w ? T.text : T.dim)
                                 .padding(.horizontal, 12).padding(.vertical, 6)
                                 .background(
@@ -302,11 +302,11 @@ struct CommandPalette: View {
                 hint("esc", "back to search")
                 Spacer()
                 Text(refineNote)
-                    .font(.system(size: 11.5)).foregroundStyle(T.faint)
+                    .font(.system(size: T.s(11.5))).foregroundStyle(T.faint)
                 Button { close() } label: {
                     HStack(spacing: 7) {
-                        Text("Add task").font(.system(size: 13.5, weight: .semibold))
-                        Text("⌘↩").font(.system(size: 11, weight: .semibold)).opacity(0.55)
+                        Text("Add task").font(.system(size: T.s(13.5), weight: .semibold))
+                        Text("⌘↩").font(.system(size: T.s(11), weight: .semibold)).opacity(0.55)
                     }
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(m.draftTitle.isEmpty ? T.sunken : T.accent, in: RoundedRectangle(cornerRadius: 9))
@@ -338,7 +338,7 @@ struct CommandPalette: View {
             VStack(alignment: .leading, spacing: 14) {
                 TextField("Paste your rough message…", text: $m.draftBody, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 14.5))
+                    .font(.system(size: T.s(14.5)))
                     .foregroundStyle(T.text)
                     .lineLimit(4...10)
                     .focused($focused)
@@ -354,7 +354,7 @@ struct CommandPalette: View {
                     ForEach(["Slack", "Teams", "Email", "SMS"], id: \.self) { p in
                         Button { m.platform = p } label: {
                             Text(p)
-                                .font(.system(size: 12, weight: m.platform == p ? .medium : .regular))
+                                .font(.system(size: T.s(12), weight: m.platform == p ? .medium : .regular))
                                 .foregroundStyle(m.platform == p ? T.text : T.faint)
                                 .padding(.horizontal, 11).padding(.vertical, 5)
                                 .background(RoundedRectangle(cornerRadius: 6).fill(m.platform == p ? T.card : .clear))
@@ -372,11 +372,11 @@ struct CommandPalette: View {
                 hint("esc", "back to search")
                 Spacer()
                 // The clipboard is the deliverable — this is the whole flow.
-                Text("Lands on your clipboard").font(.system(size: 11.5)).foregroundStyle(T.faint)
+                Text("Lands on your clipboard").font(.system(size: T.s(11.5))).foregroundStyle(T.faint)
                 Button { close() } label: {
                     HStack(spacing: 7) {
-                        Text("Format & copy").font(.system(size: 13.5, weight: .semibold))
-                        Text("⌘↩").font(.system(size: 11, weight: .semibold)).opacity(0.55)
+                        Text("Format & copy").font(.system(size: T.s(13.5), weight: .semibold))
+                        Text("⌘↩").font(.system(size: T.s(11), weight: .semibold)).opacity(0.55)
                     }
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(m.draftBody.isEmpty ? T.sunken : T.accent, in: RoundedRectangle(cornerRadius: 9))
@@ -398,13 +398,13 @@ struct CommandPalette: View {
         HStack(spacing: 11) {
             Button { back() } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: T.s(13), weight: .semibold))
                     .foregroundStyle(T.faint)
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.plain)
-            Image(systemName: icon).font(.system(size: 14)).foregroundStyle(T.accent)
-            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(T.text)
+            Image(systemName: icon).font(.system(size: T.s(14))).foregroundStyle(T.accent)
+            Text(title).font(.system(size: T.s(15), weight: .semibold)).foregroundStyle(T.text)
             Spacer()
         }
         .padding(.horizontal, 14).padding(.vertical, 13)
@@ -414,22 +414,22 @@ struct CommandPalette: View {
     private func rowView(_ row: PaletteRow, active: Bool) -> some View {
         HStack(spacing: 12) {
             Image(systemName: row.icon)
-                .font(.system(size: 14))
+                .font(.system(size: T.s(14)))
                 .foregroundStyle(row.tint ?? (active ? T.text : T.dim))
                 .frame(width: 18)
             Text(row.label)
-                .font(.system(size: 14.5))
+                .font(.system(size: T.s(14.5)))
                 .foregroundStyle(row.tint ?? T.text)
                 .lineLimit(1)
             Spacer(minLength: 12)
             if let trailing = row.trailing {
                 Text(trailing)
-                    .font(.system(size: 12, design: row.section == "Tasks" ? .monospaced : .default))
+                    .font(.system(size: T.s(12), design: row.section == "Tasks" ? .monospaced : .default))
                     .foregroundStyle(T.faint)
             }
             if let shortcut = row.shortcut {
                 Text(shortcut)
-                    .font(.system(size: 11.5, weight: .medium))
+                    .font(.system(size: T.s(11.5), weight: .medium))
                     .foregroundStyle(T.faint)
                     .padding(.horizontal, 6).padding(.vertical, 3)
                     .background(T.sunken, in: RoundedRectangle(cornerRadius: 5))
@@ -447,11 +447,11 @@ struct CommandPalette: View {
     private func hint(_ key: String, _ what: String) -> some View {
         HStack(spacing: 6) {
             Text(key)
-                .font(.system(size: 10.5, weight: .medium))
+                .font(.system(size: T.s(10.5), weight: .medium))
                 .foregroundStyle(T.dim)
                 .padding(.horizontal, 5).padding(.vertical, 2)
                 .background(T.sunken, in: RoundedRectangle(cornerRadius: 4))
-            Text(what).font(.system(size: 11.5)).foregroundStyle(T.faint)
+            Text(what).font(.system(size: T.s(11.5))).foregroundStyle(T.faint)
         }
     }
 

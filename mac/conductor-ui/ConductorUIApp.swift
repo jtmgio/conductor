@@ -11,7 +11,6 @@ struct ConductorUIApp: App {
         WindowGroup {
             Shell()
                 .frame(minWidth: 940, minHeight: 620)
-                .preferredColorScheme(.dark)
         }
         .windowStyle(.hiddenTitleBar)          // traffic lights inset over the sidebar
         .defaultSize(width: 1320, height: 880)
@@ -55,6 +54,7 @@ struct Shell: View {
     @State private var screen: Screen = .today
     @State private var collapsed = false
     @StateObject private var queue = AlertQueue()
+    @StateObject private var ui = UISettings()
     @State private var palette = false
 
     var body: some View {
@@ -64,7 +64,7 @@ struct Shell: View {
             ZStack(alignment: .topTrailing) {
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .id(screen)
+                    .id("\(screen.rawValue)-\(ui.theme.rawValue)-\(ui.scale)")
                     .transition(.opacity)
 
                 TimerPill(queue: queue).padding(.top, 14).padding(.trailing, 18)
@@ -73,6 +73,8 @@ struct Shell: View {
             .background(T.ground)
             .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 46) }
         }
+        .environmentObject(ui)
+        .id("shell-\(ui.theme.rawValue)-\(ui.scale)")
         .overlay(AlertOverlay(queue: queue))
         .overlay {
             if palette {
@@ -110,24 +112,24 @@ struct Shell: View {
     /// fire them by hand.
     private var demoTray: some View {
         HStack(spacing: 6) {
-            Text("Fire:").font(.system(size: 11)).foregroundStyle(T.faint)
+            Text("Fire:").font(.system(size: T.s(11))).foregroundStyle(T.faint)
             ForEach([Interruption.meeting, .vitamins, .standUp, .transition, .sweep]) { a in
                 Button(a.title) { queue.raise(a) }
                     .buttonStyle(.plain)
-                    .font(.system(size: 11))
+                    .font(.system(size: T.s(11)))
                     .foregroundStyle(T.dim)
                     .padding(.horizontal, 9).padding(.vertical, 4)
                     .background(T.card, in: RoundedRectangle(cornerRadius: 7))
             }
             Button("All at once") { queue.raiseAll() }
                 .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: T.s(11), weight: .medium))
                 .foregroundStyle(T.text)
                 .padding(.horizontal, 9).padding(.vertical, 4)
                 .background(T.accentWash, in: RoundedRectangle(cornerRadius: 7))
             Button("Timer 10s") { queue.startTimer(minutes: 10.0 / 60.0) }
                 .buttonStyle(.plain)
-                .font(.system(size: 11))
+                .font(.system(size: T.s(11)))
                 .foregroundStyle(T.dim)
                 .padding(.horizontal, 9).padding(.vertical, 4)
                 .background(T.card, in: RoundedRectangle(cornerRadius: 7))

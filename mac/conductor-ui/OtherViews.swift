@@ -9,9 +9,9 @@ struct BoardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Board").font(.system(size: 30, weight: .semibold)).foregroundStyle(T.text)
+            Text("Board").font(.system(size: T.s(30), weight: .semibold)).foregroundStyle(T.text)
             Text("One company at a time. Drag a card to move it.")
-                .font(.system(size: 14)).foregroundStyle(T.dim).padding(.top, 6)
+                .font(.system(size: T.s(14))).foregroundStyle(T.dim).padding(.top, 6)
 
             CompanyPicker(selected: $company).padding(.top, 18)
 
@@ -39,7 +39,7 @@ private struct Lane: View {
 
             if jobs.isEmpty, let empty {
                 Text(empty)
-                    .font(.system(size: 13))
+                    .font(.system(size: T.s(13)))
                     .foregroundStyle(T.faint)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -73,14 +73,14 @@ private struct Card: View {
                 // A stripe survives peripheral vision; an eyebrow alone doesn't.
                 if job.urgent { Cap("Urgent", color: T.alarm) }
                 Text(job.title)
-                    .font(.system(size: 14))
+                    .font(.system(size: T.s(14)))
                     .foregroundStyle(T.text)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 8) {
                     KeyChip(key: job.key)
                     if let due = job.due ?? job.note {
-                        Text(due).font(.system(size: 11.5))
+                        Text(due).font(.system(size: T.s(11.5)))
                             .foregroundStyle(job.overdue ? T.alarm : T.faint)
                     }
                 }
@@ -100,13 +100,13 @@ struct MeetingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Meetings").font(.system(size: 30, weight: .semibold)).foregroundStyle(T.text)
+            Text("Meetings").font(.system(size: T.s(30), weight: .semibold)).foregroundStyle(T.text)
             Text("Everything your calendar synced — prep, notes, and transcripts in one place.")
-                .font(.system(size: 14)).foregroundStyle(T.dim).padding(.top, 6)
+                .font(.system(size: T.s(14))).foregroundStyle(T.dim).padding(.top, 6)
 
             HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").font(.system(size: 12))
-                Text("Search meeting titles…").font(.system(size: 14))
+                Image(systemName: "magnifyingglass").font(.system(size: T.s(12)))
+                Text("Search meeting titles…").font(.system(size: T.s(14)))
                 Spacer()
             }
             .foregroundStyle(T.faint)
@@ -143,7 +143,7 @@ struct MeetingRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(sitting.start).font(.system(size: compact ? 12.5 : 13.5, weight: .semibold).monospacedDigit())
                     .foregroundStyle(T.text)
-                Text(sitting.end).font(.system(size: 11.5).monospacedDigit()).foregroundStyle(T.faint)
+                Text(sitting.end).font(.system(size: T.s(11.5)).monospacedDigit()).foregroundStyle(T.faint)
             }
             .frame(width: compact ? 50 : 62, alignment: .trailing)
 
@@ -159,7 +159,7 @@ struct MeetingRow: View {
                     }
                     if let people = sitting.people, !compact {
                         HStack(spacing: 5) {
-                            Image(systemName: "person.2").font(.system(size: 10))
+                            Image(systemName: "person.2").font(.system(size: T.s(10)))
                             Text("\(people)")
                         }
                     }
@@ -172,14 +172,14 @@ struct MeetingRow: View {
 
             if let clash = sitting.clash, !compact {
                 Text(clash)
-                    .font(.system(size: 12)).foregroundStyle(T.dim)
+                    .font(.system(size: T.s(12))).foregroundStyle(T.dim)
                     .padding(.horizontal, 9).padding(.vertical, 4)
                     .background(T.sunken, in: RoundedRectangle(cornerRadius: 6))
             }
 
             Button {} label: {
                 Image(systemName: "trash")
-                    .font(.system(size: 12))
+                    .font(.system(size: T.s(12)))
                     .foregroundStyle(hovering ? T.alarm : T.faint)
                     .frame(width: 26, height: 26)
             }
@@ -218,7 +218,7 @@ struct CompanyPicker: View {
                 Button { selected = c.id } label: {
                     HStack(spacing: 7) {
                         Dot(color: c.color)
-                        Text(c.name).font(.system(size: 12.5, weight: selected == c.id ? .medium : .regular))
+                        Text(c.name).font(.system(size: T.s(12.5), weight: selected == c.id ? .medium : .regular))
                     }
                     .foregroundStyle(selected == c.id ? T.text : T.dim)
                     .padding(.horizontal, 12).padding(.vertical, 6)

@@ -168,21 +168,21 @@ struct AlertOverlay: View {
             RoundedRectangle(cornerRadius: 18)
                 .fill(a.tone.opacity(0.15))
                 .frame(width: 64, height: 64)
-                .overlay(Image(systemName: a.glyph).font(.system(size: 26, weight: .medium)).foregroundStyle(a.tone))
+                .overlay(Image(systemName: a.glyph).font(.system(size: T.s(26), weight: .medium)).foregroundStyle(a.tone))
                 .padding(.bottom, 18)
 
             Text(a.eyebrow.uppercased())
-                .font(.system(size: 12, weight: .semibold)).tracking(0.9)
+                .font(.system(size: T.s(12), weight: .semibold)).tracking(0.9)
                 .foregroundStyle(a.tone)
 
             Text(a.title)
-                .font(.system(size: 24, weight: .bold))
+                .font(.system(size: T.s(24), weight: .bold))
                 .foregroundStyle(T.text)
                 .multilineTextAlignment(.center)
                 .padding(.top, 6)
 
             Text(a.detail)
-                .font(.system(size: 13.5))
+                .font(.system(size: T.s(13.5)))
                 .foregroundStyle(T.dim)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -191,10 +191,10 @@ struct AlertOverlay: View {
             if a == .meeting || a == .standUp {
                 HStack(alignment: .firstTextBaseline, spacing: 9) {
                     Text(a == .meeting ? "2:00" : "15:00")
-                        .font(.system(size: 30, weight: .bold).monospacedDigit())
+                        .font(.system(size: T.s(30), weight: .bold).monospacedDigit())
                         .foregroundStyle(T.text)
                     Text(a == .meeting ? "until it starts" : "on your feet")
-                        .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(a.tone)
+                        .font(.system(size: T.s(13.5), weight: .semibold)).foregroundStyle(a.tone)
                 }
                 .padding(.top, 18)
             }
@@ -205,8 +205,8 @@ struct AlertOverlay: View {
             VStack(spacing: 10) {
                 Button { queue.dismiss() } label: {
                     HStack(spacing: 7) {
-                        Text(a.primary).font(.system(size: 15, weight: .bold))
-                        Text("⏎").font(.system(size: 11, weight: .semibold)).opacity(0.55)
+                        Text(a.primary).font(.system(size: T.s(15), weight: .bold))
+                        Text("⏎").font(.system(size: T.s(11), weight: .semibold)).opacity(0.55)
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, 14)
                     .background(a.tone, in: RoundedRectangle(cornerRadius: 13))
@@ -218,7 +218,7 @@ struct AlertOverlay: View {
                 if let secondary = a.secondary {
                     Button { queue.dismiss() } label: {
                         Text(secondary)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: T.s(13), weight: .medium))
                             .frame(maxWidth: .infinity).padding(.vertical, 12)
                             .foregroundStyle(T.faint)
                             .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(T.line, lineWidth: 1))
@@ -232,7 +232,7 @@ struct AlertOverlay: View {
                 // Words, not a digit badge. You should know something follows
                 // without a count staring at you.
                 Text(note)
-                    .font(.system(size: 11.5)).foregroundStyle(T.faint)
+                    .font(.system(size: T.s(11.5))).foregroundStyle(T.faint)
                     .padding(.horizontal, 10).padding(.vertical, 4)
                     .background(T.sunken, in: Capsule())
                     .padding(.top, 14)
@@ -248,7 +248,7 @@ struct AlertOverlay: View {
     private var handover: some View {
         HStack(spacing: 0) {
             hand("Closing", Sample.companies[0].name, Sample.companies[0].color).opacity(0.45)
-            Image(systemName: "arrow.right").font(.system(size: 13)).foregroundStyle(T.faint).padding(.horizontal, 4)
+            Image(systemName: "arrow.right").font(.system(size: T.s(13))).foregroundStyle(T.faint).padding(.horizontal, 4)
             hand("Starting", Sample.companies[1].name, Sample.companies[1].color)
         }
         .background(T.sunken, in: RoundedRectangle(cornerRadius: 14))
@@ -258,7 +258,7 @@ struct AlertOverlay: View {
     private func hand(_ cap: String, _ name: String, _ color: Color) -> some View {
         VStack(spacing: 6) {
             Cap(cap)
-            HStack(spacing: 7) { Dot(color: color); Text(name).font(.system(size: 14.5, weight: .semibold)) }
+            HStack(spacing: 7) { Dot(color: color); Text(name).font(.system(size: T.s(14.5), weight: .semibold)) }
                 .foregroundStyle(T.text)
         }
         .frame(maxWidth: .infinity)
@@ -269,7 +269,7 @@ struct AlertOverlay: View {
         // Enter makes a newline here. The web version bound Enter to submit, so
         // "one per line" was impossible past line one.
         TextEditor(text: $parked)
-            .font(.system(size: 14))
+            .font(.system(size: T.s(14)))
             .scrollContentBackground(.hidden)
             .padding(8)
             .frame(height: 76)
@@ -282,7 +282,7 @@ struct AlertOverlay: View {
             ForEach(["Slack", "Teams", "Messages"], id: \.self) { s in
                 HStack(spacing: 7) {
                     Circle().fill(T.amber).frame(width: 6, height: 6)
-                    Text(s).font(.system(size: 12.5))
+                    Text(s).font(.system(size: T.s(12.5)))
                 }
                 .foregroundStyle(T.dim)
                 .padding(.horizontal, 13).padding(.vertical, 8)
@@ -313,14 +313,14 @@ struct TimerPill: View {
                         .frame(width: 20, height: 20)
                         .background(Circle().strokeBorder(T.amber.opacity(0.25), lineWidth: 3))
                     Text(queue.timerLabel)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: T.s(13), weight: .medium))
                         .foregroundStyle(T.amber.opacity(0.9))
                     Text(format(left))
-                        .font(.system(size: 15, weight: .bold).monospacedDigit())
+                        .font(.system(size: T.s(15), weight: .bold).monospacedDigit())
                         .foregroundStyle(T.amber)
                     Button("Done") { queue.finishTimer() }
                         .buttonStyle(.plain)
-                        .font(.system(size: 12.5, weight: .semibold))
+                        .font(.system(size: T.s(12.5), weight: .semibold))
                         .foregroundStyle(T.hex(0x17150F))
                         .padding(.horizontal, 11).padding(.vertical, 5)
                         .background(T.amber, in: Capsule())

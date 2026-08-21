@@ -33,16 +33,16 @@ struct TodayView: View {
                 HStack(spacing: 11) {
                     Dot(color: company.color, size: 9)
                     Text(company.name)
-                        .font(.system(size: 30, weight: .semibold))
+                        .font(.system(size: T.s(30), weight: .semibold))
                         .foregroundStyle(T.text)
                 }
                 Text("\(company.title) · 19 min in, 101 left")
-                    .font(.system(size: 14).monospacedDigit())
+                    .font(.system(size: T.s(14)).monospacedDigit())
                     .foregroundStyle(T.dim)
                 Spacer()
                 Button {} label: {
                     Label("Plan tomorrow", systemImage: "arrow.counterclockwise")
-                        .font(.system(size: 13))
+                        .font(.system(size: T.s(13)))
                 }
                 .buttonStyle(GhostButton())
             }
@@ -56,7 +56,7 @@ struct TodayView: View {
                 Spacer()
                 Text("9:00")
             }
-            .font(.system(size: 11.5).monospacedDigit())
+            .font(.system(size: T.s(11.5)).monospacedDigit())
             .foregroundStyle(T.faint)
             .padding(.top, 6)
         }
@@ -65,16 +65,16 @@ struct TodayView: View {
     private var sweepStrip: some View {
         HStack(spacing: 9) {
             Image(systemName: swept ? "checkmark" : "clock")
-                .font(.system(size: 12, weight: .bold))
-            Text(swept ? "Comms covered" : "Sweep due").font(.system(size: 13, weight: .medium))
+                .font(.system(size: T.s(12), weight: .bold))
+            Text(swept ? "Comms covered" : "Sweep due").font(.system(size: T.s(13), weight: .medium))
             Text(swept ? "· next sweep in 18 min" : "· Slack, Teams, messages")
-                .font(.system(size: 13))
+                .font(.system(size: T.s(13)))
                 .foregroundStyle(T.faint)
             Spacer()
             if !swept {
                 Button("Swept") { withAnimation(T.quick) { swept = true } }
                     .buttonStyle(.plain)
-                    .font(.system(size: 12.5, weight: .medium))
+                    .font(.system(size: T.s(12.5), weight: .medium))
             }
         }
         .foregroundStyle(swept ? T.go : T.amber)
@@ -106,9 +106,9 @@ struct TodayView: View {
                     ForEach(Sample.companies.dropFirst().prefix(4)) { c in
                         HStack(spacing: 9) {
                             Dot(color: c.color)
-                            Text(c.name).font(.system(size: 13.5)).foregroundStyle(T.text)
+                            Text(c.name).font(.system(size: T.s(13.5))).foregroundStyle(T.text)
                             Spacer()
-                            Text("Urgent").font(.system(size: 11.5)).foregroundStyle(T.alarm)
+                            Text("Urgent").font(.system(size: T.s(11.5))).foregroundStyle(T.alarm)
                         }
                         .padding(.vertical, 9)
                         Divider().overlay(T.line)
@@ -131,7 +131,7 @@ struct TodayView: View {
                     Circle().strokeBorder(T.lineFirm, lineWidth: 2).frame(width: 24, height: 24)
                     VStack(alignment: .leading, spacing: 11) {
                         Text(Sample.oneThing.title)
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.system(size: T.s(22), weight: .semibold))
                             .foregroundStyle(T.text)
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 7) {
@@ -157,8 +157,8 @@ struct TodayView: View {
 
     private var capture: some View {
         HStack(spacing: 10) {
-            Image(systemName: "plus").font(.system(size: 13, weight: .medium))
-            Text("Capture a thought for vQuip…").font(.system(size: 14))
+            Image(systemName: "plus").font(.system(size: T.s(13), weight: .medium))
+            Text("Capture a thought for vQuip…").font(.system(size: T.s(14)))
             Spacer()
         }
         .foregroundStyle(T.faint)
@@ -193,9 +193,9 @@ struct Disclosure: View {
         Button { withAnimation(T.quick) { open.toggle() } } label: {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: T.s(10), weight: .semibold))
                     .rotationEffect(.degrees(open ? 90 : 0))
-                Text(label).font(.system(size: 12.5))
+                Text(label).font(.system(size: T.s(12.5)))
             }
             .foregroundStyle(open || hovering ? T.text : T.faint)
             .padding(.horizontal, 9).padding(.vertical, 5)
@@ -215,13 +215,13 @@ struct JobRow: View {
             RoundedRectangle(cornerRadius: 5)
                 .strokeBorder(T.lineFirm, lineWidth: 1.5)
                 .frame(width: 16, height: 16)
-            Text(job.title).font(.system(size: 14)).foregroundStyle(T.text)
+            Text(job.title).font(.system(size: T.s(14))).foregroundStyle(T.text)
             Spacer(minLength: 12)
             HStack(spacing: 8) {
-                Text(job.key).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(T.dim)
+                Text(job.key).font(.system(size: T.s(11.5), design: .monospaced)).foregroundStyle(T.dim)
                 if let due = job.due ?? job.note {
                     Text(due)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: T.s(11.5)))
                         .foregroundStyle(job.overdue ? T.alarm : T.faint)
                 }
             }

@@ -48,12 +48,12 @@ struct Sidebar: View {
                 .frame(width: 23, height: 23)
                 .overlay(
                     Image(systemName: "waveform.path")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: T.s(11), weight: .bold))
                         .foregroundStyle(.white)
                 )
             if !collapsed {
                 Text("Conductor")
-                    .font(.system(size: 14.5, weight: .semibold))
+                    .font(.system(size: T.s(14.5), weight: .semibold))
                     .foregroundStyle(T.text)
             }
         }
@@ -65,12 +65,12 @@ struct Sidebar: View {
             HStack(spacing: 7) {
                 Dot(color: block.color)
                 if !collapsed {
-                    Text(block.name).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(T.text)
+                    Text(block.name).font(.system(size: T.s(14.5), weight: .semibold)).foregroundStyle(T.text)
                 }
             }
             if !collapsed {
                 Text("Morning · 7:00 – 9:00")
-                    .font(.system(size: 12).monospacedDigit())
+                    .font(.system(size: T.s(12)).monospacedDigit())
                     .foregroundStyle(T.dim)
                     .padding(.top, 3)
             }
@@ -93,17 +93,17 @@ private struct NavRow: View {
         Button(action: tap) {
             HStack(spacing: 11) {
                 Image(systemName: screen.icon)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: T.s(14), weight: .medium))
                     .foregroundStyle(active ? T.accent : T.dim)
                     .frame(width: 16)
                 if !collapsed {
                     Text(screen.label)
-                        .font(.system(size: 14, weight: active ? .medium : .regular))
+                        .font(.system(size: T.s(14), weight: active ? .medium : .regular))
                         .foregroundStyle(active ? T.text : T.dim)
                     Spacer(minLength: 0)
                     if hovering {
                         Text("⌘\(String(screen.shortcut.character))")
-                            .font(.system(size: 11))
+                            .font(.system(size: T.s(11)))
                             .foregroundStyle(T.faint)
                     }
                 }
