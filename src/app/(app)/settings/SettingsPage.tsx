@@ -346,7 +346,19 @@ Based on the above, provide:`;
     } catch { toast("Failed to save", "error"); }
     setSavingCalendar(false);
   };
-  const resetToday = async () => { try { await fetch("/api/tasks/reset-today", { method: "POST" }); window.dispatchEvent(new Event("tasks-changed")); toast("Today's plan cleared — rebuild from Focus", "success"); } catch { toast("Failed to reset", "error"); } };
+  // Clearing the plan without handing back the planner just strands you on
+  // Settings with an empty day, so this drops you straight into the picker.
+  // ?day=today because the reset is almost always mid-day, and /plan otherwise
+  // defaults to the next working day once the workday has started.
+  const resetToday = async () => {
+    try {
+      const res = await fetch("/api/tasks/reset-today", { method: "POST" });
+      if (!res.ok) throw new Error("reset failed");
+      window.dispatchEvent(new Event("tasks-changed"));
+      toast("Today's plan cleared — pick again", "success");
+      router.push("/plan?day=today");
+    } catch { toast("Failed to reset", "error"); }
+  };
   const startDay = async () => {
     try {
       const res = await fetch("/api/schedule/start-day", { method: "POST" });
