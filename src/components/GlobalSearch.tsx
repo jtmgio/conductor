@@ -309,8 +309,45 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
     return () => window.removeEventListener("keydown", handler);
   }, [open]);
 
+  // Arrow keys, for when focus is NOT in the search input.
+  //
+  // iPadOS Safari often refuses the deferred programmatic focus() below —
+  // focus() outside a direct user gesture is restricted — so focus stays on
+  // <body>, handleKeyDown never runs, and Safari's hardware-keyboard default
+  // for ArrowDown extends a document selection across the whole page (it looks
+  // like the app turned light blue). Swallowing the key at the window covers
+  // that case; the guard keeps caret movement working inside any text field,
+  // where the element's own handler is the one that should win.
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 100);
+    if (!open) return;
+    const onArrow = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      e.preventDefault();
+      if (e.key === "ArrowDown") {
+        setSelectedIdx((prev) => Math.min(prev + 1, selectableItems.length - 1));
+      } else {
+        setSelectedIdx((prev) => Math.max(prev - 1, 0));
+      }
+      // Focus never landed — take it now so typing goes to the search box.
+      inputRef.current?.focus();
+    };
+    window.addEventListener("keydown", onArrow);
+    return () => window.removeEventListener("keydown", onArrow);
+  }, [open, selectableItems.length]);
+
+  useEffect(() => {
+    if (open) {
+      // Immediately (still inside the ⌘K gesture, which iPadOS honours) and
+      // again after the dialog animates in, since the element may not be
+      // mounted yet on the first try.
+      inputRef.current?.focus();
+      setTimeout(() => inputRef.current?.focus(), 100);
+      // Drop any stray document selection so the overlay opens on a clean page.
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) sel.removeAllRanges();
+    }
     if (!open) { setQuery(""); setResults(null); setAiAnswer(null); setAddTaskMode(false); setNewTaskTitle(""); setNewTaskScheduledFor(null); setFormatMessageMode(false); fmtHook.reset(); setFormatInput(""); setFormatRoleId(""); setFormatType("slack"); }
   }, [open]);
 
