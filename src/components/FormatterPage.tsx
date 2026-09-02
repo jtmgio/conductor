@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSchedule } from "@/components/ScheduleContext";
+import { cn } from "@/lib/utils";
 import { useFormatMessage } from "@/hooks/useFormatMessage";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -66,9 +67,13 @@ export function FormatterPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [router]);
 
-  // Company + platform are derived from the block you're in — no pickers.
+  // Company and platform seed from the block you're in, then you can change
+  // both. They used to be derived with no pickers at all, which meant a Teams
+  // message to Healthmap was impossible to write from inside a vQuip block —
+  // Todo.app has had ⌘1…9 and ⌘P for this since day one.
   const selectedRole = roles.find((r) => r.id === roleId);
-  const platform = ((selectedRole?.platform || "Slack").toLowerCase()) as FormatType;
+  const [platformOverride, setPlatformOverride] = useState<FormatType | null>(null);
+  const platform = platformOverride ?? ((selectedRole?.platform || "Slack").toLowerCase() as FormatType);
 
   useEffect(() => {
     fetch("/api/roles")
@@ -130,17 +135,12 @@ export function FormatterPage() {
 
   return (
     <>
-      <div className="mx-auto max-w-5xl pt-1">
+      <div className="mx-auto max-w-6xl pt-1">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-[26px] font-bold tracking-tight text-[var(--text-primary)]">Formatter</h1>
             <p className="mt-1 text-[14px] text-[var(--text-tertiary)]">
-              Rewrite a rough draft in your voice.
-              {selectedRole && (
-                <span className="ml-1 text-[var(--text-secondary)]">
-                  For <b className="font-semibold" style={{ color: selectedRole.color }}>{selectedRole.name}</b> · {capitalize(platform)}.
-                </span>
-              )}
+              Paste a rough draft. Get it back in your voice, on the clipboard.
             </p>
           </div>
           <button
@@ -151,6 +151,47 @@ export function FormatterPage() {
           >
             <X className="h-4 w-4" />
           </button>
+        </div>
+
+        {/* Company and platform — both page-level, both changeable. */}
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          {roles.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              aria-pressed={r.id === roleId}
+              onClick={() => { setRoleId(r.id); setPlatformOverride(null); }}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12.5px] transition-colors",
+                r.id === roleId
+                  ? "border-[var(--border-default)] bg-[var(--surface-raised)] font-medium text-[var(--text-primary)]"
+                  : "border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+              )}
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: r.color }} />
+              {r.name}
+            </button>
+          ))}
+
+          <div className="ml-auto flex gap-0.5 rounded-xl bg-[var(--surface-sunken)] p-1" role="radiogroup" aria-label="Platform">
+            {(["slack", "teams", "email", "sms"] as FormatType[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                role="radio"
+                aria-checked={platform === p}
+                onClick={() => setPlatformOverride(p)}
+                className={cn(
+                  "rounded-lg px-3 py-1.5 text-[12px] transition-colors",
+                  platform === p
+                    ? "bg-[var(--surface-raised)] font-medium text-[var(--text-primary)] shadow-sm"
+                    : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                )}
+              >
+                {capitalize(p)}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
@@ -167,7 +208,7 @@ export function FormatterPage() {
                 }
               }}
               placeholder="Paste or type your rough message…"
-              className="min-h-[200px] w-full resize-y rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-4 text-[14px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)] focus-visible:border-[var(--border-strong)]"
+              className="min-h-[46vh] w-full resize-y rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-4 text-[14px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)] focus-visible:border-[var(--border-strong)]"
             />
             <p className="mt-1.5 px-1 text-[12px] text-[var(--text-tertiary)]">Enter to format · Shift+Enter for a new line</p>
             <button
@@ -202,12 +243,12 @@ export function FormatterPage() {
                 </div>
               </>
             ) : fmt.state === "formatting" ? (
-              <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-3 text-[var(--text-tertiary)]">
+              <div className="flex h-full min-h-[46vh] flex-col items-center justify-center gap-3 text-[var(--text-tertiary)]">
                 <Loader2 className="h-6 w-6 animate-spin" />
                 <span className="text-[13px]">Rewriting in your voice…</span>
               </div>
             ) : (
-              <div className="flex h-full min-h-[240px] items-center justify-center px-6 text-center text-[13.5px] text-[var(--text-tertiary)]">
+              <div className="flex h-full min-h-[46vh] items-center justify-center px-6 text-center text-[13.5px] text-[var(--text-tertiary)]">
                 Your rewritten message appears here — paste a draft and hit Enter.
               </div>
             )}

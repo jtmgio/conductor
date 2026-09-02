@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar } from "./Sidebar";
 import { MobileDrawer } from "./MobileDrawer";
+import { BottomNav } from "./BottomNav";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { GlobalSearch } from "./GlobalSearch";
 import { Reminders } from "./Reminders";
@@ -72,12 +73,12 @@ function AppFrame({ children }: { children: React.ReactNode }) {
     return false;
   });
 
-  // Auto-collapse sidebar on board page for more space
+  // Auto-collapse on the two widest pages — but do NOT persist it. Writing
+  // "true" here meant expanding the sidebar on Today snapped it shut again and
+  // then leaked that choice to every other page and across restarts, so ⌘[ was
+  // effectively broken on the two pages you spend the most time on.
   useEffect(() => {
-    if (pathname === "/" || pathname === "/board") {
-      setSidebarCollapsed(true);
-      localStorage.setItem("conductor-sidebar-collapsed", "true");
-    }
+    if (pathname === "/" || pathname === "/board") setSidebarCollapsed(true);
   }, [pathname]);
 
   const toggleSidebar = useCallback(() => {
@@ -135,8 +136,9 @@ function AppFrame({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-[var(--surface)] text-[var(--text-primary)]" data-sidebar-collapsed={sidebarCollapsed}>
       <Sidebar currentBlock={currentBlock} nextBlocks={nextBlocks} collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
       <MobileDrawer currentBlock={currentBlock} />
+      <BottomNav />
 
-      <main className={cn("pt-[max(4rem,calc(3rem+env(safe-area-inset-top)))] pb-8 lg:pt-4 lg:pb-8 transition-all duration-200", sidebarCollapsed ? "lg:ml-[60px]" : "lg:ml-[280px]")}>
+      <main className={cn("pt-[max(4rem,calc(3rem+env(safe-area-inset-top)))] pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pt-4 lg:pb-8 transition-all duration-200", sidebarCollapsed ? "lg:ml-[60px]" : "lg:ml-[280px]")}>
         <div className="px-5 lg:px-8 lg:pt-8">
           <AnimatePresence mode="wait">
             <motion.div

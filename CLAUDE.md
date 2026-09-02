@@ -20,7 +20,7 @@ Conductor is a personal productivity operating system for an engineer managing m
 
 - 16 models: UserProfile, Role, Staff, Task, Tag, TaskTag, FollowUp, Note, Transcript, FileUpload, Conversation, ScheduleBlock, ScheduleOverride, Skill, Integration, AiUsage
 - Task and FollowUp have `sourceType` + `sourceId` fields for deduplication across integrations (linear, granola, calendar)
-- Indexes on Task(`roleId, done`), Task(`isToday, done`), Task(`roleId, status`), FollowUp(`roleId, status`), Note(`roleId, createdAt`), AiUsage(`createdAt`), AiUsage(`roleId`)
+- Indexes on Task(`roleId, done`), Task(`scheduledFor, done`), Task(`roleId, status`), FollowUp(`roleId, status`), Note(`roleId, createdAt`), AiUsage(`createdAt`), AiUsage(`roleId`)
 - Conversation.messages is a JSON column — if a thread exceeds ~100 messages, consider migrating to a Message model
 - Skill model stores slash command templates (8 built-in + custom)
 - Integration model stores third-party configs (Linear, Granola) with lastSyncAt/lastSyncResult
@@ -351,7 +351,7 @@ conductor/
 
 ## Navigation structure
 
-**Sidebar (6 items):** Focus, Inbox, Tracker, Board, AI + Settings (pushed to bottom)
+**Sidebar (6 items):** Today, Board, Tracker, Formatter, Meetings + Settings (pushed to bottom)
 
 Flow, Keys, and Costs were removed from nav — they live inside Settings > System tab as embedded content components.
 
@@ -572,6 +572,19 @@ grant. `--uninstall` removes it; Spotlight still works either way. To change the
   holding the tower's `MCP_API_TOKEN`. No Docker, no Postgres, no `.env`. Config lives outside
   the repo because a Spotlight-launched app inherits no shell profile.
 
+## Alert layer
+
+Four blocking overlays (`Reminders`, `MeetingAlert`, `CommsSweepAlert`,
+`BlockTransition`) mount as peers in `AppShell`. `src/lib/alert-lock.ts` gives
+them one shared registry and a fixed priority ladder — comms sweep 76, block
+transition 80, reminder 84, meeting 88 — and marks `document.body` with
+`data-alert-open` so `⌘K` stays shut while any of them holds the screen.
+
+They are still four independent systems that can all become *due* at once; the
+lock makes the stacking deliberate, it does not serialise them. A single queue
+that owns the screen is the remaining work, and matters more once the app is
+resident.
+
 ## Task keys
 
 Every task has a human-addressable key so it can be named out loud instead of by cuid —
@@ -623,7 +636,7 @@ One persistent conversation per role. Stored in the `Conversation` table as a JS
 
 ## Responsive layout
 
-- **Mobile-first** (< 1024px): bottom nav via MobileDrawer, single column
+- **Mobile-first** (< 1024px): `BottomNav.tsx` tab bar (Today/Board/Tracker/Format/Meetings) plus `MobileDrawer` for Settings and the block card; single column
 - **Desktop** (≥ 1024px): sidebar (280px) + main panel
 - `AppShell.tsx` handles the layout switch
 - Theme switcher: Dark (default), Warm, Light — via CSS variables in ThemeProvider

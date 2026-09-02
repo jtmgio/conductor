@@ -248,7 +248,7 @@ export function MeetingsPage() {
         </div>
 
         {/* Role filter */}
-        <div className="mt-3 mb-7 flex gap-2 overflow-x-auto hide-scrollbar py-1">
+        <div className="mt-3 mb-7 flex flex-wrap gap-2 py-1">
           <button
             onClick={() => setRoleFilter("all")}
             className={cn(

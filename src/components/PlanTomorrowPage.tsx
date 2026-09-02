@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Plus, ArrowLeft, Trash2, Sunrise, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { refineTaskInBackground } from "@/lib/capture-refine";
@@ -31,14 +31,22 @@ const pad = (n: number) => String(n).padStart(2, "0");
 function ymd(d: Date): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
+function todayTarget(): { iso: string; label: string } {
+  const now = new Date();
+  return { iso: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`, label: "today" };
+}
+
 // The day you're about to work: if it's a weekday and the workday hasn't started
 // yet (e.g. planning at 5am), that's TODAY; otherwise it's the next working day.
-function computeTarget(workdayStartMin: number): { iso: string; label: string } {
+// `forceToday` overrides the clock — used when you've just cleared today's plan
+// and are rebuilding it mid-day, where the next working day is the wrong answer.
+function computeTarget(workdayStartMin: number, forceToday = false): { iso: string; label: string } {
+  if (forceToday) return todayTarget();
   const now = new Date();
   const dow = now.getDay();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   if (dow >= 1 && dow <= 5 && nowMin < workdayStartMin) {
-    return { iso: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`, label: "today" };
+    return todayTarget();
   }
   const d = new Date();
   d.setDate(d.getDate() + (dow === 5 ? 3 : dow === 6 ? 2 : 1));
@@ -55,7 +63,9 @@ export function PlanTomorrowPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [refining, setRefining] = useState<Set<string>>(new Set());
-  const [target, setTarget] = useState(() => computeTarget(9 * 60));
+  // ?day=today forces re-planning today (Settings > Reset today's tasks lands here).
+  const forceToday = useSearchParams().get("day") === "today";
+  const [target, setTarget] = useState(() => computeTarget(9 * 60, forceToday));
   const [finishing, setFinishing] = useState(false);
   const { toast } = useToast();
   // Tomorrow's target is the earliest block start — read from the shell's poller.
@@ -64,8 +74,8 @@ export function PlanTomorrowPage() {
     const starts = allBlocks
       .map((b) => (b.startHour ?? 0) * 60 + (b.startMinute ?? 0))
       .filter((n) => Number.isFinite(n) && n > 0);
-    setTarget(computeTarget(starts.length ? Math.min(...starts) : 9 * 60));
-  }, [allBlocks]);
+    setTarget(computeTarget(starts.length ? Math.min(...starts) : 9 * 60, forceToday));
+  }, [allBlocks, forceToday]);
   const tomorrowIso = target.iso;
   const label = target.label;
 

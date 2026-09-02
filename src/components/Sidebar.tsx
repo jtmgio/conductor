@@ -50,8 +50,10 @@ export function Sidebar({ currentBlock, nextBlocks, collapsed, onToggleCollapse 
       "fixed left-0 top-0 h-full hidden lg:flex flex-col bg-[var(--sidebar-bg)] z-50 transition-all duration-200",
       collapsed ? "w-[60px]" : "w-[280px]"
     )}>
-      {/* Header: logo + hamburger/collapse toggle */}
-      <div className={cn(
+      {/* Header: logo + hamburger/collapse toggle.
+          data-sidebar-header is the hook the native shell styles against — see
+          the [data-native] block in globals.css. It is inert in a browser. */}
+      <div data-sidebar-header className={cn(
         "flex items-center pt-5 pb-2",
         collapsed ? "px-2 justify-center" : "px-6 justify-between"
       )}>
