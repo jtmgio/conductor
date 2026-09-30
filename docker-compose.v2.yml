@@ -24,7 +24,7 @@ services:
       UPLOAD_DIR: /opt/conductor/uploads
       NEXTAUTH_URL: http://localhost:5403
       LOCAL_AI_BASE_URL: ${LOCAL_AI_BASE_URL:-http://host.docker.internal:11436/v1}
-      LOCAL_AI_MODEL: ${LOCAL_AI_MODEL:-mlx-community/Qwen3.6-35B-A3B-4bit}
+      LOCAL_AI_MODEL: ${LOCAL_AI_MODEL:-mlx-community/gemma-4-26B-A4B-it-qat-OptiQ-4bit}
     volumes:
       - uploads-v2:/opt/conductor/uploads
     networks:

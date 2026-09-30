@@ -30,7 +30,7 @@ export interface AIResponse {
 // RAM spike), so callLocal hard-rejects any model other than LOCAL_AI_MODEL.
 
 export function getLocalModelId(): string {
-  return process.env.LOCAL_AI_MODEL || "mlx-community/Qwen3.6-35B-A3B-4bit";
+  return process.env.LOCAL_AI_MODEL || "mlx-community/gemma-4-26B-A4B-it-qat-OptiQ-4bit";
 }
 
 function getLocalBaseUrl(): string {
@@ -332,10 +332,10 @@ async function callLocal(params: {
     max_tokens: maxTokens,
     ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
     messages,
-    // Qwen3.5/3.6 are hybrid reasoning models that "think" before answering unless
-    // told not to. Conductor's prior model (Qwen3-30B-A3B-Instruct-2507) was the
-    // non-thinking Instruct variant; disable thinking here to preserve that behavior
-    // (faster replies, no reasoning tokens burned against the maxTokens cap).
+    // Gemma 4 (like Qwen3.5/3.6 before it) is a hybrid reasoning model that "thinks"
+    // before answering unless told not to; its chat template honors the same flag.
+    // Disable thinking for faster replies and no reasoning tokens burned against
+    // the maxTokens cap.
     chat_template_kwargs: { enable_thinking: false },
   } as OpenAI.ChatCompletionCreateParamsNonStreaming);
 
