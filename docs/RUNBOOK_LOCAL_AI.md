@@ -40,7 +40,7 @@ still applies to it forever.
 macOS host (M2 Ultra, 128GB)
   ├─ com.kosmos.mlx → ~/mlx-venv/bin/mlx_lm.server              [vQUIP ARENA SMS — HANDS OFF]
   │     --model mlx-community/Qwen2.5-32B-Instruct-4bit --port 11435 --host 0.0.0.0
-  ├─ com.conductor.mlx → ~/conductor-mlx-venv/bin/mlx_lm.server       [OURS]
+  ├─ com.conductor.mlx → ~/projects/jtmg/tower/host-services/conductor-mlx/.venv/bin/mlx_lm.server       [OURS]
   │     --model mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit --port 11436 --host 127.0.0.1
   │     (~16GB resident, MoE ~3B active params — fast generation, short GPU occupancy)
   └─ Docker: conductor app
@@ -214,16 +214,16 @@ runs Qwen 2.5, not Gemma.)
 This is what's running now (built 2026-07-06). It does not touch the kosmos server.
 
 ```bash
-# 1. Own venv — never reuse ~/mlx-venv. Pin versions (latest combo is broken, see above)
-/opt/homebrew/bin/python3.13 -m venv ~/conductor-mlx-venv
-~/conductor-mlx-venv/bin/pip install "mlx-lm==0.31.3" "transformers==5.12.1"
+# 1. Own venv — never reuse kosmos-mlx's. Since 2026-10-05 it lives in the tower repo
+#    (was ~/conductor-mlx-venv), pinned by its requirements.txt:
+/opt/homebrew/bin/python3.13 -m venv ~/projects/jtmg/tower/host-services/conductor-mlx/.venv
+~/projects/jtmg/tower/host-services/conductor-mlx/.venv/bin/pip install -r ~/projects/jtmg/tower/host-services/conductor-mlx/requirements.txt
 
 # 2. Pre-download the model (~16GB)
-~/conductor-mlx-venv/bin/hf download mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit
+~/projects/jtmg/tower/host-services/conductor-mlx/.venv/bin/hf download mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit
 
-# 3. Install the LaunchAgent (repo template: cron/com.conductor.mlx.plist —
-#    fix the /path/to placeholders first)
-cp cron/com.conductor.mlx.plist ~/Library/LaunchAgents/   # after editing paths
+# 3. Install the LaunchAgent — the live plist is tracked in the tower repo:
+cp ~/projects/jtmg/tower/host-services/com.conductor.mlx.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.conductor.mlx.plist
 
 # 4. Verify, then check memory headroom
