@@ -149,7 +149,7 @@ outside that window "Outside working hours, skipping" in the log is normal.
 
 The pre-EventKit pipeline (`~/conductor-calendar/capture.sh` + `process.sh`, LaunchAgents
 `com.conductor.calendar-capture` / `com.conductor.calendar-process`) was retired and its
-agents unloaded on 2026-07-06; the plists are archived in `~/conductor-calendar/`. If
+agents unloaded on 2026-07-06; `~/conductor-calendar/` was deleted on 2026-10-05. If
 `launchctl list | grep conductor` ever shows them again, unload them — they only produce
 5 AM screenshot errors. The supported fallback is the screenshot drop zone in
 Settings > Integrations > Calendar.
