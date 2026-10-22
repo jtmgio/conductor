@@ -9,7 +9,7 @@ import { invalidateRebalanceCache } from "@/lib/schedule-rebalance";
 import { refineTask, splitRawTask, type RefinedTask } from "@/lib/task-refine";
 import { formatMessage } from "@/lib/format-message";
 import { taskKey, parseTaskKey, looksLikeTaskKey } from "@/lib/task-key";
-import { matchProject } from "@/lib/projects";
+import { matchProject, projectIdAfterRoleChange } from "@/lib/projects";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +48,12 @@ async function resolveProject(roleId: string, roleName: string, ref: string, opt
   return matchProject(projects, ref, roleName);
 }
 
+/** What every task query feeding taskShape loads. */
+const TASK_INCLUDE = {
+  role: { select: { name: true, taskPrefix: true } },
+  project: { select: { name: true } },
+} as const;
+
 /** Open (not done, not icebox) tasks keep a project from being closed. */
 const OPEN_TASK = { done: false, status: { not: "icebox" } } as const;
 
@@ -74,6 +80,7 @@ function taskShape(t: {
   scheduledFor: Date | null; dueDate: Date | null; notes: string | null;
   number?: number | null; externalKey?: string | null;
   role?: { name: string; taskPrefix?: string | null } | null;
+  project?: { name: string } | null; notBefore?: Date | null;
 }) {
   return {
     // Human key ("VQ-14", or Linear's own "MED-54"). Prefer this when talking to
@@ -87,6 +94,8 @@ function taskShape(t: {
     done: t.done,
     scheduledFor: formatDateOnly(t.scheduledFor),
     dueDate: formatDateOnly(t.dueDate),
+    notBefore: formatDateOnly(t.notBefore),
+    project: t.project?.name ?? null,
     notes: t.notes || undefined,
   };
 }
@@ -142,7 +151,7 @@ const handler = createMcpHandler(
           }),
           prisma.task.findMany({
             where: { scheduledFor: { lte: today() }, done: false },
-            include: { role: { select: { name: true, taskPrefix: true } } },
+            include: TASK_INCLUDE,
             orderBy: [{ role: { priority: "asc" } }, { sortOrder: "asc" }],
           }),
           prisma.followUp.findMany({
@@ -178,26 +187,33 @@ const handler = createMcpHandler(
       "list_tasks",
       {
         title: "List tasks",
-        description: "List tasks, optionally filtered by role name, board status, or today's plan.",
+        description: "List tasks, optionally filtered by role name, project, board status, or today's plan.",
         inputSchema: {
           role: z.string().optional().describe("Role name (partial ok) or role id"),
+          project: z.string().optional().describe("Project name (partial ok) — needs role"),
           status: z.enum(VALID_STATUSES).optional(),
           todayOnly: z.boolean().optional().describe("Only tasks scheduled for today or earlier"),
           includeDone: z.boolean().optional(),
         },
       },
-      async ({ role, status, todayOnly, includeDone }) => {
+      async ({ role, project, status, todayOnly, includeDone }) => {
         const where: Record<string, unknown> = {};
         if (!includeDone) where.done = false;
-        if (role) where.roleId = (await resolveRole(role)).id;
+        if (project && !role) throw new Error("project filter needs role");
+        if (role) {
+          const r = await resolveRole(role);
+          where.roleId = r.id;
+          if (project) where.projectId = (await resolveProject(r.id, r.name, project, { includeDone: true })).id;
+        }
         if (status) where.status = status;
         else where.status = { not: "icebox" };
         if (todayOnly) where.scheduledFor = { lte: today() };
         const tasks = await prisma.task.findMany({
           where,
-          include: { role: { select: { name: true, priority: true, taskPrefix: true } } },
+          include: { ...TASK_INCLUDE, role: { select: { name: true, priority: true, taskPrefix: true } } },
           orderBy: [{ role: { priority: "asc" } }, { sortOrder: "asc" }, { priority: "desc" }, { createdAt: "asc" }],
-          take: 50,
+          // A project is a bounded list; the board-wide view keeps its cap.
+          ...(project ? {} : { take: 50 }),
         });
         return ok(tasks.map(taskShape));
       }
@@ -383,9 +399,11 @@ const handler = createMcpHandler(
           isToday: z.boolean().optional().describe("Put on today's plan instead of backlog"),
           dueDate: z.string().optional().describe("YYYY-MM-DD override — otherwise inferred from the text"),
           refine: z.boolean().optional().describe("Set false to skip AI refinement and save the text verbatim (role required)"),
+          project: z.string().optional().describe("Project name in this role. Call list_projects first. Never guessed by the server."),
+          notBefore: z.string().optional().describe("YYYY-MM-DD. Use for 'after X' / 'not before X'. Not a deadline."),
         },
       },
-      async ({ text, role, priority, isToday, dueDate, refine }) => {
+      async ({ text, role, priority, isToday, dueDate, refine, project, notBefore }) => {
         let resolved = role ? await resolveRole(role) : null;
         let refined: RefinedTask | null = null;
         let refineError: string | null = null;
@@ -421,6 +439,9 @@ const handler = createMcpHandler(
           });
         }
 
+        // The caller names the project; the server only checks it exists in this role.
+        const projectId = project ? (await resolveProject(resolved.id, resolved.name, project)).id : undefined;
+
         // No AI title (refine:false, or refinement failed)? Split it deterministically
         // rather than making the whole paragraph the title.
         const fallback = refined?.title ? null : splitRawTask(text);
@@ -435,9 +456,11 @@ const handler = createMcpHandler(
             status: "backlog",
             scheduledFor: isToday ? today() : null,
             dueDate: (dueDate || refined?.dueDate) ? new Date(`${dueDate || refined?.dueDate}T00:00:00`) : undefined,
+            notBefore: notBefore ? new Date(`${notBefore}T00:00:00Z`) : undefined,
+            projectId,
             sourceType: "mcp",
           },
-          include: { role: { select: { name: true, taskPrefix: true } } },
+          include: TASK_INCLUDE,
         });
         if (isToday) invalidateRebalanceCache();
         return ok({
@@ -468,13 +491,30 @@ const handler = createMcpHandler(
           notes: z.string().optional(),
           checklist: z.array(z.string()).optional().describe("Replace the checklist with these steps; [] clears it. Steps already ticked keep their tick if the text is unchanged."),
           blockedReason: z.string().optional().describe('Why it is blocked, e.g. "waiting on Jeff to approve the slate". Set this whenever you set status to blocked — a blocked task with no reason is just a lost task.'),
-          role: z.string().optional().describe("Move the task to a different role/company (name or id)"),
+          role: z.string().optional().describe("Move the task to a different role/company (name or id). Drops its project unless project is also given."),
+          project: z.string().nullable().optional().describe("Project name in the task's role (after any move), or null to remove it"),
+          notBefore: z.string().nullable().optional().describe("YYYY-MM-DD wait-until date, or null to clear"),
         },
       },
-      async ({ taskId, title, status, done, priority, isToday, dueDate, notes, checklist, role, blockedReason }) => {
+      async ({ taskId, title, status, done, priority, isToday, dueDate, notes, checklist, role, blockedReason, project, notBefore }) => {
         const id = await resolveTaskId(taskId);
         const data: Record<string, unknown> = {};
-        if (role !== undefined) data.roleId = (await resolveRole(role)).id;
+        const current = await prisma.task.findUniqueOrThrow({
+          where: { id },
+          select: { roleId: true, projectId: true, role: { select: { name: true } } },
+        });
+        const target = role !== undefined ? await resolveRole(role) : { id: current.roleId, name: current.role.name };
+        if (role !== undefined) data.roleId = target.id;
+        // A project name always resolves inside the task's role after the move.
+        const requestedProjectId =
+          project === undefined ? undefined : project === null ? null : (await resolveProject(target.id, target.name, project)).id;
+        const nextProjectId = projectIdAfterRoleChange({
+          roleChanged: target.id !== current.roleId,
+          currentProjectId: current.projectId,
+          requestedProjectId,
+        });
+        if (nextProjectId !== undefined) data.projectId = nextProjectId;
+        if (notBefore !== undefined) data.notBefore = notBefore ? new Date(`${notBefore}T00:00:00Z`) : null;
         if (title !== undefined) data.title = title;
         if (status !== undefined) {
           data.status = status;
@@ -502,7 +542,7 @@ const handler = createMcpHandler(
         const task = await prisma.task.update({
           where: { id },
           data,
-          include: { role: { select: { name: true, taskPrefix: true } } },
+          include: TASK_INCLUDE,
         });
         if (done !== undefined || isToday !== undefined) invalidateRebalanceCache();
         return ok({ updated: taskShape(task) });
@@ -551,7 +591,7 @@ const handler = createMcpHandler(
               ? { checklist: refined.checklist }
               : {}),
           },
-          include: { role: { select: { name: true, taskPrefix: true } } },
+          include: TASK_INCLUDE,
         });
 
         return ok({
@@ -684,7 +724,7 @@ const handler = createMcpHandler(
                   : []),
               ],
             },
-            include: { role: { select: { name: true, taskPrefix: true } } },
+            include: TASK_INCLUDE,
             take: 10,
             orderBy: { createdAt: "desc" },
           }),
