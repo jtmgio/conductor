@@ -65,6 +65,7 @@ model Role {
   fileUploads   FileUpload[]
   conversations Conversation[]
   drafts        Draft[]
+  projects      Project[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -106,6 +107,11 @@ model Task {
   blockedReason String?
   /// When it was blocked — drives the resurface nudge after BLOCKED_STALE_DAYS.
   blockedAt    DateTime?
+  /// The piece of work this task belongs to, inside the same company. Optional.
+  projectId    String?
+  project      Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  /// Don't bring this up before this day. Not a deadline — a task can have both.
+  notBefore    DateTime? @db.Date
   /// Per-company sequence number. Rendered as `${role.taskPrefix}-${number}`.
   /// Allocated automatically by the Prisma extension in src/lib/prisma.ts.
   number     Int?
@@ -118,6 +124,28 @@ model Task {
   @@unique([roleId, number])
   @@index([roleId, done])
   @@index([scheduledFor, done])
+  @@index([roleId, status])
+  @@index([projectId, done])
+}
+
+/// A company's piece of work that holds the context its tasks share — goal,
+/// what "done" means, and links to the spec and repo. Links are pointers, never
+/// copies: the spec lives in the command center and stays the source of truth.
+model Project {
+  id        String   @id @default(cuid())
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+  name      String
+  goal      String?
+  doneWhen  String?
+  links     Json     @default("[]")
+  /// active | done. Done projects drop out of listings.
+  status    String   @default("active")
+  tasks     Task[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roleId, name])
   @@index([roleId, status])
 }
 
