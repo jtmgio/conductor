@@ -9,6 +9,7 @@ import { invalidateRebalanceCache } from "@/lib/schedule-rebalance";
 import { refineTask, splitRawTask, type RefinedTask } from "@/lib/task-refine";
 import { formatMessage } from "@/lib/format-message";
 import { taskKey, parseTaskKey, looksLikeTaskKey } from "@/lib/task-key";
+import { matchProject } from "@/lib/projects";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,34 @@ async function resolveRole(roleRef: string) {
     throw new Error(`Unknown role "${roleRef}". Available roles: ${roles.map((r) => r.name).join(", ")}`);
   }
   return match;
+}
+
+/** Resolve a project by id or (partial) name inside one role. Active projects
+ *  only unless includeDone — a finished project takes no new tasks. */
+async function resolveProject(roleId: string, roleName: string, ref: string, opts?: { includeDone?: boolean }) {
+  const projects = await prisma.project.findMany({
+    where: { roleId, ...(opts?.includeDone ? {} : { status: "active" }) },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+  return matchProject(projects, ref, roleName);
+}
+
+/** Open (not done, not icebox) tasks keep a project from being closed. */
+const OPEN_TASK = { done: false, status: { not: "icebox" } } as const;
+
+function projectShape(
+  p: { name: string; goal: string | null; doneWhen: string | null; links: unknown; status: string },
+  openTaskKeys: (string | null)[],
+) {
+  return {
+    name: p.name,
+    goal: p.goal,
+    doneWhen: p.doneWhen,
+    links: Array.isArray(p.links) ? p.links : [],
+    status: p.status,
+    openTasks: openTaskKeys.filter(Boolean),
+  };
 }
 
 function ok(data: unknown) {
@@ -171,6 +200,128 @@ const handler = createMcpHandler(
           take: 50,
         });
         return ok(tasks.map(taskShape));
+      }
+    );
+
+    server.registerTool(
+      "list_projects",
+      {
+        title: "List projects",
+        description:
+          "A company's projects: each one's goal, what done means, links to its spec/repo, and the keys of its open tasks. Call this before filing tasks so each one lands in the right project.",
+        inputSchema: {
+          role: z.string().describe("Role/company name (partial ok) or role id"),
+          includeDone: z.boolean().optional().describe("Include finished projects"),
+        },
+      },
+      async ({ role, includeDone }) => {
+        const r = await resolveRole(role);
+        const projects = await prisma.project.findMany({
+          where: { roleId: r.id, ...(includeDone ? {} : { status: "active" }) },
+          include: {
+            tasks: {
+              where: OPEN_TASK,
+              select: { number: true, externalKey: true },
+              orderBy: { createdAt: "asc" },
+            },
+            role: { select: { taskPrefix: true } },
+          },
+          orderBy: { name: "asc" },
+        });
+        return ok({
+          role: r.name,
+          projects: projects.map((p) => projectShape(p, p.tasks.map((t) => taskKey(t, p.role)))),
+        });
+      }
+    );
+
+    server.registerTool(
+      "create_project",
+      {
+        title: "Create project",
+        description:
+          "Create a project inside one company. Offer one only when 2+ tasks share a goal or the work has a spec or repo behind it, and only after Josh agrees. links are pointers (paths or URLs) to the spec, plan or repo — never paste their contents.",
+        inputSchema: {
+          role: z.string().describe("Role/company name (partial ok) or role id"),
+          name: z.string().min(1).describe('Short name Josh will say out loud, e.g. "AWS cost"'),
+          goal: z.string().optional().describe("One line: what the project is for"),
+          doneWhen: z.string().optional().describe('What "finished" means for the whole project'),
+          links: z.array(z.string()).optional().describe("Paths or URLs to the spec, plan, repo, audit docs"),
+        },
+      },
+      async ({ role, name, goal, doneWhen, links }) => {
+        const r = await resolveRole(role);
+        const trimmed = name.trim();
+        const clash = await prisma.project.findFirst({
+          where: { roleId: r.id, name: { equals: trimmed, mode: "insensitive" } },
+          select: { name: true },
+        });
+        if (clash) throw new Error(`Project "${clash.name}" already exists in ${r.name}`);
+        const project = await prisma.project.create({
+          data: { roleId: r.id, name: trimmed, goal, doneWhen, links: links ?? [] },
+        });
+        return ok({ created: projectShape(project, []), role: r.name });
+      }
+    );
+
+    server.registerTool(
+      "update_project",
+      {
+        title: "Update project",
+        description:
+          "Edit a project's name, goal, done-when or links, or mark it done (done: true) / reopen it (done: false). Marking done is refused while the project still has open tasks.",
+        inputSchema: {
+          role: z.string().describe("Role/company name (partial ok) or role id"),
+          project: z.string().describe("Project name (partial ok) or id"),
+          name: z.string().min(1).optional(),
+          goal: z.string().nullable().optional(),
+          doneWhen: z.string().nullable().optional(),
+          links: z.array(z.string()).optional().describe("Replaces the whole list"),
+          done: z.boolean().optional(),
+        },
+      },
+      async ({ role, project, name, goal, doneWhen, links, done }) => {
+        const r = await resolveRole(role);
+        const target = await resolveProject(r.id, r.name, project, { includeDone: true });
+        if (done === true) {
+          const open = await prisma.task.findMany({
+            where: { projectId: target.id, ...OPEN_TASK },
+            select: { number: true, externalKey: true },
+            orderBy: { createdAt: "asc" },
+          });
+          if (open.length) {
+            const keyRole = await prisma.role.findUnique({ where: { id: r.id }, select: { taskPrefix: true } });
+            return ok({
+              refused: true,
+              reason: "Project still has open tasks",
+              openTasks: open.map((t) => taskKey(t, keyRole)).filter(Boolean),
+              instruction:
+                "Ask Josh what to do with these tasks: finish them, move them to another project, or remove the project from them. Then try again.",
+            });
+          }
+        }
+        if (name !== undefined && name.trim().toLowerCase() !== target.name.toLowerCase()) {
+          const clash = await prisma.project.findFirst({
+            where: { roleId: r.id, name: { equals: name.trim(), mode: "insensitive" }, NOT: { id: target.id } },
+            select: { name: true },
+          });
+          if (clash) throw new Error(`Project "${clash.name}" already exists in ${r.name}`);
+        }
+        const updated = await prisma.project.update({
+          where: { id: target.id },
+          data: {
+            ...(name !== undefined ? { name: name.trim() } : {}),
+            ...(goal !== undefined ? { goal } : {}),
+            ...(doneWhen !== undefined ? { doneWhen } : {}),
+            ...(links !== undefined ? { links } : {}),
+            ...(done !== undefined ? { status: done ? "done" : "active" } : {}),
+          },
+          include: {
+            tasks: { where: OPEN_TASK, select: { number: true, externalKey: true }, orderBy: { createdAt: "asc" } },
+            role: { select: { taskPrefix: true } },
+          },
+        });
+        return ok({ updated: projectShape(updated, updated.tasks.map((t) => taskKey(t, updated.role))), role: r.name });
       }
     );
 
