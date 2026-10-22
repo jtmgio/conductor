@@ -16,6 +16,14 @@ describe("CONDUCTOR_MCP_INSTRUCTIONS", () => {
     expect(CONDUCTOR_MCP_INSTRUCTIONS).toContain("did this happen");
   });
 
+  it("gives 'still to do' an action, so the same task isn't asked about every day", () => {
+    expect(CONDUCTOR_MCP_INSTRUCTIONS).toMatch(/still to do[^.]*(isToday|dueDate)/);
+  });
+
+  it("asks about past-due work when the walk reaches it, not before urgent work", () => {
+    expect(CONDUCTOR_MCP_INSTRUCTIONS).not.toMatch(/pastDue tasks first/);
+  });
+
   it("keeps a command center to its own company", () => {
     expect(CONDUCTOR_MCP_INSTRUCTIONS).toContain("pass the role of the command center you are in");
   });

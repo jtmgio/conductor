@@ -264,7 +264,8 @@ const handler = createMcpHandler(
         description:
           "The morning walk. Call this for 'what's up today' and similar. Pass this command center's role. Returns open tasks in the order to walk them, one at a time: urgent, past due (ask 'did this happen?'), due or planned today, due this week, in progress, then the rest by project. Long-blocked and in-review tasks come back in their own lists; tasks with a future notBefore are left out.",
         inputSchema: {
-          role: z.string().optional().describe("Role/company name (partial ok) or id. Omit only outside a command center — it returns every company."),
+          // min(1): a blank role must not fall through to "every company".
+          role: z.string().trim().min(1).optional().describe("Role/company name (partial ok) or id. Omit only outside a command center — it returns every company."),
         },
       },
       async ({ role }) => {
@@ -343,7 +344,7 @@ const handler = createMcpHandler(
           "Create a project inside one company. Offer one only when 2+ tasks share a goal or the work has a spec or repo behind it, and only after Josh agrees. links are pointers (paths or URLs) to the spec, plan or repo — never paste their contents.",
         inputSchema: {
           role: z.string().describe("Role/company name (partial ok) or role id"),
-          name: z.string().min(1).describe('Short name Josh will say out loud, e.g. "AWS cost"'),
+          name: z.string().trim().min(1).describe('Short name Josh will say out loud, e.g. "AWS cost"'),
           goal: z.string().optional().describe("One line: what the project is for"),
           doneWhen: z.string().optional().describe('What "finished" means for the whole project'),
           links: z.array(z.string()).optional().describe("Paths or URLs to the spec, plan, repo, audit docs"),
@@ -373,7 +374,7 @@ const handler = createMcpHandler(
         inputSchema: {
           role: z.string().describe("Role/company name (partial ok) or role id"),
           project: z.string().describe("Project name (partial ok) or id"),
-          name: z.string().min(1).optional(),
+          name: z.string().trim().min(1).optional(),
           goal: z.string().nullable().optional(),
           doneWhen: z.string().nullable().optional(),
           links: z.array(z.string()).optional().describe("Replaces the whole list"),

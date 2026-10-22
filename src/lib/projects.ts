@@ -13,6 +13,8 @@ export interface ProjectRef {
  */
 export function matchProject<T extends ProjectRef>(projects: T[], ref: string, roleName: string): T {
   const raw = ref.trim();
+  // An empty string is "inside" every name, so it would partial-match anything.
+  if (!raw) throw new Error(`Project name is blank. Pass a name from list_projects, or null to remove the project.`);
   const lower = raw.toLowerCase();
   const exact =
     projects.find((p) => p.id === raw) ||

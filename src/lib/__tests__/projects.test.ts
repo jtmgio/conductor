@@ -34,6 +34,11 @@ describe("matchProject", () => {
     expect(() => matchProject(projects, "Marin", "vQuip")).toThrow(/vQuip.*AWS cost.*Ops chat/);
   });
 
+  it("refuses a blank name instead of partial-matching every project", () => {
+    expect(() => matchProject([P("a", "AWS cost")], "", "vQuip")).toThrow(/blank/);
+    expect(() => matchProject([P("a", "AWS cost")], "   ", "vQuip")).toThrow(/blank/);
+  });
+
   it("says so when the company has no projects yet", () => {
     expect(() => matchProject([], "Marin", "vQuip")).toThrow(/vQuip has no projects yet/);
   });

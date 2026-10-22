@@ -10,6 +10,10 @@ services:
       # That container holds Conductor's real data (created/owned by user `conductor`).
       DATABASE_URL: postgresql://conductor:localdev@postgres:5432/conductor
       NODE_ENV: production
+      # The container runs in UTC. Without this, "today" rolls over at 8pm Eastern —
+      # the morning walk would call tonight's work past due and isToday would file
+      # onto tomorrow's plan.
+      TIMEZONE: America/New_York
       UPLOAD_DIR: /opt/conductor/uploads
       # Change this if deploying to a real domain or different port
       NEXTAUTH_URL: http://localhost:5402
