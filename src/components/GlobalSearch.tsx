@@ -309,6 +309,29 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
     return () => window.removeEventListener("keydown", handler);
   }, [open]);
 
+  // Belt and braces for the iPad selection bug: mark the body so the page
+  // behind the palette is unselectable (see globals.css), and collapse any
+  // selection that still manages to form outside the palette. This covers the
+  // paint regardless of what creates the selection — preventing the keydown
+  // default alone did not, so the mechanism is something we do not control.
+  useEffect(() => {
+    if (!open) return;
+    document.body.setAttribute("data-palette-open", "");
+    const onSelectionChange = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      const node = sel.anchorNode;
+      const el = node instanceof Element ? node : node?.parentElement;
+      if (el?.closest("[data-palette]")) return; // selecting inside the palette is fine
+      sel.removeAllRanges();
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => {
+      document.body.removeAttribute("data-palette-open");
+      document.removeEventListener("selectionchange", onSelectionChange);
+    };
+  }, [open]);
+
   // Arrow keys, for when focus is NOT in the search input.
   //
   // iPadOS Safari often refuses the deferred programmatic focus() below —
@@ -398,6 +421,7 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.2 }}
+              data-palette
               className="fixed top-[10%] left-4 right-4 z-[60] mx-auto max-w-[560px] bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden"
             >
               {formatMessageMode ? (
