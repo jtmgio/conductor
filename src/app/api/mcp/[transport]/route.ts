@@ -57,7 +57,7 @@ function taskShape(t: {
     priority: t.priority,
     done: t.done,
     scheduledFor: formatDateOnly(t.scheduledFor),
-    dueDate: t.dueDate ? t.dueDate.toISOString().split("T")[0] : null,
+    dueDate: formatDateOnly(t.dueDate),
     notes: t.notes || undefined,
   };
 }
