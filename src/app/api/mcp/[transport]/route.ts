@@ -10,6 +10,8 @@ import { refineTask, splitRawTask, type RefinedTask } from "@/lib/task-refine";
 import { formatMessage } from "@/lib/format-message";
 import { taskKey, parseTaskKey, looksLikeTaskKey } from "@/lib/task-key";
 import { matchProject, projectIdAfterRoleChange } from "@/lib/projects";
+import { buildWalk, WALK_SECTIONS, type WalkTask } from "@/lib/today-walk";
+import { CONDUCTOR_MCP_INSTRUCTIONS } from "@/lib/mcp-instructions";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +55,42 @@ const TASK_INCLUDE = {
   role: { select: { name: true, taskPrefix: true } },
   project: { select: { name: true } },
 } as const;
+
+/**
+ * One company's walk, shaped for the client: sections in walk order (empty ones
+ * dropped), the side lists, and each referenced project's context once so Claude
+ * can explain a task without another call. No counts anywhere, on purpose.
+ */
+function walkResponse<T extends WalkTask>(
+  rows: T[],
+  date: string,
+  // Keyed by project name within this one company — names are only unique per role.
+  projectContext: Map<string, { goal: string | null; doneWhen: string | null; links: unknown }>,
+) {
+  const walk = buildWalk(rows, date);
+  const entry = (e: { task: T; pastDue: boolean; newlyAvailable: boolean }) => ({
+    ...e.task,
+    pastDue: e.pastDue,
+    newlyAvailable: e.newlyAvailable,
+    // Past-due work is asked about ("did this happen?"), never presented as work.
+    checkFirst: e.pastDue,
+  });
+  const seen = new Set(rows.map((r) => r.project).filter((n): n is string => !!n));
+  return {
+    sections: WALK_SECTIONS.filter((name) => walk.sections[name].length).map((name) => ({
+      name,
+      entries: walk.sections[name].map(entry),
+    })),
+    blockedCheckIn: walk.blockedCheckIn.map((e) => ({ ...entry(e), blockedDays: e.blockedDays })),
+    waitingOnReview: walk.waitingOnReview.map(entry),
+    projects: Object.fromEntries(
+      Array.from(seen).map((name) => {
+        const p = projectContext.get(name);
+        return [name, { goal: p?.goal ?? null, doneWhen: p?.doneWhen ?? null, links: Array.isArray(p?.links) ? p!.links : [] }];
+      }),
+    ),
+  };
+}
 
 /** Open (not done, not icebox) tasks keep a project from being closed. */
 const OPEN_TASK = { done: false, status: { not: "icebox" } } as const;
@@ -140,7 +178,7 @@ const handler = createMcpHandler(
       {
         title: "Get Conductor context",
         description:
-          "Current snapshot: all roles, the active schedule block (which role is in focus right now), today's tasks, and follow-ups being waited on. Call this first to orient.",
+          "Current snapshot: all roles, the active schedule block (which role is in focus right now), today's tasks, and follow-ups being waited on. For 'what's up today', use get_today_walk instead.",
         inputSchema: {},
       },
       async () => {
@@ -216,6 +254,52 @@ const handler = createMcpHandler(
           ...(project ? {} : { take: 50 }),
         });
         return ok(tasks.map(taskShape));
+      }
+    );
+
+    server.registerTool(
+      "get_today_walk",
+      {
+        title: "Today walk",
+        description:
+          "The morning walk. Call this for 'what's up today' and similar. Pass this command center's role. Returns open tasks in the order to walk them, one at a time: urgent, past due (ask 'did this happen?'), due or planned today, due this week, in progress, then the rest by project. Long-blocked and in-review tasks come back in their own lists; tasks with a future notBefore are left out.",
+        inputSchema: {
+          role: z.string().optional().describe("Role/company name (partial ok) or id. Omit only outside a command center — it returns every company."),
+        },
+      },
+      async ({ role }) => {
+        const r = role ? await resolveRole(role) : null;
+        const tasks = await prisma.task.findMany({
+          where: { ...OPEN_TASK, ...(r ? { roleId: r.id } : {}) },
+          include: {
+            role: { select: { id: true, name: true, taskPrefix: true, priority: true } },
+            project: { select: { name: true, goal: true, doneWhen: true, links: true } },
+          },
+        });
+        const date = formatDateOnly(today())!;
+        const contextFor = (roleId: string) =>
+          new Map(tasks.filter((t) => t.project && t.roleId === roleId).map((t) => [t.project!.name, t.project!]));
+        const rows = tasks.map((t) => {
+          const shaped = taskShape(t);
+          return {
+            ...shaped,
+            key: shaped.key ?? t.id,
+            blockedAt: t.blockedAt?.toISOString() ?? null,
+            blockedReason: t.blockedReason,
+            createdAt: t.createdAt.toISOString(),
+          };
+        });
+
+        if (r) return ok({ date, role: r.name, ...walkResponse(rows, date, contextFor(r.id)) });
+
+        const roles = Array.from(new Map(tasks.map((t) => [t.role.id, t.role])).values()).sort((a, b) => a.priority - b.priority);
+        return ok({
+          date,
+          companies: roles.map((role) => ({
+            role: role.name,
+            ...walkResponse(rows.filter((row) => row.role === role.name), date, contextFor(role.id)),
+          })),
+        });
       }
     );
 
@@ -391,7 +475,7 @@ const handler = createMcpHandler(
       {
         title: "Create task",
         description:
-          "Create a task in Conductor from natural language. By default the text is AI-refined into a proper task card (short title, details in notes, checklist, resolved due date) and, if no role is given, the right role/company is inferred from the role directory + staff names. If the result has needsClarification: true, the task was NOT created — ask the user which role/company they want, then call again with the role parameter. Defaults to the backlog — set isToday only when the user explicitly wants it on today's plan.",
+          "Create a task in Conductor from natural language. By default the text is AI-refined into a proper task card (short title, details in notes, checklist, resolved due date) and, if no role is given, the right role/company is inferred from the role directory + staff names. If the result has needsClarification: true, the task was NOT created — ask the user which role/company they want, then call again with the role parameter. Defaults to the backlog — set isToday only when the user explicitly wants it on today's plan. In a command center, call list_projects first and pass project when one fits. Use notBefore, not dueDate, for wait-until dates.",
         inputSchema: {
           text: z.string().min(1).describe("The todo in natural language — full context welcome, it gets refined"),
           role: z.string().optional().describe("Role/company name (partial ok) or role id. Omit to auto-infer."),
@@ -479,7 +563,7 @@ const handler = createMcpHandler(
       {
         title: "Update task",
         description:
-          "Update a task: move it on the board (status), mark it done, pull it into/out of today's plan, or edit fields. Accepts the task's human key (VQ-14, MED-54) or its id — both come back from list_tasks/search.",
+          "Update a task: move it on the board (status), mark it done, pull it into/out of today's plan, or edit fields. Accepts the task's human key (VQ-14, MED-54) or its id — both come back from list_tasks/search. Mark done as soon as work in this session finishes the task, and tell Josh in one line.",
         inputSchema: {
           taskId: z.string().describe('Task key like "VQ-14" or "MED-54" (preferred), or the raw id'),
           title: z.string().optional(),
@@ -768,6 +852,7 @@ const handler = createMcpHandler(
   {
     serverInfo: { name: "conductor", version: "1.0.0" },
     capabilities: { tools: {} },
+    instructions: CONDUCTOR_MCP_INSTRUCTIONS,
   },
   {
     basePath: "/api/mcp",
