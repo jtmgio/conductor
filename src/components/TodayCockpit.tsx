@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Check, Plus, ChevronRight, Moon, X } from "lucide-react";
+import { Check, Plus, ChevronRight, Moon, X, FolderKanban } from "lucide-react";
 import { AgendaStrip } from "./AgendaStrip";
 import { CommsCoverStrip } from "./CommsCoverStrip";
 import { TaskDetail } from "./TaskDetail";
@@ -39,6 +39,7 @@ interface Task {
   externalKey?: string | null;
   blockedReason?: string | null;
   blockedAt?: string | null;
+  project?: { name: string } | null;
   role?: { id: string; name: string; color: string; taskPrefix?: string | null };
 }
 
@@ -599,6 +600,12 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                         {one.status.replace("_", " ")}
                       </span>
                       <TaskKeyChip task={one} role={one.role} />
+                      {one.project && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold text-[var(--text-secondary)]">
+                          <FolderKanban className="h-3 w-3" />
+                          {one.project.name}
+                        </span>
+                      )}
                       {isSkipped(one.id) && (
                         <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold text-[var(--text-tertiary)]">Skipped</span>
                       )}

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Eye, EyeOff } from "lucide-react";
+import { Check, Eye, EyeOff, FolderKanban } from "lucide-react";
 import { TaskDetailDrawer } from "@/components/TaskDetailDrawer";
 import { STATUS_CONFIG, STATUS_ORDER, BOARD_COLUMNS } from "@/components/TaskItem";
 import { cn } from "@/lib/utils";
@@ -38,6 +38,7 @@ interface BoardTask {
   tags?: TagRelation[];
   number?: number | null;
   externalKey?: string | null;
+  project?: { name: string } | null;
   role: { id: string; name: string; color: string; taskPrefix?: string | null };
 }
 
@@ -542,6 +543,12 @@ function BoardCard({
                   >
                     {STATUS_CONFIG[status]?.label}
                   </span>
+                  {task.project && (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border border-[var(--border-subtle)] text-[var(--text-secondary)]">
+                      <FolderKanban className="h-3 w-3" />
+                      {task.project.name}
+                    </span>
+                  )}
                   {task.tags?.map((t) => (
                     <span
                       key={t.tag.id}

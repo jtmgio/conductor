@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     include: {
       role: { select: { id: true, name: true, color: true, taskPrefix: true } },
       tags: { include: { tag: true } },
+      project: { select: { name: true } },
     },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
   });
@@ -33,6 +34,7 @@ export async function GET(req: NextRequest) {
       include: {
         role: { select: { id: true, name: true, color: true, taskPrefix: true } },
         tags: { include: { tag: true } },
+        project: { select: { name: true } },
       },
       orderBy: { updatedAt: "desc" },
       take: 30,

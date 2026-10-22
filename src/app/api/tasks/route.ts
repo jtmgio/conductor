@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
     include: {
       role: { select: { id: true, name: true, color: true, taskPrefix: true, priority: true } },
       tags: { include: { tag: true } },
+      project: { select: { name: true } },
     },
     orderBy: [{ role: { priority: "asc" } }, { sortOrder: "asc" }, { priority: "desc" }, { createdAt: "asc" }],
   });
