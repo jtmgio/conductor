@@ -110,6 +110,31 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     } catch {}
   }, []);
 
+  // "Not now" — a skipped task keeps its status and its date; it just stops being
+  // the headline, so one item you can't act on right now can't stall the whole
+  // stack. Day-scoped and client-side, same as the focus override above: it
+  // expires when the day rolls over.
+  const [skipped, setSkipped] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("conductor-skipped-today");
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (s?.date === new Date().toDateString() && Array.isArray(s.ids)) setSkipped(s.ids);
+      else localStorage.removeItem("conductor-skipped-today");
+    } catch {}
+  }, []);
+  const persistSkipped = useCallback((ids: string[]) => {
+    setSkipped(ids);
+    try {
+      if (ids.length) localStorage.setItem("conductor-skipped-today", JSON.stringify({ date: new Date().toDateString(), ids }));
+      else localStorage.removeItem("conductor-skipped-today");
+    } catch {}
+  }, []);
+  const skipTask = useCallback((id: string) => persistSkipped(skipped.includes(id) ? skipped : [...skipped, id]), [skipped, persistSkipped]);
+  const unskipTask = useCallback((id: string) => persistSkipped(skipped.filter((x) => x !== id)), [skipped, persistSkipped]);
+  const isSkipped = useCallback((id: string) => skipped.includes(id), [skipped]);
+
   const roleId = override?.id ?? currentBlock?.roleId ?? null;
   const color = override?.color || currentBlock?.roleColor || "#7ba3d9";
   const focusName = override?.name || currentBlock?.roleName;
@@ -422,8 +447,11 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
     if (t.priority === "urgent") return 2;
     return 3;
   };
+  // Skipped work sorts to the end rather than out of the list — skip everything and
+  // you land back on the first one marked "skipped", never on a false "all clear".
   const byUrgency = [...todayTasks].sort(
     (a, b) =>
+      (isSkipped(a.id) ? 1 : 0) - (isSkipped(b.id) ? 1 : 0) ||
       dueTier(a) - dueTier(b) ||
       (inFlight(b) ? 1 : 0) - (inFlight(a) ? 1 : 0) ||
       (a.dueDate || "9999").localeCompare(b.dueDate || "9999")
@@ -571,6 +599,9 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                         {one.status.replace("_", " ")}
                       </span>
                       <TaskKeyChip task={one} role={one.role} />
+                      {isSkipped(one.id) && (
+                        <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold text-[var(--text-tertiary)]">Skipped</span>
+                      )}
                       {isToday(one.dueDate, now) && (
                         <span className="rounded-full border border-amber-500/30 bg-amber-500/[0.13] px-2.5 py-1 text-[11.5px] font-semibold text-amber-400">Due today</span>
                       )}
@@ -579,6 +610,12 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                         className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold text-[var(--text-tertiary)] transition-colors hover:border-[color:var(--text-secondary)] hover:text-[var(--text-secondary)]"
                       >
                         {deferLabel}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); skipTask(one.id); }}
+                        className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1 text-[11.5px] font-semibold text-[var(--text-tertiary)] transition-colors hover:border-[color:var(--text-secondary)] hover:text-[var(--text-secondary)]"
+                      >
+                        Not now
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); blockTask(one.id); }}
@@ -691,6 +728,15 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
                           className="h-4 w-4 shrink-0 rounded border-[1.5px] border-[var(--border-strong)] transition-colors hover:border-[color:var(--text-secondary)]"
                         />
                         <span className="flex-1 cursor-pointer truncate text-[14px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]" onClick={() => setSelectedTask(t)}>{t.title}</span>
+                        {isSkipped(t.id) && (
+                          <button
+                            onClick={() => unskipTask(t.id)}
+                            title="Put this back in front"
+                            className="shrink-0 rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-tertiary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
+                          >
+                            skipped
+                          </button>
+                        )}
                         {isToday(t.dueDate, now) && <span className="shrink-0 text-[11px] font-semibold text-amber-400">Due today</span>}
                       </li>
                     ))}
