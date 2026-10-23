@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBoard, BOARD_CAP, type BoardFollowUp, type BoardOptions, type BoardTask } from "@/lib/board";
+import { buildBoard, BOARD_CAP, viewFlags, type BoardFollowUp, type BoardOptions, type BoardTask } from "@/lib/board";
 
 const TODAY = "2026-10-22";
 const NOW = new Date("2026-10-22T15:00:00Z");
@@ -228,5 +228,23 @@ describe("buildBoard", () => {
     const oldReview = t({ status: "in_review", updatedAt: "2026-10-19T00:00:00Z" });
     const b = buildBoard([newlyBlocked, longBlocked, newReview, oldReview], [], TODAY, DEFAULT, NOW, seen);
     expect(keys(b.changes!.nowStuck).sort()).toEqual([newlyBlocked.key, newReview.key].sort());
+  });
+});
+
+describe("viewFlags", () => {
+  it("no args: capped, and the default view", () => {
+    expect(viewFlags({})).toEqual({ capped: true, isDefaultView: true });
+  });
+
+  it("explicit defaults lift the cap but still count as the default view", () => {
+    expect(viewFlags({ horizon: "today" })).toEqual({ capped: false, isDefaultView: true });
+    expect(viewFlags({ owner: "me" })).toEqual({ capped: false, isDefaultView: true });
+  });
+
+  it("any widened filter is neither capped nor the default view", () => {
+    expect(viewFlags({ horizon: "week" })).toEqual({ capped: false, isDefaultView: false });
+    expect(viewFlags({ owner: "all" })).toEqual({ capped: false, isDefaultView: false });
+    expect(viewFlags({ role: "vQuip" })).toEqual({ capped: false, isDefaultView: false });
+    expect(viewFlags({ project: "x" })).toEqual({ capped: false, isDefaultView: false });
   });
 });

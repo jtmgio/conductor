@@ -11,7 +11,7 @@ import { formatMessage } from "@/lib/format-message";
 import { taskKey, parseTaskKey, looksLikeTaskKey } from "@/lib/task-key";
 import { matchProject, projectIdAfterRoleChange } from "@/lib/projects";
 import { buildWalk, WALK_SECTIONS, type WalkTask } from "@/lib/today-walk";
-import { buildBoard, type BoardTask } from "@/lib/board";
+import { buildBoard, viewFlags, type BoardTask } from "@/lib/board";
 import { CONDUCTOR_MCP_INSTRUCTIONS } from "@/lib/mcp-instructions";
 
 export const dynamic = "force-dynamic";
@@ -311,7 +311,7 @@ const handler = createMcpHandler(
       {
         title: "Dispatch board",
         description:
-          "The dispatch board. Only from the home folder (its CLAUDE.md says it is the dispatcher). Call with no arguments for 'what's up': Josh's tasks across every company, urgent first then by date, cut to the next seven. Call with markSeen:true for 'catch me up' and read only changes and stuck. horizon/owner/role/project widen it and lift the cap. Never report counts.",
+          "The dispatch board. Only from the home folder (its CLAUDE.md says it is the dispatcher). Call with no arguments for 'what's up': Josh's tasks across every company, urgent first then by date, cut to the next seven. Call with markSeen:true for 'catch me up' and read changes, stuck, waitingOn, then waitingOnReview. Any argument lifts the cap; horizon:'today' alone is the default view uncapped. Never report counts.",
         inputSchema: {
           horizon: z.enum(["today", "week", "all"]).optional().describe("How far ahead to look. Default today."),
           owner: z.enum(["me", "claude", "all"]).optional().describe("Whose tasks. Default me."),
@@ -324,6 +324,8 @@ const handler = createMcpHandler(
         if (project && !role) throw new Error("project filter needs role");
         const r = role ? await resolveRole(role) : null;
         const p = r && project ? await resolveProject(r.id, r.name, project, { includeDone: true }) : null;
+        // One clock for the board and the stamp: a later stamp would skip tasks created in between.
+        const now = new Date();
         const [tasks, followUps, profile] = await Promise.all([
           prisma.task.findMany({
             where: { ...OPEN_TASK, role: { active: true }, ...(r ? { roleId: r.id } : {}), ...(p ? { projectId: p.id } : {}) },
@@ -354,8 +356,8 @@ const handler = createMcpHandler(
         const lastSeen = profile?.lastBoardAt
           ? { at: profile.lastBoardAt.toISOString(), day: dayOf(profile.lastBoardAt) }
           : null;
-        // Any filter is a request for more than the glance, so only the bare call is cut.
-        const capped = !horizon && !owner && !role && !project;
+        // Only the bare call is cut; an explicit horizon:"today" is how "more" gets the rest of it.
+        const { capped, isDefaultView } = viewFlags({ horizon, owner, role, project });
         const result = buildBoard(
           rows,
           followUps.map((f) => ({
@@ -372,15 +374,17 @@ const handler = createMcpHandler(
             owner: owner ?? "me",
             capped,
           },
-          new Date(),
+          now,
           lastSeen,
         );
         // Stamp after computing, so this call's changes are measured from the previous look.
-        // Only the unfiltered view stamps: the one global timestamp can't mark changes a filtered view never showed.
-        if (markSeen && capped) {
-          await prisma.userProfile.update({ where: { id: "default" }, data: { lastBoardAt: new Date() } });
+        // Only the effective default view stamps (explicit defaults count): the one global
+        // timestamp can't mark changes a filtered view never showed.
+        const seen = !!markSeen && isDefaultView;
+        if (seen) {
+          await prisma.userProfile.update({ where: { id: "default" }, data: { lastBoardAt: now } });
         }
-        return ok({ date, ...result });
+        return ok({ date, ...result, ...(seen ? { seen: true } : {}) });
       }
     );
 

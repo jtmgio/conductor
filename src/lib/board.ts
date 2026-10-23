@@ -31,6 +31,25 @@ export interface BoardOptions {
   capped: boolean;
 }
 
+export interface BoardArgs {
+  horizon?: Horizon;
+  owner?: OwnerFilter;
+  role?: string;
+  project?: string;
+}
+
+/** capped: nothing was passed, so the server cuts to BOARD_CAP. isDefaultView: the effective
+ *  filters equal the default, so a markSeen call may stamp lastBoardAt. Split on purpose:
+ *  `get_board({ horizon: "today" })` is how "more" re-reads the default view uncapped, and
+ *  it must still be allowed to stamp. */
+export function viewFlags(args: BoardArgs): { capped: boolean; isDefaultView: boolean } {
+  const { horizon, owner, role, project } = args;
+  return {
+    capped: !horizon && !owner && !role && !project,
+    isDefaultView: (horizon ?? "today") === "today" && (owner ?? "me") === "me" && !role && !project,
+  };
+}
+
 export type StuckReason = "blocked" | "pastDue" | "idle";
 
 export interface Board<T extends BoardTask> {
