@@ -31,6 +31,7 @@ model UserProfile {
   dayShiftMinutes        Int?
   lastSweepAt            DateTime? // last completed comms sweep (UTC instant)
   lastRolloverOn         DateTime? @db.Date // last silent end-of-day rollover (UX rule #6)
+  lastBoardAt            DateTime? // last time the home board was marked seen (UTC instant)
   updatedAt              DateTime @updatedAt
 }
 
@@ -112,6 +113,8 @@ model Task {
   project      Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
   /// Don't bring this up before this day. Not a deadline — a task can have both.
   notBefore    DateTime? @db.Date
+  /// Who does this: "me" (only Josh) or "claude" (a Claude Code session can run it).
+  owner        String    @default("me")
   /// Per-company sequence number. Rendered as `${role.taskPrefix}-${number}`.
   /// Allocated automatically by the Prisma extension in src/lib/prisma.ts.
   number     Int?
