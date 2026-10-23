@@ -147,13 +147,16 @@ the board and in the walk.
 `markSeen: true`, after computing. "What's up" doesn't stamp: it reads `board`
 and never says `changes`, so stamping there would swallow them. Widened views
 don't stamp either: a glance at "this week" isn't "I've seen everything."
+The test is the effective view, not whether arguments were passed: explicit
+defaults (`horizon: "today"`, `owner: "me"`) still stamp, and the response
+carries `seen: true` when it did.
 
 `changes` is everything since `lastBoardAt`, by key, in three lists:
 
 | List | Rule |
 |---|---|
 | `new` | `createdAt > lastBoardAt` |
-| `nowPastDue` | Past due now, and `dueDate` or `scheduledFor` on or after `lastBoardAt`'s date |
+| `nowPastDue` | `dueDate` or `scheduledFor` slipped: checked per date, a date counts only if it is itself past due (before today) and on or after `lastBoardAt`'s day |
 | `nowStuck` | `blockedAt > lastBoardAt`, or `in_review` with `updatedAt > lastBoardAt` |
 
 No "handed off" list: Josh did the hand-off himself. `in_review` uses
@@ -161,8 +164,9 @@ No "handed off" list: Josh did the hand-off himself. `in_review` uses
 column can come later if it's noisy. Done tasks are never in `changes`.
 Completed is gone (UX rule 2).
 
-"Catch me up" in home means: call `get_board({ markSeen: true })`, say only
-`changes` and `stuck`. "What's up" means: call `get_board()`, say `board`.
+"Catch me up" in home means: call `get_board({ markSeen: true })`, say
+`changes`, then `stuck`, then `waitingOn`, then `waitingOnReview`. "Nothing new"
+only when all four are empty. "What's up" means: call `get_board()`, say `board`.
 
 ### 4. The home folder
 
@@ -192,7 +196,7 @@ instructions, not the server. v1 keeps it that way.
 | Josh says | Claude does |
 |---|---|
 | "what's up" | `get_board()`. Reads `board` one line each: key, company, title, date if any. Then stops. |
-| "catch me up" | `get_board()`. Reads `changes` and `stuck`. If both are empty: "nothing new." |
+| "catch me up" | `get_board({ markSeen: true })`. Reads `changes`, `stuck`, `waitingOn`, `waitingOnReview`. If all four are empty: "nothing new." |
 | "give VQ-298 to a session" | `update_task { taskId, owner: "claude" }`. Says: "VQ-298 is marked for a session. Open the vQuip window." |
 | "add a Zeta task: …" | `create_task { role: "Zeta", text }`. Home has no firewall; it passes whatever company Josh names. If he names none, `create_task` infers as today, and Claude says which company it landed in. |
 | "this week" / "everything for HealthMe" / "the Venu project" / "Claude's tasks" | `get_board` with `horizon`, `role`, `project`, or `owner`. Seven lines at a time; "more" without a number. |
@@ -239,11 +243,14 @@ doesn't use the UI, and the walk's company order is cosmetic.
 ## Claude's calls (check these)
 
 - The field is `Task.owner`, values `me` | `claude`, default `me`.
-- `BOARD_CAP = 7`, applied to the default view only.
-- "Stuck" = blocked 3+ days (any owner) or a Claude-owned task that's past due.
-- `lastBoardAt` lives on `UserProfile`, stamped only by the default view.
-- `changes` has four lists (new, nowPastDue, nowStuck, handedOff) and never
-  includes done tasks.
+- `BOARD_CAP = 7`, applied only to the bare call. Any explicit argument lifts
+  the cap, so `get_board({ horizon: "today" })` is the default view uncapped.
+- "Stuck" = blocked 3+ days (any owner), or a Claude-owned task that's past due
+  or has had no update in 3+ days (idle).
+- `lastBoardAt` lives on `UserProfile`. It is stamped on `markSeen` when the
+  effective view is the default; explicit defaults count.
+- `changes` has three lists (new, nowPastDue, nowStuck) and never includes done
+  tasks.
 - Home is a minimal repo with one skill, not a boilerplate clone.
 - The walk gains `owner` on each entry but does not filter by it.
 - Only `markSeen: true` stamps `lastBoardAt`; "what's up" never does.
