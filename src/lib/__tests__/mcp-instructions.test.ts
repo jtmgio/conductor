@@ -32,6 +32,10 @@ describe("CONDUCTOR_MCP_INSTRUCTIONS", () => {
     for (const term of ["get_board", "owner"]) expect(CONDUCTOR_MCP_INSTRUCTIONS).toContain(term);
   });
 
+  it("tells sessions to read a project's links", () => {
+    expect(CONDUCTOR_MCP_INSTRUCTIONS).toMatch(/read[^.]*links/);
+  });
+
   it("drops the firewall only in the home folder", () => {
     expect(CONDUCTOR_MCP_INSTRUCTIONS).toMatch(/home folder/i);
     expect(CONDUCTOR_MCP_INSTRUCTIONS).not.toMatch(/no company role has no firewall/);
