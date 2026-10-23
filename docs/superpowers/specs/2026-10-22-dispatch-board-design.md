@@ -115,16 +115,22 @@ No `role`. Every active company. Input: open tasks (`done = false`, status not
 | `owner` | `me` | `me`, `claude`, or `all` |
 | `role?` | — | One company (partial name ok) |
 | `project?` | — | One project; needs `role` |
+| `markSeen?` | `false` | Stamp `lastBoardAt` (section 3). Only "catch me up" passes `true` |
 
 Output:
 
 | Field | What's in it |
 |---|---|
-| `board` | Tasks matching the filters. Order: urgent first, then past due, then today, then (if widened) the rest. Inside each: `dueDate` soonest first, none last; then `role.priority`; then `createdAt`. **Capped at 7 on the default view** (`BOARD_CAP`). `more: true` when the cap cut something. No number. |
-| `stuck` | Any owner. Blocked 3+ days (same rule as the walk), or `owner = claude` and past due. These are the only way a hidden task comes back. |
-| `waitingOnReview` | `status = in_review`, any owner |
+| `board` | Tasks matching the filters, **except** blocked and `in_review` ones (each task sits in one list, as in the walk). Order: urgent first, then past due, then today, then (if widened) the rest. Inside each: `dueDate` soonest first, none last; then `role.priority`; then `createdAt`. **Capped at 7 on the default view** (`BOARD_CAP`). `more: true` when the cap cut something. No number. |
+| `stuck` | Any owner, so the `owner` filter doesn't apply; `role`/`project` do. Three ways in: blocked 3+ days (same rule as the walk); `owner = claude` and past due; `owner = claude` and no update in 3+ days (`updatedAt`). The third one is how a hand-off with no due date comes back. A task in `stuck` is not in `board`. |
+| `waitingOnReview` | `status = in_review`. `role`/`project` filters apply. |
 | `waitingOn` | Follow-ups whose `staleDays` has passed. The one proactive alert (UX rule 7). |
 | `changes` | Section 3. Omitted when nothing is recorded. |
+
+Only `board` is capped by the server. `stuck`, `waitingOnReview`, `waitingOn`
+and `changes` come back whole; the home skill shows seven lines at a time and
+offers "more" without a count. Why: cutting `stuck` would hide the exact tasks
+the list exists to bring back.
 
 A widened view (`horizon`, `role`, `project`, or `owner` set) is not capped: Josh
 asked for it. The home skill still shows seven lines at a time and offers
@@ -137,23 +143,26 @@ the board and in the walk.
 
 ### 3. Catch me up
 
-`UserProfile.lastBoardAt DateTime?`. The default view of `get_board` (no
-filters) stamps it after computing. Widened views don't: a glance at "this
-week" isn't "I've seen everything."
+`UserProfile.lastBoardAt DateTime?`. `get_board` stamps it only when called with
+`markSeen: true`, after computing. "What's up" doesn't stamp: it reads `board`
+and never says `changes`, so stamping there would swallow them. Widened views
+don't stamp either: a glance at "this week" isn't "I've seen everything."
 
-`changes` is everything since `lastBoardAt`, by key, in four lists:
+`changes` is everything since `lastBoardAt`, by key, in three lists:
 
 | List | Rule |
 |---|---|
 | `new` | `createdAt > lastBoardAt` |
 | `nowPastDue` | Past due now, and `dueDate` or `scheduledFor` on or after `lastBoardAt`'s date |
 | `nowStuck` | `blockedAt > lastBoardAt`, or `in_review` with `updatedAt > lastBoardAt` |
-| `handedOff` | `owner = claude` and `updatedAt > lastBoardAt` |
 
-Done tasks are never in `changes`. Completed is gone (UX rule 2).
+No "handed off" list: Josh did the hand-off himself. `in_review` uses
+`updatedAt` as an approximation; a wrong hit costs one line, and a `reviewAt`
+column can come later if it's noisy. Done tasks are never in `changes`.
+Completed is gone (UX rule 2).
 
-"Catch me up" in home means: call `get_board`, say only `changes` and `stuck`.
-"What's up" means: say `board`.
+"Catch me up" in home means: call `get_board({ markSeen: true })`, say only
+`changes` and `stuck`. "What's up" means: call `get_board()`, say `board`.
 
 ### 4. The home folder
 
@@ -169,6 +178,14 @@ The globally linked `conductor` skill still loads here, and it states the
 firewall. `CLAUDE.md` says plainly: in this folder use `dispatch`, not
 `conductor`; the firewall is for company folders. The server instructions say
 the same (section 6), so it holds even if `CLAUDE.md` is skimmed.
+
+**Home is the only folder without the firewall.** Not "any folder with no
+company." The conductor repo, the tower repo, and bare code repos keep the
+firewall rules as they are today. The marker is the home `CLAUDE.md` naming
+itself the dispatcher, and the instruction line says exactly that. The server
+can't tell folders apart (one token, user scope), and `get_today_walk` with no
+role already returns every company, so this was always governed by
+instructions, not the server. v1 keeps it that way.
 
 ### 5. The five moves
 
@@ -189,7 +206,7 @@ Close-as-you-go marks the task done and it leaves the board.
 
 | Layer | Change |
 |---|---|
-| **Server instructions** | Two lines added. Owner: "owner is me (only Josh) or claude (a session can run it); propose it when filing." Home: "a folder with no company role has no firewall; call get_board for 'what's up' and 'catch me up'." Must stay under 300 words; trim elsewhere if needed. |
+| **Server instructions** | Two lines added. Owner: "owner is me (only Josh) or claude (a session can run it); propose it when filing." Home: "only the home folder (its CLAUDE.md says it is the dispatcher) has no firewall; there, call get_board for 'what's up' and 'catch me up'." Must stay under 300 words; trim elsewhere if needed. |
 | **Tool descriptions** | `get_board` says when to call it. `get_today_walk` says "in a company window." `create_task`/`update_task` mention `owner`. |
 | **Home `CLAUDE.md` + `dispatch` skill** | Section 4. |
 | **`conductor` skill** (boilerplate) | Walk step 2 gains the owner rule. Run `tooling/sync-conductor-skills.sh`, commit in both targets. |
@@ -200,10 +217,11 @@ Close-as-you-go marks the task done and it leaves the board.
 
 The board uses `Role.priority` as the tie-break. Josh's stated order (Zeta,
 vQuip, HealthMe, Healthmap, Xenegrade) does not match the stored priorities
-(vQuip, Zeta, Healthmap, HealthMe, …). Fixing it is a data change in Settings >
-Roles or one SQL update, done with Josh present. It also reorders the UI's
-priority waterfall and the `companies[]` order in `get_today_walk`. Open
-question below.
+(vQuip, Zeta, Healthmap, HealthMe, …). Fix it by changing `Role.priority`, not
+with a board-only order (Claude's call: one order everywhere, no new field).
+It's one SQL update, done with Josh present. Side effects: the UI's priority
+waterfall and the `companies[]` order in `get_today_walk` follow it. Josh
+doesn't use the UI, and the walk's company order is cosmetic.
 
 ## Decided by Josh
 
@@ -228,6 +246,15 @@ question below.
   includes done tasks.
 - Home is a minimal repo with one skill, not a boilerplate clone.
 - The walk gains `owner` on each entry but does not filter by it.
+- Only `markSeen: true` stamps `lastBoardAt`; "what's up" never does.
+- A Claude-owned task with no update in 3+ days counts as stuck, so a hand-off
+  with no due date can't vanish.
+- `board` excludes blocked and `in_review` tasks; a task is in one list only.
+- Only `board` is capped server-side. The skill pages the rest, seven at a time.
+- No `handedOff` list in `changes`.
+- Home alone drops the firewall, by `CLAUDE.md` marker, enforced by
+  instructions, not the server.
+- Company order is a `Role.priority` change, not a board-only field.
 
 ## Left to the builder
 
