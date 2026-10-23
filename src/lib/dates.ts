@@ -9,18 +9,22 @@ function getTimezone(): string {
 
 const TIMEZONE = getTimezone();
 
+/** The YYYY-MM-DD calendar day an instant falls on in the configured timezone (en-CA formats as YYYY-MM-DD). */
+export function dayOf(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
 /**
  * Today's calendar date in the configured timezone, returned as a UTC-midnight Date.
  * Suitable for Prisma @db.Date columns and date-only comparisons.
  */
 export function today(): Date {
-  const ymd = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TIMEZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  const [y, m, d] = ymd.split("-").map(Number);
+  const [y, m, d] = dayOf(new Date()).split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d));
 }
 
