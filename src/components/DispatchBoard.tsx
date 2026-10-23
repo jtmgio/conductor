@@ -147,8 +147,11 @@ export function DispatchBoard() {
   const { toast } = useToast();
   // A slow response from an old toggle setting must not overwrite a newer one.
   const requestSeq = useRef(0);
+  // Ticked tasks stay gone: a fetch that was in flight (or lands before the PUT does) still carries them.
+  const doneIds = useRef(new Set<string>());
 
-  const load = useCallback(async () => {
+  // Background refreshes pass silent so a dropped connection doesn't toast every minute.
+  const load = useCallback(async (silent = false) => {
     const seq = ++requestSeq.current;
     const isDefault = horizon === "today" && owner === "me";
     // A bare call is the capped view; naming the horizon lifts the cap, which is how "more" works.
@@ -156,16 +159,38 @@ export function DispatchBoard() {
     try {
       const res = await fetch(`/api/board${qs}`);
       if (!res.ok) throw new Error();
-      const json: BoardResponse = await res.json();
-      if (seq === requestSeq.current) setData(json);
+      const raw: BoardResponse = await res.json();
+      if (seq === requestSeq.current) {
+        const alive = <T extends BoardRow>(list: T[]) => list.filter((t) => !doneIds.current.has(t.id));
+        const json: BoardResponse = { ...raw, board: alive(raw.board), stuck: alive(raw.stuck), waitingOnReview: alive(raw.waitingOnReview) };
+        setData(json);
+        // A task the refetch dropped (hand-off, blocked, icebox) must not reopen the drawer if it comes back later.
+        setDrawerTaskId((id) =>
+          id && [...json.board, ...json.stuck, ...json.waitingOnReview].some((t) => t.id === id) ? id : null,
+        );
+      }
     } catch {
-      if (seq === requestSeq.current) toast("Failed to load board", "error");
+      if (seq === requestSeq.current && !silent) toast("Failed to load board", "error");
     }
     if (seq === requestSeq.current) setLoading(false);
   }, [horizon, owner, expanded, toast]);
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // Claude Code sessions create and close tasks while this page sits open, so poll
+  // on the same 60s cadence as the cockpit and catch up when the tab is shown again.
+  useEffect(() => {
+    const refreshIfVisible = () => {
+      if (!document.hidden) load(true);
+    };
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    const i = setInterval(refreshIfVisible, 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      clearInterval(i);
+    };
   }, [load]);
 
   const pickHorizon = (h: Horizon) => { setExpanded(false); setHorizon(h); };
@@ -188,8 +213,8 @@ export function DispatchBoard() {
       const result = await res.json();
       // The PUT response has no key or project; keep the row's own.
       mapTasks((list) => list.map((t) => (t.id === taskId ? { ...t, ...result, key: t.key, project: t.project } : t)));
-      // A hand-off can move the row out of the current owner view.
-      if ("owner" in body) load();
+      // These decide which list the row is on and where, so the server re-sorts.
+      if (["dueDate", "priority", "scheduledFor", "owner"].some((k) => k in body)) load();
     } catch {
       toast("Failed to update task", "error");
     }
@@ -211,6 +236,9 @@ export function DispatchBoard() {
   };
 
   const completeTask = async (taskId: string) => {
+    doneIds.current.add(taskId);
+    // Drop any older in-flight response; it still has this task in it.
+    requestSeq.current++;
     mapTasks((list) => list.filter((t) => t.id !== taskId));
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
@@ -220,6 +248,7 @@ export function DispatchBoard() {
       });
       if (!res.ok) throw new Error();
     } catch {
+      doneIds.current.delete(taskId);
       toast("Failed to complete task", "error");
       load();
     }

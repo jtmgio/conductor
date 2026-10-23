@@ -150,7 +150,7 @@ export function GlobalSearch({ hideTrigger = false }: { hideTrigger?: boolean } 
     {
       id: "go-today",
       label: "Go to Today",
-      description: "Your one-thing cockpit",
+      description: "Your dispatch board",
       icon: Crosshair,
       keywords: ["today", "focus", "home", "now"],
       action: async () => { setOpen(false); router.push("/"); },

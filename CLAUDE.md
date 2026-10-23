@@ -385,7 +385,7 @@ Each block has: label, start time, end time, and per-weekday role assignments vi
 1. **No badge counts.** Not on nav tabs, not on role cards, not anywhere. Numbers create anxiety.
 2. **Completed tasks are GONE.** Framer Motion slide-out animation → removed from DOM. No "completed" section. No count.
 3. **Follow-ups are NOT tasks.** They live in the Tracker view, completely separate.
-4. **Focus mode shows ONE role.** The current time block's role. No cross-role noise.
+4. **Today shows the dispatch board:** every company, next seven things, no counts. One-company focus lives in the per-company Claude Code windows.
 5. **Morning task selection is optional.** User can skip straight to focus mode.
 6. **End of day is silent.** Incomplete today-tasks quietly return to backlog. No summary, no guilt.
 7. **Stale follow-ups are the only proactive alert.** Everything else waits for the user to look.
