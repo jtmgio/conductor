@@ -4,13 +4,14 @@ import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentBlock, getTimeLabel } from "@/lib/schedule";
-import { today, formatDateOnly } from "@/lib/dates";
+import { today, formatDateOnly, dayOf } from "@/lib/dates";
 import { invalidateRebalanceCache } from "@/lib/schedule-rebalance";
 import { refineTask, splitRawTask, type RefinedTask } from "@/lib/task-refine";
 import { formatMessage } from "@/lib/format-message";
 import { taskKey, parseTaskKey, looksLikeTaskKey } from "@/lib/task-key";
 import { matchProject, projectIdAfterRoleChange } from "@/lib/projects";
 import { buildWalk, WALK_SECTIONS, type WalkTask } from "@/lib/today-walk";
+import { buildBoard, type BoardTask } from "@/lib/board";
 import { CONDUCTOR_MCP_INSTRUCTIONS } from "@/lib/mcp-instructions";
 
 export const dynamic = "force-dynamic";
@@ -114,7 +115,7 @@ function ok(data: unknown) {
 }
 
 function taskShape(t: {
-  id: string; title: string; status: string; priority: string; done: boolean;
+  id: string; title: string; status: string; priority: string; owner: string; done: boolean;
   scheduledFor: Date | null; dueDate: Date | null; notes: string | null;
   number?: number | null; externalKey?: string | null;
   role?: { name: string; taskPrefix?: string | null } | null;
@@ -129,6 +130,7 @@ function taskShape(t: {
     role: t.role?.name,
     status: t.status,
     priority: t.priority,
+    owner: t.owner,
     done: t.done,
     scheduledFor: formatDateOnly(t.scheduledFor),
     dueDate: formatDateOnly(t.dueDate),
@@ -262,7 +264,7 @@ const handler = createMcpHandler(
       {
         title: "Today walk",
         description:
-          "The morning walk. Call this for 'what's up today' and similar. Pass this command center's role. Returns open tasks in the order to walk them, one at a time: urgent, past due (ask 'did this happen?'), due or planned today, due this week, in progress, then the rest by project. Long-blocked and in-review tasks come back in their own lists; tasks with a future notBefore are left out.",
+          "In a company window: the morning walk. Call this for 'what's up today' and similar. Pass this command center's role. Returns open tasks in the order to walk them, one at a time: urgent, past due (ask 'did this happen?'), due or planned today, due this week, in progress, then the rest by project. Long-blocked and in-review tasks come back in their own lists; tasks with a future notBefore are left out.",
         inputSchema: {
           // min(1): a blank role must not fall through to "every company".
           role: z.string().trim().min(1).optional().describe("Role/company name (partial ok) or id. Omit only outside a command center — it returns every company."),
@@ -301,6 +303,82 @@ const handler = createMcpHandler(
             ...walkResponse(rows.filter((row) => row.role === role.name), date, contextFor(role.id)),
           })),
         });
+      }
+    );
+
+    server.registerTool(
+      "get_board",
+      {
+        title: "Dispatch board",
+        description:
+          "The dispatch board. Only from the home folder (its CLAUDE.md says it is the dispatcher). Call with no arguments for 'what's up': Josh's tasks across every company, urgent first then by date, cut to the next seven. Call with markSeen:true for 'catch me up' and read only changes and stuck. horizon/owner/role/project widen it and lift the cap. Never report counts.",
+        inputSchema: {
+          horizon: z.enum(["today", "week", "all"]).optional().describe("How far ahead to look. Default today."),
+          owner: z.enum(["me", "claude", "all"]).optional().describe("Whose tasks. Default me."),
+          role: z.string().trim().min(1).optional().describe("Limit to one company (name partial ok, or id)."),
+          project: z.string().trim().min(1).optional().describe("Limit to one project in that company. Needs role."),
+          markSeen: z.boolean().optional().describe("Stamp this look as seen, so the next call's changes are measured from now. Default false."),
+        },
+      },
+      async ({ horizon, owner, role, project, markSeen }) => {
+        if (project && !role) throw new Error("project filter needs role");
+        const r = role ? await resolveRole(role) : null;
+        const p = r && project ? await resolveProject(r.id, r.name, project, { includeDone: true }) : null;
+        const [tasks, followUps, profile] = await Promise.all([
+          prisma.task.findMany({
+            where: { ...OPEN_TASK, ...(r ? { roleId: r.id } : {}), ...(p ? { projectId: p.id } : {}) },
+            include: {
+              role: { select: { name: true, taskPrefix: true, priority: true } },
+              project: { select: { name: true } },
+            },
+          }),
+          // buildBoard has no status to filter on, so only waiting ones are loaded.
+          prisma.followUp.findMany({ where: { status: "waiting" }, include: { role: { select: { name: true } } } }),
+          prisma.userProfile.findUnique({ where: { id: "default" }, select: { lastBoardAt: true } }),
+        ]);
+        const date = formatDateOnly(today())!;
+        const rows: (BoardTask & { id: string })[] = tasks.map((t) => {
+          const shaped = taskShape(t);
+          return {
+            ...shaped,
+            key: shaped.key ?? t.id,
+            owner: t.owner as "me" | "claude",
+            role: t.role.name,
+            rolePriority: t.role.priority,
+            blockedAt: t.blockedAt?.toISOString() ?? null,
+            blockedReason: t.blockedReason,
+            createdAt: t.createdAt.toISOString(),
+            updatedAt: t.updatedAt.toISOString(),
+          };
+        });
+        const lastSeen = profile?.lastBoardAt
+          ? { at: profile.lastBoardAt.toISOString(), day: dayOf(profile.lastBoardAt) }
+          : null;
+        const result = buildBoard(
+          rows,
+          followUps.map((f) => ({
+            id: f.id,
+            title: f.title,
+            waitingOn: f.waitingOn,
+            role: f.role.name,
+            createdAt: f.createdAt.toISOString(),
+            staleDays: f.staleDays,
+          })),
+          date,
+          {
+            horizon: horizon ?? "today",
+            owner: owner ?? "me",
+            // Any filter is a request for more than the glance, so only the bare call is cut.
+            capped: !horizon && !owner && !role && !project,
+          },
+          new Date(),
+          lastSeen,
+        );
+        // Stamp after computing, so this call's changes are measured from the previous look.
+        if (markSeen) {
+          await prisma.userProfile.update({ where: { id: "default" }, data: { lastBoardAt: new Date() } });
+        }
+        return ok({ date, ...result });
       }
     );
 
@@ -486,9 +564,10 @@ const handler = createMcpHandler(
           refine: z.boolean().optional().describe("Set false to skip AI refinement and save the text verbatim (role required)"),
           project: z.string().optional().describe("Project name in this role. Call list_projects first. Never guessed by the server."),
           notBefore: z.string().optional().describe("YYYY-MM-DD. Use for 'after X' / 'not before X'. Not a deadline."),
+          owner: z.enum(["me", "claude"]).optional().describe('"me" (default) if only Josh can do it, "claude" if a Claude Code session can run it. Propose it when filing.'),
         },
       },
-      async ({ text, role, priority, isToday, dueDate, refine, project, notBefore }) => {
+      async ({ text, role, priority, isToday, dueDate, refine, project, notBefore, owner }) => {
         let resolved = role ? await resolveRole(role) : null;
         let refined: RefinedTask | null = null;
         let refineError: string | null = null;
@@ -538,6 +617,7 @@ const handler = createMcpHandler(
             notes: refined?.notes || fallback?.notes || undefined,
             checklist: refined?.checklist || undefined,
             priority: priority || refined?.priority || "normal",
+            owner: owner ?? "me",
             status: "backlog",
             scheduledFor: isToday ? today() : null,
             dueDate: (dueDate || refined?.dueDate) ? new Date(`${dueDate || refined?.dueDate}T00:00:00`) : undefined,
@@ -579,9 +659,10 @@ const handler = createMcpHandler(
           role: z.string().optional().describe("Move the task to a different role/company (name or id). Drops its project unless project is also given."),
           project: z.string().nullable().optional().describe("Project name in the task's role (after any move), or null to remove it"),
           notBefore: z.string().nullable().optional().describe("YYYY-MM-DD wait-until date, or null to clear"),
+          owner: z.enum(["me", "claude"]).optional().describe('Hand-off: "claude" means a session can run it. Changes nothing else.'),
         },
       },
-      async ({ taskId, title, status, done, priority, isToday, dueDate, notes, checklist, role, blockedReason, project, notBefore }) => {
+      async ({ taskId, title, status, done, priority, isToday, dueDate, notes, checklist, role, blockedReason, project, notBefore, owner }) => {
         const id = await resolveTaskId(taskId);
         const data: Record<string, unknown> = {};
         const current = await prisma.task.findUniqueOrThrow({
@@ -616,6 +697,7 @@ const handler = createMcpHandler(
           data.blockedReason = blockedReason || null;
         }
         if (priority !== undefined) data.priority = priority;
+        if (owner !== undefined) data.owner = owner;
         if (notes !== undefined) data.notes = notes;
         if (done !== undefined) {
           data.done = done;
