@@ -240,9 +240,10 @@ question below.
 - Where the two instruction lines go and what gets trimmed to stay under 300
   words.
 
-## Open question for Josh
+## Other companies (decided)
 
 Roles beyond the five he named (Wris, TrainBetter.coach, React Health,
-Conductor, Personal) are all active and have open tasks. Does the board show
-them after the five, or are they left out? The design assumes **after**, in
-their current priority order.
+Conductor, Personal) are on the board too. Urgency and date decide the order;
+company priority only breaks ties. An urgent Wris task shows above a plain
+Zeta one. So the stored priorities need reordering (section 7) but nothing is
+left out.
