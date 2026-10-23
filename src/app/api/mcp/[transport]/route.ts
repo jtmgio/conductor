@@ -326,14 +326,14 @@ const handler = createMcpHandler(
         const p = r && project ? await resolveProject(r.id, r.name, project, { includeDone: true }) : null;
         const [tasks, followUps, profile] = await Promise.all([
           prisma.task.findMany({
-            where: { ...OPEN_TASK, ...(r ? { roleId: r.id } : {}), ...(p ? { projectId: p.id } : {}) },
+            where: { ...OPEN_TASK, role: { active: true }, ...(r ? { roleId: r.id } : {}), ...(p ? { projectId: p.id } : {}) },
             include: {
               role: { select: { name: true, taskPrefix: true, priority: true } },
               project: { select: { name: true } },
             },
           }),
           // buildBoard has no status to filter on, so only waiting ones are loaded.
-          prisma.followUp.findMany({ where: { status: "waiting" }, include: { role: { select: { name: true } } } }),
+          prisma.followUp.findMany({ where: { status: "waiting", role: { active: true } }, include: { role: { select: { name: true } } } }),
           prisma.userProfile.findUnique({ where: { id: "default" }, select: { lastBoardAt: true } }),
         ]);
         const date = formatDateOnly(today())!;
@@ -354,6 +354,8 @@ const handler = createMcpHandler(
         const lastSeen = profile?.lastBoardAt
           ? { at: profile.lastBoardAt.toISOString(), day: dayOf(profile.lastBoardAt) }
           : null;
+        // Any filter is a request for more than the glance, so only the bare call is cut.
+        const capped = !horizon && !owner && !role && !project;
         const result = buildBoard(
           rows,
           followUps.map((f) => ({
@@ -368,14 +370,14 @@ const handler = createMcpHandler(
           {
             horizon: horizon ?? "today",
             owner: owner ?? "me",
-            // Any filter is a request for more than the glance, so only the bare call is cut.
-            capped: !horizon && !owner && !role && !project,
+            capped,
           },
           new Date(),
           lastSeen,
         );
         // Stamp after computing, so this call's changes are measured from the previous look.
-        if (markSeen) {
+        // Only the unfiltered view stamps: the one global timestamp can't mark changes a filtered view never showed.
+        if (markSeen && capped) {
           await prisma.userProfile.update({ where: { id: "default" }, data: { lastBoardAt: new Date() } });
         }
         return ok({ date, ...result });
