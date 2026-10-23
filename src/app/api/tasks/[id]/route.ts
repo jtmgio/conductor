@@ -14,6 +14,12 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   if (body.title !== undefined) data.title = body.title;
   if (body.priority !== undefined) data.priority = body.priority;
+  if (body.owner !== undefined) {
+    if (body.owner !== "me" && body.owner !== "claude") {
+      return NextResponse.json({ error: 'owner must be "me" or "claude"' }, { status: 400 });
+    }
+    data.owner = body.owner;
+  }
   if (body.scheduledFor !== undefined) data.scheduledFor = parseDateOnly(body.scheduledFor);
   if (body.notes !== undefined) data.notes = body.notes;
   if (body.dueDate !== undefined) data.dueDate = body.dueDate ? new Date(body.dueDate) : null;
