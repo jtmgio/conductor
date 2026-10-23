@@ -27,4 +27,13 @@ describe("CONDUCTOR_MCP_INSTRUCTIONS", () => {
   it("keeps a command center to its own company", () => {
     expect(CONDUCTOR_MCP_INSTRUCTIONS).toContain("pass the role of the command center you are in");
   });
+
+  it("names the board and the owner field", () => {
+    for (const term of ["get_board", "owner"]) expect(CONDUCTOR_MCP_INSTRUCTIONS).toContain(term);
+  });
+
+  it("drops the firewall only in the home folder", () => {
+    expect(CONDUCTOR_MCP_INSTRUCTIONS).toMatch(/home folder/i);
+    expect(CONDUCTOR_MCP_INSTRUCTIONS).not.toMatch(/no company role has no firewall/);
+  });
 });
