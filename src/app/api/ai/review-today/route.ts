@@ -16,7 +16,8 @@ export const dynamic = "force-dynamic";
  * Body (all optional):
  *   targetDate: YYYY-MM-DD — defaults to today. Hours computed from that day's blocks.
  *   candidateTaskIds: string[] — tasks to evaluate. Defaults to all tasks
- *     scheduledFor <= targetDate (i.e., today's actual list).
+ *     scheduledFor = targetDate (that day's plan; earlier
+ *     days' leftovers are asked about in the walk, not counted here).
  */
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
         orderBy: [{ role: { priority: "asc" } }, { sortOrder: "asc" }],
       })
     : await prisma.task.findMany({
-        where: { scheduledFor: { lte: target }, done: false, status: { not: "icebox" } },
+        where: { scheduledFor: target, done: false, status: { not: "icebox" } },
         include: { role: { select: { id: true, name: true, color: true } } },
         orderBy: [{ role: { priority: "asc" } }, { sortOrder: "asc" }],
       });

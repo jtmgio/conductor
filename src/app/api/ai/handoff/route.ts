@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
   const todayDate = today().getTime();
   const taskList = openTasks.length > 0
     ? openTasks.map((t) => {
-        const isOnTodayList = t.scheduledFor && t.scheduledFor.getTime() <= todayDate;
+        const isOnTodayList = t.scheduledFor && t.scheduledFor.getTime() === todayDate;
         return `- ${t.title} (${t.priority}${isOnTodayList ? ", today" : ""}, ${t.status})`;
       }).join("\n")
     : "No open tasks.";

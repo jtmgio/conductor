@@ -15,7 +15,7 @@ export async function GET() {
       orderBy: { priority: "asc" },
     }),
     prisma.task.findMany({
-      where: { scheduledFor: { lte: today() }, done: false },
+      where: { scheduledFor: today(), done: false },
       select: { id: true, title: true, status: true, roleId: true, tags: { include: { tag: true } } },
     }),
     prisma.followUp.findMany({

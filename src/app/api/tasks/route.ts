@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   const where: Record<string, unknown> = {};
   if (includeDone !== "true") where.done = false;
   if (roleId) where.roleId = roleId;
-  if (todayFilter === "true") where.scheduledFor = { lte: today() };
+  if (todayFilter === "true") where.scheduledFor = today();
   if (sourceType) where.sourceType = sourceType;
   if (sourceId) where.sourceId = sourceId;
   if (includeIcebox !== "true") where.status = { not: "icebox" };

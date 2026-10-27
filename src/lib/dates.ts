@@ -133,9 +133,9 @@ export function parseScheduleTag(input: string): { iso: string; match: string } 
   return null;
 }
 
-/** True if the given ISO date string is today or earlier (in the configured tz). */
-export function isScheduledForTodayOrPast(value: string | null | undefined): boolean {
+/** True if the given ISO date string is today (in the configured tz). An earlier day is a leftover, asked about in the walk. */
+export function isScheduledForToday(value: string | null | undefined): boolean {
   const d = parseDateOnly(value);
   if (!d) return false;
-  return d.getTime() <= today().getTime();
+  return d.getTime() === today().getTime();
 }

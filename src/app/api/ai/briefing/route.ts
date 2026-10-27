@@ -17,7 +17,7 @@ export async function GET() {
 
   const [todayTasks, staleFollowUps, scheduleBlocks, roles] = await Promise.all([
     prisma.task.findMany({
-      where: { scheduledFor: { lte: today() }, done: false },
+      where: { scheduledFor: today(), done: false },
       include: { role: { select: { name: true, color: true } } },
       orderBy: [{ priority: "desc" }, { sortOrder: "asc" }],
     }),

@@ -191,7 +191,7 @@ const handler = createMcpHandler(
             orderBy: { priority: "asc" },
           }),
           prisma.task.findMany({
-            where: { scheduledFor: { lte: today() }, done: false },
+            where: { scheduledFor: today(), done: false },
             include: TASK_INCLUDE,
             orderBy: [{ role: { priority: "asc" } }, { sortOrder: "asc" }],
           }),
@@ -248,7 +248,7 @@ const handler = createMcpHandler(
         }
         if (status) where.status = status;
         else where.status = { not: "icebox" };
-        if (todayOnly) where.scheduledFor = { lte: today() };
+        if (todayOnly) where.scheduledFor = today();
         const tasks = await prisma.task.findMany({
           where,
           include: { ...TASK_INCLUDE, role: { select: { name: true, priority: true, taskPrefix: true } } },

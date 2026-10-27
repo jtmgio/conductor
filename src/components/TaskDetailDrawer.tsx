@@ -8,7 +8,7 @@ import { STATUS_CONFIG, STATUS_ORDER } from "./TaskItem";
 import { FontSizeControl } from "./FontSizeControl";
 import { useFontSize } from "@/hooks/useFontSize";
 import { useToast } from "@/components/ui/toast";
-import { todayISO, isScheduledForTodayOrPast } from "@/lib/dates";
+import { todayISO, isScheduledForToday } from "@/lib/dates";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -496,17 +496,17 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                   </button>
                   <button
                     onClick={() => {
-                      const onTodayList = isScheduledForTodayOrPast(task.scheduledFor);
+                      const onTodayList = isScheduledForToday(task.scheduledFor);
                       save({ scheduledFor: onTodayList ? null : todayISO() });
                       window.dispatchEvent(new CustomEvent("tasks-changed"));
                     }}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[14px] font-medium transition-colors ${
-                      isScheduledForTodayOrPast(task.scheduledFor)
+                      isScheduledForToday(task.scheduledFor)
                         ? "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
                         : "bg-[var(--surface-raised)] text-[var(--text-tertiary)] hover:text-amber-400 hover:bg-amber-500/10"
                     }`}
                   >
-                    <Sun className="w-4 h-4" /> {isScheduledForTodayOrPast(task.scheduledFor) ? "In Today" : "Add to Today"}
+                    <Sun className="w-4 h-4" /> {isScheduledForToday(task.scheduledFor) ? "In Today" : "Add to Today"}
                   </button>
                   <div className="flex-1" />
                   <button

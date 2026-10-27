@@ -15,7 +15,7 @@ export async function resolveSkillVariables(prompt: string, roleId: string): Pro
 
     todayTasks: async () => {
       const tasks = await prisma.task.findMany({
-        where: { roleId, scheduledFor: { lte: today() }, done: false },
+        where: { roleId, scheduledFor: today(), done: false },
         include: { tags: { include: { tag: true } } },
       });
       return tasks.map((t) => `- ${t.title} [${t.status}]${t.priority === "urgent" ? " (URGENT)" : ""}`).join("\n") || "(none)";
@@ -103,7 +103,7 @@ export async function resolveSkillVariables(prompt: string, roleId: string): Pro
 
     calendarTasks: async () => {
       const tasks = await prisma.task.findMany({
-        where: { roleId, scheduledFor: { lte: today() }, sourceType: "calendar", done: false },
+        where: { roleId, scheduledFor: today(), sourceType: "calendar", done: false },
       });
       return tasks.map((t) => `- ${t.title}${t.notes ? `\n  ${t.notes}` : ""}`).join("\n") || "(no calendar tasks)";
     },
@@ -119,7 +119,7 @@ export async function resolveSkillVariables(prompt: string, roleId: string): Pro
 
     roleTodayTasks: async () => {
       const tasks = await prisma.task.findMany({
-        where: { roleId, scheduledFor: { lte: today() }, done: false },
+        where: { roleId, scheduledFor: today(), done: false },
       });
       return tasks.map((t) => `- ${t.title} [${t.status}]`).join("\n") || "(none)";
     },

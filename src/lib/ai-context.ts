@@ -111,7 +111,7 @@ async function buildVoiceProfile(): Promise<string> {
 async function buildStateSnapshot(): Promise<string> {
   const current = await getCurrentBlock();
   const todayTasks = await prisma.task.findMany({
-    where: { scheduledFor: { lte: today() }, done: false },
+    where: { scheduledFor: today(), done: false },
     include: { role: { select: { name: true } } },
     orderBy: { role: { priority: "asc" } },
   });
