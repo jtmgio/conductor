@@ -105,7 +105,8 @@ export async function GET(req: NextRequest) {
   });
 
   const date = formatDateOnly(today())!;
-  const { capped } = viewFlags({ horizon, owner, role: role ?? undefined, project: project ?? undefined });
+  // The app shows every owner by default (it's all Josh's), so owner never decides the cap here.
+  const { capped } = viewFlags({ horizon, role: role ?? undefined, project: project ?? undefined });
   const result = buildBoard(
     rows,
     followUps.map((f) => ({
@@ -117,7 +118,7 @@ export async function GET(req: NextRequest) {
       staleDays: f.staleDays,
     })),
     date,
-    { horizon: horizon ?? "today", owner: owner ?? "me", capped },
+    { horizon: horizon ?? "today", owner: owner ?? "all", capped },
     now,
   );
 

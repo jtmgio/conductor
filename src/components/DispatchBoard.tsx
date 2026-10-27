@@ -11,7 +11,6 @@ import { groupBoard } from "@/lib/board-groups";
 import { cn } from "@/lib/utils";
 
 type Horizon = "today" | "week" | "all";
-type Owner = "me" | "claude" | "all";
 
 interface BoardRow extends DrawerTask {
   key: string;
@@ -61,7 +60,6 @@ interface Chip {
 }
 
 const HORIZONS: [Horizon, string][] = [["today", "Today"], ["week", "Week"], ["all", "All"]];
-const OWNERS: [Owner, string][] = [["me", "Mine"], ["claude", "Claude"], ["all", "Everyone"]];
 
 const SECTION_LABEL = "text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-2";
 
@@ -247,7 +245,6 @@ function WaitingLine({ row }: { row: WaitingRow }) {
 
 export function DispatchBoard() {
   const [horizon, setHorizon] = useState<Horizon>("today");
-  const [owner, setOwner] = useState<Owner>("me");
   // Follow-ups are noise most of the time; off unless asked for, and remembered per browser.
   const [showWaiting, setShowWaiting] = useState(false);
   useEffect(() => {
@@ -279,19 +276,20 @@ export function DispatchBoard() {
   // Background refreshes pass silent so a dropped connection doesn't toast every minute.
   const load = useCallback(async (silent = false) => {
     const seq = ++requestSeq.current;
-    const isDefault = horizon === "today" && owner === "me";
+    // Every task is Josh's to read, whoever filed it, so the board never filters by owner.
+    const isDefault = horizon === "today";
     let qs: string;
     if (role) {
       // Any filter lifts the cap server-side, so "expanded" is implied.
-      const params = new URLSearchParams({ horizon, owner, role });
+      const params = new URLSearchParams({ horizon, role });
       if (project) params.set("project", project);
       qs = `?${params}`;
     } else {
       // A bare call is the capped view; naming the horizon lifts the cap, which is how "more" works.
-      qs = isDefault ? (expanded ? "?horizon=today" : "") : `?horizon=${horizon}&owner=${owner}`;
+      qs = isDefault ? (expanded ? "?horizon=today" : "") : `?horizon=${horizon}`;
     }
     try {
-      const res = await fetch(`/api/board${qs}`);
+      const res = await fetch(`/api/board${qs}`, { cache: "no-store" });
       if (!res.ok) throw new Error();
       const raw: BoardResponse = await res.json();
       if (seq === requestSeq.current) {
@@ -307,7 +305,7 @@ export function DispatchBoard() {
       if (seq === requestSeq.current && !silent) toast("Failed to load board", "error");
     }
     if (seq === requestSeq.current) setLoading(false);
-  }, [horizon, owner, expanded, role, project, toast]);
+  }, [horizon, expanded, role, project, toast]);
 
   useEffect(() => {
     load();
@@ -357,10 +355,12 @@ export function DispatchBoard() {
     router.replace(qs ? `?${qs}` : window.location.pathname, { scroll: false });
   }, [role, project, router]);
 
-  const pickHorizon = (h: Horizon) => { setExpanded(false); setHorizon(h); };
-  const pickOwner = (o: Owner) => { setExpanded(false); setOwner(o); };
+  // A new filter blanks the list until the server answers, so the old company's rows never pass for the new one's.
+  const refetching = () => { setData(null); setLoading(true); };
+  const pickHorizon = (h: Horizon) => { if (h === horizon) return; refetching(); setExpanded(false); setHorizon(h); };
   // A project id belongs to one company, so changing company drops it.
-  const pickRole = (r: string | null) => { setProject(null); setRole(r); };
+  const pickRole = (r: string | null) => { if (r === role) return; refetching(); setProject(null); setRole(r); };
+  const pickProject = (p: string | null) => { if (p === project) return; refetching(); setProject(p); };
 
   type TaskLists = Pick<BoardResponse, "board" | "stuck" | "waitingOnReview">;
   const mapTasks = (fn: <T extends BoardRow>(list: T[]) => T[]) =>
@@ -446,7 +446,6 @@ export function DispatchBoard() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <Segmented options={HORIZONS} value={horizon} onChange={pickHorizon} />
-        <Segmented options={OWNERS} value={owner} onChange={pickOwner} />
         {companies.length > 0 && (
           <Picker
             placeholder="Company"
@@ -460,7 +459,7 @@ export function DispatchBoard() {
             placeholder="Project"
             options={[...projects.map((p) => ({ value: p.id, label: p.name })), { value: "loose", label: "Loose" }]}
             value={project}
-            onChange={setProject}
+            onChange={pickProject}
           />
         )}
         <button
