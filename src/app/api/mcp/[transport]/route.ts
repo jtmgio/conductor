@@ -12,6 +12,7 @@ import { taskKey, parseTaskKey, looksLikeTaskKey } from "@/lib/task-key";
 import { matchProject, projectIdAfterRoleChange } from "@/lib/projects";
 import { buildWalk, WALK_SECTIONS, type WalkTask } from "@/lib/today-walk";
 import { buildBoard, viewFlags, type BoardTask } from "@/lib/board";
+import { planClearSet, type PlanCandidate } from "@/lib/plan-today";
 import { CONDUCTOR_MCP_INSTRUCTIONS } from "@/lib/mcp-instructions";
 
 export const dynamic = "force-dynamic";
@@ -264,16 +265,19 @@ const handler = createMcpHandler(
       {
         title: "Today walk",
         description:
-          "In a company window: the morning walk. Call this for 'what's up today' and similar. Pass this command center's role. Returns open tasks in the order to walk them, one at a time: urgent, past due (ask 'did this happen?'), due or planned today, due this week, in progress, then the rest by project. Long-blocked and in-review tasks come back in their own lists; tasks with a future notBefore are left out.",
+          "In a company window: the morning walk. Call this for 'what's up today' and similar. Pass this command center's role. Returns open tasks in the order to walk them, one at a time: urgent, past due (ask 'did this happen?'), due or planned today, due this week, in progress, then the rest by project. Long-blocked and in-review tasks come back in their own lists; tasks with a future notBefore are left out. In a project session pass project too, so the walk is that project's.",
         inputSchema: {
           // min(1): a blank role must not fall through to "every company".
           role: z.string().trim().min(1).optional().describe("Role/company name (partial ok) or id. Omit only outside a command center — it returns every company."),
+          project: z.string().trim().min(1).optional().describe("Limit the walk to one project in that company (name partial ok, or id). Needs role."),
         },
       },
-      async ({ role }) => {
+      async ({ role, project }) => {
+        if (project && !role) throw new Error("project filter needs role");
         const r = role ? await resolveRole(role) : null;
+        const p = r && project ? await resolveProject(r.id, r.name, project) : null;
         const tasks = await prisma.task.findMany({
-          where: { ...OPEN_TASK, ...(r ? { roleId: r.id } : {}) },
+          where: { ...OPEN_TASK, ...(r ? { roleId: r.id } : {}), ...(p ? { projectId: p.id } : {}) },
           include: {
             role: { select: { id: true, name: true, taskPrefix: true, priority: true } },
             project: { select: { name: true, goal: true, doneWhen: true, links: true } },
@@ -719,6 +723,54 @@ const handler = createMcpHandler(
         });
         if (done !== undefined || isToday !== undefined) invalidateRebalanceCache();
         return ok({ updated: taskShape(task) });
+      }
+    );
+
+    server.registerTool(
+      "plan_today",
+      {
+        title: "Plan today",
+        description:
+          "Record today's plan for one project session, after Josh confirms the picks. Sets scheduledFor = today on each task. With replace:true, first clears today's plan in the same project(s) as the picks (loose picks clear loose), never the whole company. Refuses a task outside role. Say 'Planned: VQ-1, VQ-2.' and nothing else.",
+        inputSchema: {
+          role: z.string().trim().min(1).describe("Role/company name (partial ok) or id. Required."),
+          taskIds: z.array(z.string()).min(1).describe("Task keys (VQ-14) or ids to put on today's plan."),
+          replace: z.boolean().optional().describe("Clear today's other picks in the same project(s) first, so planning twice replaces that project's plan. Never touches another project. Default false."),
+        },
+      },
+      async ({ role, taskIds, replace }) => {
+        const r = await resolveRole(role);
+        const ids = await Promise.all(taskIds.map(resolveTaskId));
+        const include = { role: { select: { name: true, taskPrefix: true } } } as const;
+        const picks = await prisma.task.findMany({ where: { id: { in: ids } }, include });
+        const missing = ids.find((id) => !picks.some((p) => p.id === id));
+        if (missing) throw new Error(`No task ${taskIds[ids.indexOf(missing)]}`);
+        // A session plans its own company's work; a stray key from another company is a mistake, not a pick.
+        for (const pick of picks) {
+          if (pick.roleId !== r.id) throw new Error(`${taskKey(pick, pick.role) ?? pick.id} belongs to ${pick.role.name}, not ${r.name}`);
+        }
+
+        const date = formatDateOnly(today())!;
+        const toCandidates = (ts: typeof picks): PlanCandidate[] =>
+          ts.map((t) => ({ id: t.id, projectId: t.projectId, done: t.done, scheduledFor: formatDateOnly(t.scheduledFor) }));
+        let cleared: typeof picks = [];
+        if (replace) {
+          const candidates = await prisma.task.findMany({
+            where: { roleId: r.id, ...OPEN_TASK, scheduledFor: today() },
+            include,
+          });
+          const clearIds = planClearSet(toCandidates(picks), toCandidates(candidates), date);
+          await prisma.task.updateMany({ where: { id: { in: clearIds } }, data: { scheduledFor: null } });
+          cleared = candidates.filter((c) => clearIds.includes(c.id));
+        }
+        await prisma.task.updateMany({ where: { id: { in: ids } }, data: { scheduledFor: today() } });
+        invalidateRebalanceCache();
+        return ok({
+          date,
+          role: r.name,
+          planned: picks.map((p) => taskKey(p, p.role) ?? p.id),
+          cleared: cleared.map((p) => taskKey(p, p.role) ?? p.id),
+        });
       }
     );
 
