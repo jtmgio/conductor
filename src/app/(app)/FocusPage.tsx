@@ -18,9 +18,14 @@ export function FocusPage() {
         <MobileCapture currentBlock={currentBlock} />
       </div>
       <div className="hidden lg:block">
-        <div className="mx-auto max-w-3xl space-y-6 pt-2">
-          <AgendaStrip />
-          <DispatchBoard />
+        {/* Two columns, as the cockpit had it: meetings in a sticky side column, the board takes the rest */}
+        <div className="mx-auto max-w-6xl pt-2 grid gap-6 lg:grid-cols-3">
+          <aside className="lg:col-span-1 lg:sticky lg:top-4 lg:self-start">
+            <AgendaStrip mode="strip" />
+          </aside>
+          <div className="lg:col-span-2">
+            <DispatchBoard />
+          </div>
         </div>
       </div>
     </>
