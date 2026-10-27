@@ -46,10 +46,11 @@ function byDueThenAge(a: WalkTask, b: WalkTask): number {
   return (a.dueDate ?? "9999-99-99").localeCompare(b.dueDate ?? "9999-99-99") || a.createdAt.localeCompare(b.createdAt);
 }
 
+// Planned-today ranks with urgent: Josh chose it this morning, so it outranks past due.
 export function sectionFor(t: WalkTask, today: string, weekEnd: string): WalkSection {
-  if (t.priority === "urgent") return "urgent";
+  if (t.priority === "urgent" || t.scheduledFor === today) return "urgent";
   if ((t.dueDate && t.dueDate < today) || (t.scheduledFor && t.scheduledFor < today)) return "pastDue";
-  if (t.dueDate === today || t.scheduledFor === today) return "today";
+  if (t.dueDate === today) return "today";
   if (t.dueDate && t.dueDate <= weekEnd) return "thisWeek";
   if (t.status === "in_progress") return "inProgress";
   return "rest";

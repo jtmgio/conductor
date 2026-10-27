@@ -62,13 +62,21 @@ describe("buildWalk", () => {
     expect(walk.sections.pastDue[0].pastDue).toBe(true);
   });
 
-  it("puts tasks due today or planned for today in today", () => {
+  it("puts tasks due today in today", () => {
     const due = t({ dueDate: TODAY });
-    const planned = t({ scheduledFor: TODAY });
-    const walk = buildWalk([due, planned], TODAY, NOW);
+    const walk = buildWalk([due], TODAY, NOW);
     expect(sectionOf(walk, due.key)).toBe("today");
-    expect(sectionOf(walk, planned.key)).toBe("today");
-    expect(walk.sections.today.every((e) => !e.pastDue)).toBe(true);
+    expect(walk.sections.today[0].pastDue).toBe(false);
+  });
+
+  it("planned for today ranks with urgent, and keeps its past-due flag", () => {
+    const planned = t({ scheduledFor: TODAY });
+    const plannedButLate = t({ scheduledFor: TODAY, dueDate: "2026-10-20" });
+    const walk = buildWalk([planned, plannedButLate], TODAY, NOW);
+    expect(sectionOf(walk, planned.key)).toBe("urgent");
+    expect(sectionOf(walk, plannedButLate.key)).toBe("urgent");
+    expect(walk.sections.urgent.find((e) => e.task.key === plannedButLate.key)?.pastDue).toBe(true);
+    expect(walk.sections.today).toHaveLength(0);
   });
 
   it("thisWeek covers the next seven days and no further", () => {

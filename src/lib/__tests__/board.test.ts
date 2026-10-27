@@ -59,6 +59,13 @@ describe("buildBoard", () => {
     expect(keys(b.board)).toEqual([urgent.key, pastDue.key, today.key]);
   });
 
+  it("a task planned for today sits with urgent at the top of the board", () => {
+    const later = t({ dueDate: TODAY });
+    const planned = t({ scheduledFor: TODAY, createdAt: "2026-10-26T00:00:00Z" });
+    const board = buildBoard([later, planned], [], TODAY, DEFAULT, NOW);
+    expect(board.board[0].key).toBe(planned.key);
+  });
+
   it("sorts inside a section by due date, then company priority, then age", () => {
     const second = t({ dueDate: "2026-10-20", rolePriority: 2, role: "HealthMe" });
     const first = t({ dueDate: "2026-10-20", rolePriority: 1 });
