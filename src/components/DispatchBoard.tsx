@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, FolderKanban, Flame, Loader2 } from "lucide-react";
+import { Check, ChevronDown, FolderKanban, Flame, Loader2 } from "lucide-react";
 import { TaskDetailDrawer, type DrawerTask } from "@/components/TaskDetailDrawer";
 import { TaskKeyChip } from "@/components/TaskKeyChip";
 import { useToast } from "@/components/ui/toast";
@@ -106,28 +106,83 @@ function Segmented<T extends string>({ options, value, onChange }: { options: [T
   );
 }
 
-/** Segmented's pill, but wrapping and nullable ("All"); the button pads the pill out to a 44px target. */
-function ChipRow({ options, value, onChange }: { options: Chip[]; value: string | null; onChange: (v: string | null) => void }) {
+/**
+ * One pill that opens a type-ahead list — the chip rows for ten companies took half the page.
+ * Single-select; null is "all". Enter picks the first match, Escape closes.
+ */
+function Picker({ placeholder, options, value, onChange }: { placeholder: string; options: Chip[]; value: string | null; onChange: (v: string | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const root = useRef<HTMLDivElement>(null);
+  const selected = options.find((o) => o.value === value) ?? null;
+  const shown = query ? options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase())) : options;
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+
+  const pick = (v: string | null) => { onChange(v); setOpen(false); setQuery(""); };
+
   return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((o) => {
-        const selected = o.value === value;
-        return (
-          <button key={o.value ?? "all"} onClick={() => onChange(o.value)} aria-pressed={selected} className="flex min-h-[44px] items-center">
-            <span
-              className="inline-flex items-center gap-1.5 text-[13px] font-medium px-3 py-1 rounded-full transition-all"
-              style={{
-                background: selected ? "var(--surface)" : "transparent",
-                color: selected ? "var(--text-primary)" : "var(--text-tertiary)",
-                border: selected ? "none" : "1px solid var(--border-subtle)",
-              }}
-            >
-              {o.color && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: o.color }} />}
-              {o.label}
-            </span>
-          </button>
-        );
-      })}
+    <div ref={root} className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="inline-flex items-center gap-1.5 text-[13px] font-medium px-3 py-1 rounded-full transition-all"
+        style={{
+          background: selected ? "var(--surface)" : "transparent",
+          color: selected ? "var(--text-primary)" : "var(--text-tertiary)",
+          border: selected ? "none" : "1px solid var(--border-subtle)",
+        }}
+      >
+        {selected?.color && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: selected.color }} />}
+        {selected ? selected.label : placeholder}
+        <ChevronDown className="h-3 w-3 opacity-70" />
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 top-full z-20 mt-1 w-64 rounded-lg border p-1 shadow-lg"
+          style={{ background: "var(--surface-overlay)", borderColor: "var(--border-subtle)" }}
+        >
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") { setOpen(false); setQuery(""); }
+              if (e.key === "Enter" && shown.length > 0) pick(shown[0].value);
+            }}
+            placeholder={`Type to filter ${placeholder.toLowerCase()}…`}
+            className="mb-1 w-full rounded-md bg-transparent px-2 py-1.5 text-[13px] outline-none"
+            style={{ color: "var(--text-primary)", border: "1px solid var(--border-subtle)" }}
+          />
+          <ul role="listbox" className="max-h-64 overflow-y-auto">
+            {!query && (
+              <li>
+                <button role="option" aria-selected={value === null} onClick={() => pick(null)} className="flex min-h-[36px] w-full items-center gap-2 rounded-md px-2 text-left text-[13px] hover:bg-[var(--surface-raised)]" style={{ color: "var(--text-secondary)" }}>
+                  <span className="w-3" />All
+                </button>
+              </li>
+            )}
+            {shown.map((o) => (
+              <li key={o.value ?? "all"}>
+                <button role="option" aria-selected={o.value === value} onClick={() => pick(o.value)} className="flex min-h-[36px] w-full items-center gap-2 rounded-md px-2 text-left text-[13px] hover:bg-[var(--surface-raised)]" style={{ color: o.value === value ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                  {o.value === value ? <Check className="h-3 w-3" /> : <span className="w-3" />}
+                  {o.color && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: o.color }} />}
+                  <span className="truncate">{o.label}</span>
+                </button>
+              </li>
+            ))}
+            {query && shown.length === 0 && <li className="px-2 py-1.5 text-[13px]" style={{ color: "var(--text-tertiary)" }}>No match</li>}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -372,21 +427,21 @@ export function DispatchBoard() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <div className="flex flex-wrap items-center gap-3">
-          <Segmented options={HORIZONS} value={horizon} onChange={pickHorizon} />
-          <Segmented options={OWNERS} value={owner} onChange={pickOwner} />
-        </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Segmented options={HORIZONS} value={horizon} onChange={pickHorizon} />
+        <Segmented options={OWNERS} value={owner} onChange={pickOwner} />
         {companies.length > 0 && (
-          <ChipRow
-            options={[{ value: null, label: "All" }, ...companies.map((c) => ({ value: c.id, label: c.name, color: c.color }))]}
+          <Picker
+            placeholder="Company"
+            options={companies.map((c) => ({ value: c.id, label: c.name, color: c.color }))}
             value={role}
             onChange={pickRole}
           />
         )}
         {role && (
-          <ChipRow
-            options={[{ value: null, label: "All" }, ...projects.map((p) => ({ value: p.id, label: p.name })), { value: "loose", label: "Loose" }]}
+          <Picker
+            placeholder="Project"
+            options={[...projects.map((p) => ({ value: p.id, label: p.name })), { value: "loose", label: "Loose" }]}
             value={project}
             onChange={setProject}
           />
