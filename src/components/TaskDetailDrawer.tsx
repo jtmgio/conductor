@@ -249,30 +249,6 @@ export function TaskDetailDrawer({ task, onClose, onUpdate, onStatusChange, onCo
                   </div>
                 </div>
 
-                {/* Owner */}
-                <div>
-                  <p className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-2">Owner</p>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {([["me", "Me"], ["claude", "Claude"]] as const).map(([value, label]) => {
-                      const selected = (task.owner ?? "me") === value;
-                      return (
-                        <button
-                          key={value}
-                          onClick={() => onUpdate(task.id, { owner: value })}
-                          className="text-[13px] font-medium px-3 py-1 rounded-full transition-all"
-                          style={{
-                            background: selected ? "var(--surface)" : "transparent",
-                            color: selected ? "var(--text-primary)" : "var(--text-tertiary)",
-                            border: selected ? "none" : "1px solid var(--border-subtle)",
-                          }}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
                 {/* Notes */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
