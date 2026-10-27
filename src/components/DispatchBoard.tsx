@@ -1,18 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, FolderKanban, Flame, Loader2 } from "lucide-react";
 import { TaskDetailDrawer, type DrawerTask } from "@/components/TaskDetailDrawer";
 import { TaskKeyChip } from "@/components/TaskKeyChip";
 import { useToast } from "@/components/ui/toast";
+import { groupBoard } from "@/lib/board-groups";
 
 type Horizon = "today" | "week" | "all";
 type Owner = "me" | "claude" | "all";
 
 interface BoardRow extends DrawerTask {
   key: string;
-  project?: { name: string } | null;
+  role: DrawerTask["role"] & { priority: number };
+  project: { id: string; name: string } | null;
   blockedReason?: string | null;
 }
 
@@ -37,6 +40,23 @@ interface BoardResponse {
   stuck: StuckRow[];
   waitingOnReview: BoardRow[];
   waitingOn: WaitingRow[];
+}
+
+interface Company {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface ProjectOption {
+  id: string;
+  name: string;
+}
+
+interface Chip {
+  value: string | null;
+  label: string;
+  color?: string;
 }
 
 const HORIZONS: [Horizon, string][] = [["today", "Today"], ["week", "Week"], ["all", "All"]];
@@ -79,6 +99,32 @@ function Segmented<T extends string>({ options, value, onChange }: { options: [T
             }}
           >
             {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Segmented's pill, but wrapping and nullable ("All"); the button pads the pill out to a 44px target. */
+function ChipRow({ options, value, onChange }: { options: Chip[]; value: string | null; onChange: (v: string | null) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((o) => {
+        const selected = o.value === value;
+        return (
+          <button key={o.value ?? "all"} onClick={() => onChange(o.value)} aria-pressed={selected} className="flex min-h-[44px] items-center">
+            <span
+              className="inline-flex items-center gap-1.5 text-[13px] font-medium px-3 py-1 rounded-full transition-all"
+              style={{
+                background: selected ? "var(--surface)" : "transparent",
+                color: selected ? "var(--text-primary)" : "var(--text-tertiary)",
+                border: selected ? "none" : "1px solid var(--border-subtle)",
+              }}
+            >
+              {o.color && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: o.color }} />}
+              {o.label}
+            </span>
           </button>
         );
       })}
@@ -141,6 +187,14 @@ export function DispatchBoard() {
   const [horizon, setHorizon] = useState<Horizon>("today");
   const [owner, setOwner] = useState<Owner>("me");
   const [expanded, setExpanded] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // Filters live in the URL so a reload or a bookmark lands on the same slice.
+  const [role, setRole] = useState<string | null>(() => searchParams.get("role"));
+  // The server refuses a project without a company.
+  const [project, setProject] = useState<string | null>(() => (searchParams.get("role") ? searchParams.get("project") : null));
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [data, setData] = useState<BoardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [drawerTaskId, setDrawerTaskId] = useState<string | null>(null);
@@ -154,8 +208,16 @@ export function DispatchBoard() {
   const load = useCallback(async (silent = false) => {
     const seq = ++requestSeq.current;
     const isDefault = horizon === "today" && owner === "me";
-    // A bare call is the capped view; naming the horizon lifts the cap, which is how "more" works.
-    const qs = isDefault ? (expanded ? "?horizon=today" : "") : `?horizon=${horizon}&owner=${owner}`;
+    let qs: string;
+    if (role) {
+      // Any filter lifts the cap server-side, so "expanded" is implied.
+      const params = new URLSearchParams({ horizon, owner, role });
+      if (project) params.set("project", project);
+      qs = `?${params}`;
+    } else {
+      // A bare call is the capped view; naming the horizon lifts the cap, which is how "more" works.
+      qs = isDefault ? (expanded ? "?horizon=today" : "") : `?horizon=${horizon}&owner=${owner}`;
+    }
     try {
       const res = await fetch(`/api/board${qs}`);
       if (!res.ok) throw new Error();
@@ -173,7 +235,7 @@ export function DispatchBoard() {
       if (seq === requestSeq.current && !silent) toast("Failed to load board", "error");
     }
     if (seq === requestSeq.current) setLoading(false);
-  }, [horizon, owner, expanded, toast]);
+  }, [horizon, owner, expanded, role, project, toast]);
 
   useEffect(() => {
     load();
@@ -193,8 +255,40 @@ export function DispatchBoard() {
     };
   }, [load]);
 
+  useEffect(() => {
+    fetch("/api/roles")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((list: Company[]) => setCompanies(list.map(({ id, name, color }) => ({ id, name, color }))))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    setProjects([]);
+    if (!role) return;
+    let stale = false;
+    fetch(`/api/projects?roleId=${encodeURIComponent(role)}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((list: ProjectOption[]) => { if (!stale) setProjects(list); })
+      .catch(() => {});
+    return () => { stale = true; };
+  }, [role]);
+
+  // replace, not push: Back shouldn't walk through every chip click.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (role) params.set("role", role);
+    else params.delete("role");
+    if (project) params.set("project", project);
+    else params.delete("project");
+    const qs = params.toString();
+    if (qs === window.location.search.replace(/^\?/, "")) return;
+    router.replace(qs ? `?${qs}` : window.location.pathname, { scroll: false });
+  }, [role, project, router]);
+
   const pickHorizon = (h: Horizon) => { setExpanded(false); setHorizon(h); };
   const pickOwner = (o: Owner) => { setExpanded(false); setOwner(o); };
+  // A project id belongs to one company, so changing company drops it.
+  const pickRole = (r: string | null) => { setProject(null); setRole(r); };
 
   type TaskLists = Pick<BoardResponse, "board" | "stuck" | "waitingOnReview">;
   const mapTasks = (fn: <T extends BoardRow>(list: T[]) => T[]) =>
@@ -278,9 +372,25 @@ export function DispatchBoard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <Segmented options={HORIZONS} value={horizon} onChange={pickHorizon} />
-        <Segmented options={OWNERS} value={owner} onChange={pickOwner} />
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-center gap-3">
+          <Segmented options={HORIZONS} value={horizon} onChange={pickHorizon} />
+          <Segmented options={OWNERS} value={owner} onChange={pickOwner} />
+        </div>
+        {companies.length > 0 && (
+          <ChipRow
+            options={[{ value: null, label: "All" }, ...companies.map((c) => ({ value: c.id, label: c.name, color: c.color }))]}
+            value={role}
+            onChange={pickRole}
+          />
+        )}
+        {role && (
+          <ChipRow
+            options={[{ value: null, label: "All" }, ...projects.map((p) => ({ value: p.id, label: p.name })), { value: "loose", label: "Loose" }]}
+            value={project}
+            onChange={setProject}
+          />
+        )}
       </div>
 
       {loading && !data ? (
@@ -291,12 +401,46 @@ export function DispatchBoard() {
         <>
           {/* Always mounted, so the last row still slides out when the list empties. */}
           <section>
-            <AnimatePresence initial={false}>
-              {data.board.map((t) => (
-                <TaskRow key={t.id} task={t} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
-              ))}
-            </AnimatePresence>
-            {data.more && !expanded && (
+            {expanded || role ? (
+              // Past seven rows a flat list stops reading; group by company, then project.
+              <div className="space-y-4">
+                <AnimatePresence initial={false}>
+                  {groupBoard(data.board).map((c) => (
+                    <motion.div key={c.roleId} exit={{ opacity: 0, x: 60, scale: 0.97 }}>
+                      {/* The company chip already says which company this is. */}
+                      {!role && (
+                        <p className={`${SECTION_LABEL} flex items-center gap-2`}>
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
+                          {c.name}
+                        </p>
+                      )}
+                      <div className="space-y-2">
+                        <AnimatePresence initial={false}>
+                          {c.projects.map((p) => (
+                            <motion.div key={p.projectId ?? "loose"} exit={{ opacity: 0, x: 60, scale: 0.97 }}>
+                              {!project && <p className={`${SECTION_LABEL} pl-11`}>{p.name ?? "loose"}</p>}
+                              <AnimatePresence initial={false}>
+                                {p.rows.map((t) => (
+                                  <TaskRow key={t.id} task={t} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
+                                ))}
+                              </AnimatePresence>
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            ) : (
+              <AnimatePresence initial={false}>
+                {data.board.map((t) => (
+                  <TaskRow key={t.id} task={t} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
+                ))}
+              </AnimatePresence>
+            )}
+            {/* A filter already returns everything. */}
+            {data.more && !expanded && !role && (
               <button
                 onClick={() => setExpanded(true)}
                 className="mt-1 min-h-[44px] pl-11 text-[13px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
