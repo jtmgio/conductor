@@ -8,6 +8,7 @@ import { TaskDetailDrawer, type DrawerTask } from "@/components/TaskDetailDrawer
 import { TaskKeyChip } from "@/components/TaskKeyChip";
 import { useToast } from "@/components/ui/toast";
 import { groupBoard } from "@/lib/board-groups";
+import { cn } from "@/lib/utils";
 
 type Horizon = "today" | "week" | "all";
 type Owner = "me" | "claude" | "all";
@@ -113,6 +114,8 @@ function Segmented<T extends string>({ options, value, onChange }: { options: [T
 function Picker({ placeholder, options, value, onChange }: { placeholder: string; options: Chip[]; value: string | null; onChange: (v: string | null) => void }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // The list is 256px wide; a pill near the right edge opens it leftward so the page never scrolls sideways.
+  const [alignRight, setAlignRight] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const selected = options.find((o) => o.value === value) ?? null;
   const shown = query ? options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase())) : options;
@@ -131,7 +134,11 @@ function Picker({ placeholder, options, value, onChange }: { placeholder: string
   return (
     <div ref={root} className="relative">
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          const left = root.current?.getBoundingClientRect().left ?? 0;
+          setAlignRight(left + 256 + 16 > window.innerWidth);
+          setOpen((o) => !o);
+        }}
         aria-haspopup="listbox"
         aria-expanded={open}
         className="inline-flex items-center gap-1.5 text-[13px] font-medium px-3 py-1 rounded-full transition-all"
@@ -147,7 +154,7 @@ function Picker({ placeholder, options, value, onChange }: { placeholder: string
       </button>
       {open && (
         <div
-          className="absolute left-0 top-full z-20 mt-1 w-64 rounded-lg border p-1 shadow-lg"
+          className={cn("absolute top-full z-20 mt-1 w-64 rounded-lg border p-1 shadow-lg", alignRight ? "right-0" : "left-0")}
           style={{ background: "var(--surface-overlay)", borderColor: "var(--border-subtle)" }}
         >
           <input
