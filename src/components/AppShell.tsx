@@ -94,7 +94,7 @@ function AppFrame({ children }: { children: React.ReactNode }) {
     // for v2. It unscheduled every undone task on first app open of a new day, gated by
     // per-device localStorage — which meant opening a second machine wiped the plan you'd
     // made on the first. In v2, scheduledFor IS the persistent plan (shared DB) and undone
-    // tasks stay until dealt with. Proper end-of-day carry-over is the queued rollover phase.
+    // tasks stay until dealt with. Unfinished picks come back in the next walk as past due ("did this happen?"); there is no overnight rollover, on purpose.
 
     // Calendar sync — trigger if last sync was more than 65 minutes ago
     // (LaunchAgent runs hourly on the hour, 7 AM - 4 PM weekdays; 65 min gives a 5 min buffer)

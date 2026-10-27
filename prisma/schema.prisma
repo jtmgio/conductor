@@ -30,7 +30,7 @@ model UserProfile {
   dayShiftDate           DateTime? @db.Date
   dayShiftMinutes        Int?
   lastSweepAt            DateTime? // last completed comms sweep (UTC instant)
-  lastRolloverOn         DateTime? @db.Date // last silent end-of-day rollover (UX rule #6)
+  lastRolloverOn         DateTime? @db.Date // unused since 2026-10-27: the overnight rollover was removed; column kept to avoid a migration
   lastBoardAt            DateTime? // last time the home board was marked seen (UTC instant)
   updatedAt              DateTime @updatedAt
 }

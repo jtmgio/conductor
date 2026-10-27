@@ -265,7 +265,7 @@ const handler = createMcpHandler(
       {
         title: "Today walk",
         description:
-          "In a company window: the morning walk. Call this for 'what's up today' and similar. Pass this command center's role. Returns open tasks in the order to walk them, one at a time: urgent, past due (ask 'did this happen?'), due or planned today, due this week, in progress, then the rest by project. Long-blocked and in-review tasks come back in their own lists; tasks with a future notBefore are left out. In a project session pass project too, so the walk is that project's.",
+          "In a company window: the morning walk. Call this for 'what's up today' and similar. Pass this command center's role. Returns open tasks in the order to walk them, one at a time: urgent (and today's planned picks), past due (ask 'did this happen?'), due today, due this week, in progress, then the rest by project. Long-blocked and in-review tasks come back in their own lists; tasks with a future notBefore are left out. In a project session pass project too, so the walk is that project's.",
         inputSchema: {
           // min(1): a blank role must not fall through to "every company".
           role: z.string().trim().min(1).optional().describe("Role/company name (partial ok) or id. Omit only outside a command center — it returns every company."),
