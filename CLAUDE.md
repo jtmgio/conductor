@@ -387,7 +387,7 @@ Each block has: label, start time, end time, and per-weekday role assignments vi
 3. **Follow-ups are NOT tasks.** They live in the Tracker view, completely separate.
 4. **Today shows the dispatch board:** every company, next seven things, no counts. One-company focus lives in the per-company Claude Code windows.
 5. **Morning task selection is optional.** User can skip straight to focus mode.
-6. **End of day is silent.** Incomplete today-tasks quietly return to backlog. No summary, no guilt.
+6. **End of day is silent.** No summary, no guilt. A task planned for a day that passed is asked once in the next walk ("did this happen?"), never nagged and never counted.
 7. **Stale follow-ups are the only proactive alert.** Everything else waits for the user to look.
 
 ## AI features
