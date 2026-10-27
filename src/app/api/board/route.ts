@@ -27,6 +27,12 @@ export async function GET(req: NextRequest) {
   if (ownerParam !== null && !OWNERS.includes(ownerParam as OwnerFilter)) {
     return NextResponse.json({ error: "owner must be me, claude or all" }, { status: 400 });
   }
+  const role = params.get("role");
+  const project = params.get("project");
+  // A project id only means something inside one company.
+  if (project && !role) {
+    return NextResponse.json({ error: "project needs role" }, { status: 400 });
+  }
   // Raw params, not defaults: viewFlags reads "absent" as "bare call", which is the capped one.
   const horizon = (horizonParam ?? undefined) as Horizon | undefined;
   const owner = (ownerParam ?? undefined) as OwnerFilter | undefined;
@@ -34,16 +40,23 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const [tasks, followUps] = await Promise.all([
     prisma.task.findMany({
-      where: { ...OPEN_TASK, role: { active: true } },
+      // "loose" is the no-project bucket; any other value that isn't an id just matches nothing.
+      where: {
+        ...OPEN_TASK,
+        role: { active: true },
+        ...(role ? { roleId: role } : {}),
+        ...(project ? { projectId: project === "loose" ? null : project } : {}),
+      },
       include: {
         role: { select: { id: true, name: true, color: true, taskPrefix: true, priority: true } },
         tags: { include: { tag: true } },
-        project: { select: { name: true } },
+        project: { select: { id: true, name: true } },
       },
     }),
     // buildBoard has no status to filter on, so only waiting ones are loaded.
     prisma.followUp.findMany({
-      where: { status: "waiting", role: { active: true } },
+      // Follow-ups follow the company filter but have no project.
+      where: { status: "waiting", role: { active: true }, ...(role ? { roleId: role } : {}) },
       include: { role: { select: { name: true, color: true } } },
     }),
   ]);
@@ -85,14 +98,14 @@ export async function GET(req: NextRequest) {
     tags: t.tags,
     number: t.number,
     externalKey: t.externalKey,
-    role: { id: t.role.id, name: t.role.name, color: t.role.color, taskPrefix: t.role.taskPrefix },
+    role: { id: t.role.id, name: t.role.name, color: t.role.color, taskPrefix: t.role.taskPrefix, priority: t.role.priority },
     owner: t.owner as "me" | "claude",
-    project: t.project ? { name: t.project.name } : null,
+    project: t.project ? { id: t.project.id, name: t.project.name } : null,
     blockedReason: t.blockedReason,
   });
 
   const date = formatDateOnly(today())!;
-  const { capped } = viewFlags({ horizon, owner });
+  const { capped } = viewFlags({ horizon, owner, role: role ?? undefined, project: project ?? undefined });
   const result = buildBoard(
     rows,
     followUps.map((f) => ({

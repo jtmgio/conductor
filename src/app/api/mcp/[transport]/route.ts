@@ -339,7 +339,7 @@ const handler = createMcpHandler(
             },
           }),
           // buildBoard has no status to filter on, so only waiting ones are loaded.
-          prisma.followUp.findMany({ where: { status: "waiting", role: { active: true } }, include: { role: { select: { name: true } } } }),
+          prisma.followUp.findMany({ where: { status: "waiting", role: { active: true }, ...(r ? { roleId: r.id } : {}) }, include: { role: { select: { name: true } } } }),
           prisma.userProfile.findUnique({ where: { id: "default" }, select: { lastBoardAt: true } }),
         ]);
         const date = formatDateOnly(today())!;
