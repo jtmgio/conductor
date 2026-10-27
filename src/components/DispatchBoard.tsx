@@ -248,6 +248,16 @@ function WaitingLine({ row }: { row: WaitingRow }) {
 export function DispatchBoard() {
   const [horizon, setHorizon] = useState<Horizon>("today");
   const [owner, setOwner] = useState<Owner>("me");
+  // Follow-ups are noise most of the time; off unless asked for, and remembered per browser.
+  const [showWaiting, setShowWaiting] = useState(false);
+  useEffect(() => {
+    try { setShowWaiting(localStorage.getItem("board.showWaiting") === "1"); } catch {}
+  }, []);
+  const toggleWaiting = () =>
+    setShowWaiting((v) => {
+      try { localStorage.setItem("board.showWaiting", v ? "0" : "1"); } catch {}
+      return !v;
+    });
   const [expanded, setExpanded] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -428,7 +438,7 @@ export function DispatchBoard() {
 
   const hasBoard = !!data && data.board.length > 0;
   const hasStuck = !!data && data.stuck.length > 0;
-  const hasWaiting = !!data && data.waitingOn.length > 0;
+  const hasWaiting = showWaiting && !!data && data.waitingOn.length > 0;
   const hasReview = !!data && data.waitingOnReview.length > 0;
   const allClear = !!data && !hasBoard && !hasStuck && !hasWaiting && !hasReview;
 
@@ -453,6 +463,18 @@ export function DispatchBoard() {
             onChange={setProject}
           />
         )}
+        <button
+          onClick={toggleWaiting}
+          aria-pressed={showWaiting}
+          className="text-[13px] font-medium px-3 py-1 rounded-full transition-all"
+          style={{
+            background: showWaiting ? "var(--surface)" : "transparent",
+            color: showWaiting ? "var(--text-primary)" : "var(--text-tertiary)",
+            border: showWaiting ? "none" : "1px solid var(--border-subtle)",
+          }}
+        >
+          Waiting on
+        </button>
       </div>
 
       {loading && !data ? (
