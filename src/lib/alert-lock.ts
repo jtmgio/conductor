@@ -1,8 +1,8 @@
 /**
  * Who owns the screen right now.
  *
- * Four blocking overlays mount as peers in AppShell — Reminders, MeetingAlert,
- * CommsSweepAlert and BlockTransition — and none of them knew the others
+ * Three blocking overlays mount as peers in AppShell — Reminders, MeetingAlert
+ * and CommsSweepAlert — and none of them knew the others
  * existed. Reminders and MeetingAlert both rendered at z-[80], so DOM order
  * silently decided which one you saw, and dismissing the top one revealed a
  * second you never knew was queued. GlobalSearch sat at z-[60], *below* all of
@@ -18,7 +18,6 @@
 /** Higher wins the screen. Kept here so the ordering is readable in one place. */
 export const ALERT_Z = {
   commsSweep: 76,
-  blockTransition: 80,
   reminder: 84,
   meeting: 88,
 } as const;

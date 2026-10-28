@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar } from "./Sidebar";
@@ -11,14 +11,9 @@ import { GlobalSearch } from "./GlobalSearch";
 import { Reminders } from "./Reminders";
 import { MeetingAlert } from "./MeetingAlert";
 import { CommsSweepAlert } from "./CommsSweepAlert";
-import { BlockTransition, type TransitionBlock } from "./BlockTransition";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
-import { ScheduleProvider, useSchedule, type BlockInfo } from "./ScheduleContext";
+import { ScheduleProvider, useSchedule } from "./ScheduleContext";
 import { cn } from "@/lib/utils";
-
-function blockKey(b: BlockInfo): string {
-  return `${b.id ?? ""}|${b.roleId ?? ""}|${b.timeLabel}`;
-}
 
 /**
  * Mounted once by src/app/(app)/layout.tsx, not per page — see that file for why.
@@ -38,33 +33,6 @@ function AppFrame({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [showShortcuts, setShowShortcuts] = useState(false);
   const { currentBlock, nextBlocks } = useSchedule();
-
-  // Block-transition ritual: fire the full-screen reset when the current work block
-  // changes to a different one while the app is open. Mid-block opens don't fire
-  // (prev starts null); localStorage guards against re-showing the same transition.
-  const prevBlockRef = useRef<BlockInfo | null>(null);
-  const [transition, setTransition] = useState<{ from: TransitionBlock; to: TransitionBlock } | null>(null);
-
-  useEffect(() => {
-    const cb = currentBlock;
-    if (cb && cb.roleId) {
-      const prev = prevBlockRef.current;
-      // Only a genuine company switch earns the ritual. Comparing block keys alone let
-      // "vQuip complete → Start vQuip" fire whenever a block's identity changed underneath
-      // the same role — which is nonsense to read, and was the visible symptom of the
-      // open-time block's label churning every minute.
-      if (prev && prev.roleId && prev.roleId !== cb.roleId && blockKey(prev) !== blockKey(cb)) {
-        const key = blockKey(cb);
-        if (localStorage.getItem("conductor-transition-seen") !== key) {
-          localStorage.setItem("conductor-transition-seen", key);
-          setTransition({ from: prev, to: cb });
-        }
-      }
-      prevBlockRef.current = cb;
-    } else if (cb === null) {
-      prevBlockRef.current = null;
-    }
-  }, [currentBlock]);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
@@ -166,16 +134,6 @@ function AppFrame({ children }: { children: React.ReactNode }) {
       {/* Comms sweep due — go check your messages */}
       <CommsSweepAlert />
 
-      {/* Block-transition ritual — full-screen reset between company blocks */}
-      <AnimatePresence>
-        {transition && (
-          <BlockTransition
-            from={transition.from}
-            to={transition.to}
-            onClose={() => setTransition(null)}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }
