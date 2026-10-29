@@ -7,7 +7,7 @@ describe("CONDUCTOR_MCP_INSTRUCTIONS", () => {
   });
 
   it("names the tools and fields the rules depend on", () => {
-    for (const term of ["get_today_walk", "list_projects", "notBefore", "create_followup"]) {
+    for (const term of ["get_today_walk", "list_projects", "notBefore", "create_followup", "update_followup"]) {
       expect(CONDUCTOR_MCP_INSTRUCTIONS).toContain(term);
     }
   });

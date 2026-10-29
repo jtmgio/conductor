@@ -885,6 +885,40 @@ const handler = createMcpHandler(
     );
 
     server.registerTool(
+      "update_followup",
+      {
+        title: "Update follow-up",
+        description:
+          "Close or edit a follow-up. resolved:true closes it (it got answered); resolved:false reopens it. Ids come from get_context, get_board or search waitingOn.",
+        inputSchema: {
+          id: z.string().describe("Follow-up id"),
+          resolved: z.boolean().optional().describe("true closes it, false reopens it"),
+          title: z.string().min(1).optional(),
+          waitingOn: z.string().min(1).optional(),
+          dueDate: z.string().nullable().optional().describe("YYYY-MM-DD, or null to clear"),
+        },
+      },
+      async ({ id, resolved, title, waitingOn, dueDate }) => {
+        const existing = await prisma.followUp.findUnique({ where: { id }, select: { id: true } });
+        if (!existing) throw new Error(`No follow-up with id ${id}`);
+        const followUp = await prisma.followUp.update({
+          where: { id },
+          data: {
+            ...(title !== undefined ? { title } : {}),
+            ...(waitingOn !== undefined ? { waitingOn } : {}),
+            ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(`${dueDate}T00:00:00`) : null } : {}),
+            ...(resolved === true ? { status: "resolved", resolvedAt: new Date() } : {}),
+            ...(resolved === false ? { status: "waiting", resolvedAt: null } : {}),
+          },
+          include: { role: { select: { name: true } } },
+        });
+        return ok({
+          updated: { id: followUp.id, title: followUp.title, waitingOn: followUp.waitingOn, status: followUp.status, role: followUp.role.name },
+        });
+      }
+    );
+
+    server.registerTool(
       "add_note",
       {
         title: "Add note",

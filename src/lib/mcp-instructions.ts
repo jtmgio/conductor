@@ -10,8 +10,8 @@ export const CONDUCTOR_MCP_INSTRUCTIONS = `Conductor is Josh's task system. Each
 - Projects: you pick the project, the server never guesses. Call list_projects before filing; show Josh each task and its project first. Offer a new project only when 2+ tasks share a goal.
 - Project sessions: declare the project once (CLAUDE.md "Conductor project:" line, else ask from list_projects); it is the default for every task. "Plan today": get_today_walk with project, propose at most five, and after Josh confirms call plan_today with replace true.
 - Projects hold context: goal, done-when and spec links go on the project, not in task notes; read the links when explaining its tasks.
-- Owner: owner is "me" (only Josh) or "claude" (a session can run it). Propose it when filing; Josh flips it.
+- Owner: propose owner "me" (only Josh) or "claude" (a session can run it) when filing.
 - Wait dates: if a task says "after X" or "not before X", set notBefore, not dueDate.
 - Close as you go: when this session finishes a task, mark it done, say so in one line.
-- Waiting on someone else is a follow-up (create_followup), never a task.
+- Waiting on someone else is a follow-up (create_followup), never a task; close it with update_followup.
 - New tasks go to the backlog. Set isToday only when Josh says today.`;
