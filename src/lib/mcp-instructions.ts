@@ -13,5 +13,5 @@ export const CONDUCTOR_MCP_INSTRUCTIONS = `Conductor is Josh's task system. Each
 - Owner: propose owner "me" (only Josh) or "claude" (a session can run it) when filing.
 - Wait dates: if a task says "after X" or "not before X", set notBefore, not dueDate.
 - Close as you go: when this session finishes a task, mark it done, say so in one line.
-- Waiting on someone else is a follow-up (create_followup), never a task; close it with update_followup.
+- Waiting on someone: file a task (Josh's next move) with dueDate and project, never a follow-up.
 - New tasks go to the backlog. Set isToday only when Josh says today.`;

@@ -7,9 +7,14 @@ describe("CONDUCTOR_MCP_INSTRUCTIONS", () => {
   });
 
   it("names the tools and fields the rules depend on", () => {
-    for (const term of ["get_today_walk", "list_projects", "notBefore", "create_followup", "update_followup"]) {
+    for (const term of ["get_today_walk", "list_projects", "notBefore"]) {
       expect(CONDUCTOR_MCP_INSTRUCTIONS).toContain(term);
     }
+  });
+
+  it("files waiting-on as a dated task in a project, not a follow-up", () => {
+    expect(CONDUCTOR_MCP_INSTRUCTIONS).toMatch(/Waiting on someone: file a task[^\n]*never a follow-up/);
+    expect(CONDUCTOR_MCP_INSTRUCTIONS).toMatch(/Waiting on[^\n]*dueDate[^\n]*project/);
   });
 
   it("asks about past-due work instead of presenting it", () => {
