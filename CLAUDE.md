@@ -574,16 +574,19 @@ grant. `--uninstall` removes it; Spotlight still works either way. To change the
 
 ## Alert layer
 
-Three blocking overlays (`Reminders`, `MeetingAlert`, `CommsSweepAlert`) mount
-as peers in `AppShell`. `src/lib/alert-lock.ts` gives them one shared registry
-and a fixed priority ladder — comms sweep 76, reminder 84, meeting 88 — and marks `document.body` with
+Two blocking overlays (`Reminders`, `MeetingAlert`) mount as peers in
+`AppShell`. `src/lib/alert-lock.ts` gives them one shared registry and a fixed
+priority ladder — reminder 84, meeting 88 — and marks `document.body` with
 `data-alert-open` so `⌘K` stays shut while any of them holds the screen.
 
-They are still three independent systems that can all become *due* at once; the
+They are still independent systems that can all become *due* at once; the
 lock makes the stacking deliberate, it does not serialise them. A single queue
 that owns the screen is the remaining work, and matters more once the app is
 resident. The company-switch takeover (`BlockTransition`) was removed on
-2026-10-28 at Josh's request.
+2026-10-28 at Josh's request. The comms-sweep modal (`CommsSweepAlert`, "Check
+Slack, Teams, and messages") was unmounted on 2026-11-09, also at his request;
+the component and `/api/comms-cover` remain, and `CommsCoverStrip` still shows
+the next sweep.
 
 ## Task keys
 

@@ -10,7 +10,6 @@ import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { GlobalSearch } from "./GlobalSearch";
 import { Reminders } from "./Reminders";
 import { MeetingAlert } from "./MeetingAlert";
-import { CommsSweepAlert } from "./CommsSweepAlert";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 import { ScheduleProvider, useSchedule } from "./ScheduleContext";
 import { cn } from "@/lib/utils";
@@ -131,8 +130,6 @@ function AppFrame({ children }: { children: React.ReactNode }) {
       {/* Meeting starting soon — same unmissable modal, fires on every page */}
       <MeetingAlert />
 
-      {/* Comms sweep due — go check your messages */}
-      <CommsSweepAlert />
 
     </div>
   );
