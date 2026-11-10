@@ -24,9 +24,8 @@ export function InboxProcessor({ roles }: InboxProcessorProps) {
   const [pendingTranscripts, setPendingTranscripts] = useState<PendingTranscript[]>([]);
   const [expandedTranscriptId, setExpandedTranscriptId] = useState<string | null>(null);
   const [expandedTranscriptText, setExpandedTranscriptText] = useState<string | null>(null);
-  const [quickAddMode, setQuickAddMode] = useState<"task" | "followup" | null>(null);
+  const [quickAddMode, setQuickAddMode] = useState<"task" | null>(null);
   const [quickTitle, setQuickTitle] = useState("");
-  const [quickWaitingOn, setQuickWaitingOn] = useState("");
   const selectedRole = roles.find((r) => r.id === selectedRoleId);
   const { toast } = useToast();
   const { suggestion, requestSuggestion, applyTaskSuggestion, dismissSuggestion } = useTaskSuggestion();
@@ -163,14 +162,15 @@ export function InboxProcessor({ roles }: InboxProcessorProps) {
           }),
         }));
       }
+      // Follow-ups are retired: something you're waiting on is filed as a to-do.
       for (const fu of data.followUps) {
-        promises.push(fetch("/api/followups", {
+        const who = fu.waitingOn && fu.waitingOn !== "Unknown" ? fu.waitingOn : null;
+        promises.push(fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             roleId: selectedRoleId,
-            title: fu.title,
-            waitingOn: fu.waitingOn,
+            title: who ? `Check with ${who}: ${fu.title}` : fu.title,
             ...(sourceInfo && { sourceType: sourceInfo.sourceType, sourceId: sourceInfo.sourceId }),
           }),
         }));
@@ -209,13 +209,9 @@ export function InboxProcessor({ roles }: InboxProcessorProps) {
     const title = quickTitle.trim();
     try {
       let res: Response;
-      if (quickAddMode === "task") {
-        res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roleId: selectedRoleId, title }) });
-      } else {
-        res = await fetch("/api/followups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roleId: selectedRoleId, title, waitingOn: quickWaitingOn || "Unknown" }) });
-      }
+      res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roleId: selectedRoleId, title }) });
       if (!res.ok) throw new Error("Failed to save");
-      toast(`${quickAddMode === "task" ? "Task" : "Follow-up"} added`, "success");
+      toast("Task added", "success");
 
       // Fire AI suggestion for tasks
       if (quickAddMode === "task") {
@@ -226,10 +222,6 @@ export function InboxProcessor({ roles }: InboxProcessorProps) {
       toast("Failed to save", "error");
     }
     setQuickTitle("");
-    setQuickWaitingOn("");
-    if (quickAddMode !== "task") {
-      setQuickAddMode(null);
-    }
   };
 
   if (processing) {
@@ -361,8 +353,7 @@ export function InboxProcessor({ roles }: InboxProcessorProps) {
       <div className="pt-2">
         {quickAddMode ? (
           <div className="space-y-2">
-            <input value={quickTitle} onChange={(e) => setQuickTitle(e.target.value)} placeholder={quickAddMode === "task" ? "Task title..." : "Follow-up title..."} onKeyDown={(e) => e.key === "Enter" && handleQuickAdd()} autoFocus className={inputCls} />
-            {quickAddMode === "followup" && <input value={quickWaitingOn} onChange={(e) => setQuickWaitingOn(e.target.value)} placeholder="Waiting on..." className={inputCls} />}
+            <input value={quickTitle} onChange={(e) => setQuickTitle(e.target.value)} placeholder="Task title..." onKeyDown={(e) => e.key === "Enter" && handleQuickAdd()} autoFocus className={inputCls} />
             <div className="flex gap-2">
               <button onClick={handleQuickAdd} className="px-4 py-2 rounded-xl bg-[var(--accent-blue)] text-white text-[14px] font-medium hover:opacity-90 transition-opacity">Add</button>
               <button onClick={() => { dismissSuggestion(); setQuickAddMode(null); }} className="px-4 py-2 rounded-xl text-[var(--text-secondary)] text-[14px] font-medium hover:bg-[var(--sidebar-hover)] transition-colors">Cancel</button>
@@ -378,7 +369,6 @@ export function InboxProcessor({ roles }: InboxProcessorProps) {
         ) : (
           <div className="flex gap-3">
             <button onClick={() => setQuickAddMode("task")} className="flex-1 flex items-center justify-center gap-1.5 border border-[var(--border-default)] rounded-xl py-2.5 text-[16px] text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)] transition-colors"><Plus className="h-3.5 w-3.5" /> Add task manually</button>
-            <button onClick={() => setQuickAddMode("followup")} className="flex-1 flex items-center justify-center gap-1.5 border border-[var(--border-default)] rounded-xl py-2.5 text-[16px] text-[var(--text-secondary)] hover:bg-[var(--sidebar-hover)] transition-colors"><Plus className="h-3.5 w-3.5" /> Add follow-up manually</button>
           </div>
         )}
       </div>

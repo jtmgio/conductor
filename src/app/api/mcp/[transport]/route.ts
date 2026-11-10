@@ -858,30 +858,23 @@ const handler = createMcpHandler(
     server.registerTool(
       "create_followup",
       {
-        title: "Create follow-up",
+        title: "Create follow-up (retired)",
         description:
-          "Track something you're waiting on from someone else. Follow-ups are NOT tasks — they live in the Tracker.",
+          "Retired — always refuses. Follow-ups are no longer created. File what you're waiting on as a task with create_task: title it as Josh's next move, set a dueDate, put it in a project.",
         inputSchema: {
-          role: z.string().describe("Role name (partial ok) or role id"),
-          title: z.string().min(1).describe("What you're waiting for"),
-          waitingOn: z.string().describe("Person you're waiting on"),
-          dueDate: z.string().optional().describe("YYYY-MM-DD"),
+          role: z.string().optional(),
+          title: z.string().optional(),
+          waitingOn: z.string().optional(),
+          dueDate: z.string().optional(),
         },
       },
-      async ({ role, title, waitingOn, dueDate }) => {
-        const r = await resolveRole(role);
-        const followUp = await prisma.followUp.create({
-          data: {
-            roleId: r.id,
-            title,
-            waitingOn,
-            dueDate: dueDate ? new Date(`${dueDate}T00:00:00`) : undefined,
-            staleDays: 3,
-            sourceType: "mcp",
-          },
-        });
-        return ok({ created: { id: followUp.id, title: followUp.title, waitingOn: followUp.waitingOn, role: r.name } });
-      }
+      async () =>
+        ok({
+          created: false,
+          retired: true,
+          message:
+            "Follow-ups are retired. Create a to-do instead: create_task with Josh's next move as the title, a dueDate, and a project.",
+        })
     );
 
     server.registerTool(

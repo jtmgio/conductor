@@ -20,7 +20,7 @@ export function ConfirmExtract({ data, roleId, roleColor, roleName, noteId, onCo
   const totalItems = data.tasks.length + data.followUps.length + data.decisions.length + data.keyQuotes.length;
   const summaryParts: string[] = [];
   if (data.tasks.length > 0) summaryParts.push(`${data.tasks.length} task${data.tasks.length !== 1 ? "s" : ""}`);
-  if (data.followUps.length > 0) summaryParts.push(`${data.followUps.length} follow-up${data.followUps.length !== 1 ? "s" : ""}`);
+  if (data.followUps.length > 0) summaryParts.push(`${data.followUps.length} waiting-on`);
   if (data.decisions.length > 0) summaryParts.push(`${data.decisions.length} decision${data.decisions.length !== 1 ? "s" : ""}`);
   if (data.keyQuotes.length > 0) summaryParts.push(`${data.keyQuotes.length} quote${data.keyQuotes.length !== 1 ? "s" : ""}`);
 
@@ -63,7 +63,7 @@ export function ConfirmExtract({ data, roleId, roleColor, roleName, noteId, onCo
 
       {data.followUps.length > 0 && (
         <div>
-          <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-3">Follow-ups</p>
+          <p className="text-[13px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-3">Waiting on (filed as to-dos)</p>
           <div className="space-y-1">
             {data.followUps.map((fu, i) => { const checked = checkedFollowUps.has(i); return (
               <button key={i} onClick={() => toggle(checkedFollowUps, setCheckedFollowUps, i)} className={rowCls}>

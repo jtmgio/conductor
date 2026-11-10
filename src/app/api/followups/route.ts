@@ -23,21 +23,13 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(followUps);
 }
 
-export async function POST(req: NextRequest) {
+// Follow-ups are retired (2026-11-10): what you're waiting on is a dated task in a
+// project. Existing rows stay readable and editable; nothing new gets created.
+export async function POST() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const body = await req.json();
-  const followUp = await prisma.followUp.create({
-    data: {
-      roleId: body.roleId,
-      title: body.title,
-      waitingOn: body.waitingOn,
-      dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
-      staleDays: body.staleDays || 3,
-      sourceType: body.sourceType,
-      sourceId: body.sourceId,
-    },
-  });
-  return NextResponse.json(followUp);
+  return NextResponse.json(
+    { error: "Follow-ups are retired. Create a to-do instead." },
+    { status: 410 }
+  );
 }
