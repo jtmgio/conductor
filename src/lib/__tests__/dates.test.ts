@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatDateOnly } from "@/lib/dates";
+import { formatDateOnly, plannedDate } from "@/lib/dates";
 
 // The walk and taskShape must agree on which day a due date falls on. Due dates
 // are timestamps written at container midnight (UTC), so this is the one
@@ -24,5 +24,38 @@ describe("dayOf", () => {
     vi.resetModules();
     const { dayOf } = await import("@/lib/dates");
     expect(dayOf(new Date("2026-10-23T02:30:00Z"))).toBe("2026-10-22");
+  });
+});
+
+describe("plannedDate", () => {
+  const today = new Date(Date.UTC(2026, 10, 16));
+
+  it("leaves the plan alone when neither field is given", () => {
+    expect(plannedDate(undefined, undefined, today)).toBeUndefined();
+  });
+
+  it("plans a named day", () => {
+    expect(formatDateOnly(plannedDate(undefined, "2026-11-19", today))).toBe("2026-11-19");
+  });
+
+  it("clears the plan with null", () => {
+    expect(plannedDate(undefined, null, today)).toBeNull();
+  });
+
+  it("keeps isToday as a shortcut for today or backlog", () => {
+    expect(plannedDate(true, undefined, today)).toEqual(today);
+    expect(plannedDate(false, undefined, today)).toBeNull();
+  });
+
+  it("refuses a malformed date instead of silently dropping the plan", () => {
+    expect(() => plannedDate(undefined, "thursday", today)).toThrow(/YYYY-MM-DD/);
+  });
+
+  it("refuses a day already gone", () => {
+    expect(() => plannedDate(undefined, "2026-11-15", today)).toThrow(/past/);
+  });
+
+  it("refuses isToday and plannedFor together", () => {
+    expect(() => plannedDate(true, "2026-11-19", today)).toThrow(/not both/);
   });
 });

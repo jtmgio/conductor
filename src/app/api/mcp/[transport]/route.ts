@@ -4,7 +4,7 @@ import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentBlock, getTimeLabel } from "@/lib/schedule";
-import { today, formatDateOnly, dayOf } from "@/lib/dates";
+import { today, formatDateOnly, dayOf, plannedDate } from "@/lib/dates";
 import { invalidateRebalanceCache } from "@/lib/schedule-rebalance";
 import { refineTask, splitRawTask, type RefinedTask } from "@/lib/task-refine";
 import { formatMessage } from "@/lib/format-message";
@@ -564,20 +564,22 @@ const handler = createMcpHandler(
       {
         title: "Create task",
         description:
-          "Create a task in Conductor from natural language. By default the text is AI-refined into a proper task card (short title, details in notes, checklist, resolved due date) and, if no role is given, the right role/company is inferred from the role directory + staff names. If the result has needsClarification: true, the task was NOT created — ask the user which role/company they want, then call again with the role parameter. Defaults to the backlog — set isToday only when the user explicitly wants it on today's plan. In a command center, call list_projects first and pass project when one fits. Use notBefore, not dueDate, for wait-until dates.",
+          "Create a task in Conductor from natural language. By default the text is AI-refined into a proper task card (short title, details in notes, checklist, resolved due date) and, if no role is given, the right role/company is inferred from the role directory + staff names. If the result has needsClarification: true, the task was NOT created — ask the user which role/company they want, then call again with the role parameter. Defaults to the backlog — set isToday only when the user explicitly wants it on today's plan; set plannedFor to plan it for a later day (week planning). Use dueDate only for a real deadline. In a command center, call list_projects first and pass project when one fits. Use notBefore, not dueDate, for wait-until dates.",
         inputSchema: {
           text: z.string().min(1).describe("The todo in natural language — full context welcome, it gets refined"),
           role: z.string().optional().describe("Role/company name (partial ok) or role id. Omit to auto-infer."),
           priority: z.enum(["normal", "urgent"]).optional().describe("Override — otherwise inferred"),
           isToday: z.boolean().optional().describe("Put on today's plan instead of backlog"),
-          dueDate: z.string().optional().describe("YYYY-MM-DD override — otherwise inferred from the text"),
+          plannedFor: z.string().optional().describe("YYYY-MM-DD: the day Josh plans to do it (week planning). Not a deadline — that's dueDate. Use instead of isToday, not with it."),
+          dueDate: z.string().optional().describe("YYYY-MM-DD real deadline — otherwise inferred from the text. Not for 'do it Tuesday'; use plannedFor."),
           refine: z.boolean().optional().describe("Set false to skip AI refinement and save the text verbatim (role required)"),
           project: z.string().optional().describe("Project name in this role. Call list_projects first. Never guessed by the server."),
           notBefore: z.string().optional().describe("YYYY-MM-DD. Use for 'after X' / 'not before X'. Not a deadline."),
           owner: z.enum(["me", "claude"]).optional().describe('"me" (default) if only Josh can do it, "claude" if a Claude Code session can run it. Propose it when filing.'),
         },
       },
-      async ({ text, role, priority, isToday, dueDate, refine, project, notBefore, owner }) => {
+      async ({ text, role, priority, isToday, plannedFor, dueDate, refine, project, notBefore, owner }) => {
+        const planned = plannedDate(isToday, plannedFor);
         let resolved = role ? await resolveRole(role) : null;
         let refined: RefinedTask | null = null;
         let refineError: string | null = null;
@@ -629,7 +631,7 @@ const handler = createMcpHandler(
             priority: priority || refined?.priority || "normal",
             owner: owner ?? "me",
             status: "backlog",
-            scheduledFor: isToday ? today() : null,
+            scheduledFor: planned ?? null,
             dueDate: (dueDate || refined?.dueDate) ? new Date(`${dueDate || refined?.dueDate}T00:00:00`) : undefined,
             notBefore: notBefore ? new Date(`${notBefore}T00:00:00Z`) : undefined,
             projectId,
@@ -637,7 +639,7 @@ const handler = createMcpHandler(
           },
           include: TASK_INCLUDE,
         });
-        if (isToday) invalidateRebalanceCache();
+        if (planned) invalidateRebalanceCache();
         return ok({
           created: taskShape(task),
           roleWasInferred: !role,
@@ -654,7 +656,7 @@ const handler = createMcpHandler(
       {
         title: "Update task",
         description:
-          "Update a task: move it on the board (status), mark it done, pull it into/out of today's plan, or edit fields. Accepts the task's human key (VQ-14, MED-54) or its id — both come back from list_tasks/search. Mark done as soon as work in this session finishes the task, and tell Josh in one line.",
+          "Update a task: move it on the board (status), mark it done, plan it for a day (plannedFor, or isToday for today), or edit fields. Accepts the task's human key (VQ-14, MED-54) or its id — both come back from list_tasks/search. Mark done as soon as work in this session finishes the task, and tell Josh in one line.",
         inputSchema: {
           taskId: z.string().describe('Task key like "VQ-14" or "MED-54" (preferred), or the raw id'),
           title: z.string().optional(),
@@ -662,7 +664,8 @@ const handler = createMcpHandler(
           done: z.boolean().optional(),
           priority: z.enum(["normal", "urgent"]).optional(),
           isToday: z.boolean().optional().describe("true = today's plan, false = back to backlog"),
-          dueDate: z.string().nullable().optional().describe("YYYY-MM-DD, or null to clear"),
+          plannedFor: z.string().nullable().optional().describe("YYYY-MM-DD day Josh plans to do it, or null to unplan. Not a deadline. Use instead of isToday, not with it."),
+          dueDate: z.string().nullable().optional().describe("YYYY-MM-DD real deadline, or null to clear. Not for planning a day — use plannedFor."),
           notes: z.string().optional(),
           checklist: z.array(z.string()).optional().describe("Replace the checklist with these steps; [] clears it. Steps already ticked keep their tick if the text is unchanged."),
           blockedReason: z.string().optional().describe('Why it is blocked, e.g. "waiting on Jeff to approve the slate". Set this whenever you set status to blocked — a blocked task with no reason is just a lost task.'),
@@ -672,7 +675,8 @@ const handler = createMcpHandler(
           owner: z.enum(["me", "claude"]).optional().describe('Hand-off: "claude" means a session can run it. Changes nothing else.'),
         },
       },
-      async ({ taskId, title, status, done, priority, isToday, dueDate, notes, checklist, role, blockedReason, project, notBefore, owner }) => {
+      async ({ taskId, title, status, done, priority, isToday, plannedFor, dueDate, notes, checklist, role, blockedReason, project, notBefore, owner }) => {
+        const planned = plannedDate(isToday, plannedFor);
         const id = await resolveTaskId(taskId);
         const data: Record<string, unknown> = {};
         const current = await prisma.task.findUniqueOrThrow({
@@ -713,7 +717,7 @@ const handler = createMcpHandler(
           data.done = done;
           if (done) data.doneAt = new Date();
         }
-        if (isToday !== undefined) data.scheduledFor = isToday ? today() : null;
+        if (planned !== undefined) data.scheduledFor = planned;
         if (dueDate !== undefined) data.dueDate = dueDate ? new Date(`${dueDate}T00:00:00`) : null;
         if (checklist !== undefined) data.checklist = await mergeChecklist(id, checklist);
         const task = await prisma.task.update({
@@ -721,7 +725,7 @@ const handler = createMcpHandler(
           data,
           include: TASK_INCLUDE,
         });
-        if (done !== undefined || isToday !== undefined) invalidateRebalanceCache();
+        if (done !== undefined || planned !== undefined) invalidateRebalanceCache();
         return ok({ updated: taskShape(task) });
       }
     );

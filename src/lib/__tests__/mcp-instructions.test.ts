@@ -45,4 +45,8 @@ describe("CONDUCTOR_MCP_INSTRUCTIONS", () => {
     expect(CONDUCTOR_MCP_INSTRUCTIONS).toMatch(/home folder/i);
     expect(CONDUCTOR_MCP_INSTRUCTIONS).not.toMatch(/no company role has no firewall/);
   });
+
+  it("plans days with plannedFor and keeps dueDate for real deadlines", () => {
+    expect(CONDUCTOR_MCP_INSTRUCTIONS).toMatch(/Week planning[^\n]*plannedFor[^\n]*dueDate[^\n]*real deadlines/);
+  });
 });

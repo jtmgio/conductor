@@ -52,6 +52,30 @@ export function parseDateOnly(value: string | null | undefined): Date | null {
   return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
 }
 
+/**
+ * The planned day (Task.scheduledFor) from MCP input. `plannedFor` names a day
+ * (null clears it); `isToday` is the older shortcut for today or backlog.
+ * undefined = leave it alone. A planned day is not a deadline — that's dueDate.
+ */
+export function plannedDate(
+  isTodayFlag: boolean | undefined,
+  plannedFor: string | null | undefined,
+  now: Date = today(),
+): Date | null | undefined {
+  if (isTodayFlag !== undefined && plannedFor !== undefined) {
+    throw new Error("Pass isToday or plannedFor, not both");
+  }
+  if (plannedFor === null) return null;
+  if (plannedFor !== undefined) {
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(plannedFor) ? parseDateOnly(plannedFor) : null;
+    if (!d || formatDateOnly(d) !== plannedFor) throw new Error(`plannedFor must be YYYY-MM-DD, got "${plannedFor}"`);
+    if (d < now) throw new Error(`plannedFor ${plannedFor} is in the past`);
+    return d;
+  }
+  if (isTodayFlag !== undefined) return isTodayFlag ? now : null;
+  return undefined;
+}
+
 /** Format a Date as YYYY-MM-DD using its UTC components (matches @db.Date storage). */
 export function formatDateOnly(date: Date | null | undefined): string | null {
   if (!date) return null;
