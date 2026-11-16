@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ChevronDown, FolderKanban, Flame, Loader2 } from "lucide-react";
+import { Check, ChevronDown, FolderKanban, Flame, Loader2, Lock } from "lucide-react";
 import { TaskDetailDrawer, type DrawerTask } from "@/components/TaskDetailDrawer";
 import { TaskKeyChip } from "@/components/TaskKeyChip";
 import { useToast } from "@/components/ui/toast";
@@ -189,6 +189,52 @@ function Picker({ placeholder, options, value, onChange }: { placeholder: string
         </div>
       )}
     </div>
+  );
+}
+
+function BlockedRow({ task, onTick, onOpen }: { task: StuckRow; onTick: () => void; onOpen: () => void }) {
+  const due = formatDue(task.dueDate);
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, x: 60, scale: 0.97 }}
+      transition={{ type: "spring", damping: 26, stiffness: 320 }}
+      onClick={onOpen}
+      className="flex cursor-pointer items-start gap-2.5 rounded-xl py-1 pr-3 transition-colors hover:bg-[var(--sidebar-hover)]"
+    >
+      <button
+        onClick={(e) => { e.stopPropagation(); onTick(); }}
+        aria-label="Mark done"
+        className="group/tick flex h-11 w-11 shrink-0 items-center justify-center"
+      >
+        <span className="flex h-5 w-5 items-center justify-center rounded-md border-[1.75px] border-amber-400/50 transition-colors">
+          <Check className="h-3 w-3 text-amber-400 opacity-0 transition-opacity group-hover/tick:opacity-60" />
+        </span>
+      </button>
+      <div className="min-w-0 flex-1 py-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <TaskKeyChip task={task} role={task.role} variant="inline" className="shrink-0" />
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: task.role.color }} />
+          <span className="min-w-0 flex-1 truncate text-[14px] text-[var(--text-secondary)]">{task.title}</span>
+          {task.project && (
+            <span className="hidden shrink-0 items-center gap-1 rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] sm:inline-flex">
+              <FolderKanban className="h-3 w-3" />
+              {task.project.name}
+            </span>
+          )}
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-400/10 px-2 py-0.5 text-[11px] font-medium text-amber-400">
+            <Lock className="h-3 w-3" />
+            {task.days !== null ? plural(task.days, "day") : "blocked"}
+          </span>
+          {due && <span className="shrink-0 text-[12px] text-[var(--text-tertiary)]">{due}</span>}
+        </div>
+        <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-[var(--text-tertiary)]">
+          {task.blockedReason || "No reason given — open it and say what it's waiting on."}
+        </p>
+      </div>
+    </motion.div>
   );
 }
 
@@ -438,6 +484,8 @@ export function DispatchBoard() {
 
   const hasBoard = !!data && data.board.length > 0;
   const hasStuck = !!data && data.stuck.length > 0;
+  const blocked = data?.stuck.filter((t) => t.reason === "blocked") ?? [];
+  const otherStuck = data?.stuck.filter((t) => t.reason !== "blocked") ?? [];
   const hasWaiting = showWaiting && !!data && data.waitingOn.length > 0;
   const hasReview = !!data && data.waitingOnReview.length > 0;
   const allClear = !!data && !hasBoard && !hasStuck && !hasWaiting && !hasReview;
@@ -534,11 +582,25 @@ export function DispatchBoard() {
           </section>
 
           <AnimatePresence initial={false}>
-            {hasStuck && (
+            {blocked.length > 0 && (
+              <motion.section key="blocked" exit={{ opacity: 0, x: 60, scale: 0.97 }}>
+                <p className={`${SECTION_LABEL} flex items-center gap-1.5`}>
+                  <Lock className="h-3 w-3" />
+                  Blocked
+                </p>
+                <AnimatePresence initial={false}>
+                  {blocked.map((t) => (
+                    <BlockedRow key={t.id} task={t} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
+                  ))}
+                </AnimatePresence>
+              </motion.section>
+            )}
+
+            {otherStuck.length > 0 && (
               <motion.section key="stuck" exit={{ opacity: 0, x: 60, scale: 0.97 }}>
                 <p className={SECTION_LABEL}>Stuck</p>
                 <AnimatePresence initial={false}>
-                  {data.stuck.map((t) => (
+                  {otherStuck.map((t) => (
                     <TaskRow key={t.id} task={t} note={stuckNote(t)} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
                   ))}
                 </AnimatePresence>
