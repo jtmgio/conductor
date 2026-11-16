@@ -8,6 +8,7 @@ import { TaskDetailDrawer, type DrawerTask } from "@/components/TaskDetailDrawer
 import { TaskKeyChip } from "@/components/TaskKeyChip";
 import { useToast } from "@/components/ui/toast";
 import { groupBoard } from "@/lib/board-groups";
+import { taskBlurb } from "@/lib/task-blurb";
 import { cn } from "@/lib/utils";
 
 type Horizon = "today" | "week" | "all";
@@ -240,6 +241,7 @@ function BlockedRow({ task, onTick, onOpen }: { task: StuckRow; onTick: () => vo
 
 function TaskRow({ task, note, onTick, onOpen }: { task: BoardRow; note?: string; onTick: () => void; onOpen: () => void }) {
   const due = formatDue(task.dueDate);
+  const blurb = taskBlurb(task.notes, task.title);
   return (
     <motion.div
       layout
@@ -248,7 +250,7 @@ function TaskRow({ task, note, onTick, onOpen }: { task: BoardRow; note?: string
       exit={{ opacity: 0, x: 60, scale: 0.97 }}
       transition={{ type: "spring", damping: 26, stiffness: 320 }}
       onClick={onOpen}
-      className="flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-xl pr-3 transition-colors hover:bg-[var(--sidebar-hover)]"
+      className="flex cursor-pointer items-start gap-2.5 rounded-xl py-1 pr-3 transition-colors hover:bg-[var(--sidebar-hover)]"
     >
       <button
         onClick={(e) => { e.stopPropagation(); onTick(); }}
@@ -262,18 +264,23 @@ function TaskRow({ task, note, onTick, onOpen }: { task: BoardRow; note?: string
           <Check className="h-3 w-3 opacity-0 transition-opacity group-hover/tick:opacity-60" style={{ color: task.role.color }} />
         </span>
       </button>
-      <TaskKeyChip task={task} role={task.role} variant="inline" className="shrink-0" />
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: task.role.color }} />
-      <span className="min-w-0 flex-1 truncate text-[14px] text-[var(--text-primary)]">{task.title}</span>
-      {task.priority === "urgent" && <Flame className="h-3.5 w-3.5 shrink-0 text-red-400" aria-label="Urgent" />}
-      {task.project && (
-        <span className="inline-flex shrink-0 items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border border-[var(--border-subtle)] text-[var(--text-secondary)]">
-          <FolderKanban className="h-3 w-3" />
-          {task.project.name}
-        </span>
-      )}
-      {note && <span className="shrink-0 text-[12px] text-[var(--text-secondary)]">{note}</span>}
-      {due && <span className="shrink-0 text-[12px] text-[var(--text-tertiary)]">{due}</span>}
+      <div className="min-w-0 flex-1 py-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <TaskKeyChip task={task} role={task.role} variant="inline" className="shrink-0" />
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: task.role.color }} />
+          <span className="min-w-0 flex-1 truncate text-[14px] text-[var(--text-primary)]">{task.title}</span>
+          {task.priority === "urgent" && <Flame className="h-3.5 w-3.5 shrink-0 text-red-400" aria-label="Urgent" />}
+          {task.project && (
+            <span className="hidden shrink-0 items-center gap-1 rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] sm:inline-flex">
+              <FolderKanban className="h-3 w-3" />
+              {task.project.name}
+            </span>
+          )}
+          {note && <span className="shrink-0 text-[12px] text-[var(--text-secondary)]">{note}</span>}
+          {due && <span className="shrink-0 text-[12px] text-[var(--text-tertiary)]">{due}</span>}
+        </div>
+        {blurb && <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-[var(--text-tertiary)]">{blurb}</p>}
+      </div>
     </motion.div>
   );
 }
