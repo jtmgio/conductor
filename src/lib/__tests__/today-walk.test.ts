@@ -69,6 +69,18 @@ describe("buildWalk", () => {
     expect(walk.sections.today[0].pastDue).toBe(false);
   });
 
+  it("an urgent task dated for a later day waits for that day, so today can finish", () => {
+    const dueLater = t({ priority: "urgent", dueDate: "2026-10-24" });
+    const plannedLater = t({ priority: "urgent", scheduledFor: "2026-10-23" });
+    const dueToday = t({ priority: "urgent", dueDate: TODAY });
+    const undated = t({ priority: "urgent" });
+    const walk = buildWalk([dueLater, plannedLater, dueToday, undated], TODAY);
+    expect(sectionOf(walk, dueLater.key)).toBe("thisWeek");
+    expect(sectionOf(walk, plannedLater.key)).not.toBe("urgent");
+    expect(sectionOf(walk, dueToday.key)).toBe("urgent");
+    expect(sectionOf(walk, undated.key)).toBe("urgent");
+  });
+
   it("planned for today ranks with urgent, and keeps its past-due flag", () => {
     const planned = t({ scheduledFor: TODAY });
     const plannedButLate = t({ scheduledFor: TODAY, dueDate: "2026-10-20" });

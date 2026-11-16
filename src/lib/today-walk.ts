@@ -47,8 +47,10 @@ function byDueThenAge(a: WalkTask, b: WalkTask): number {
 }
 
 // Planned-today ranks with urgent: Josh chose it this morning, so it outranks past due.
+// Urgent dated for a later day waits for that day — Today has to be finishable.
 export function sectionFor(t: WalkTask, today: string, weekEnd: string): WalkSection {
-  if (t.priority === "urgent" || t.scheduledFor === today) return "urgent";
+  const datedLater = (!!t.dueDate && t.dueDate > today) || (!!t.scheduledFor && t.scheduledFor > today);
+  if ((t.priority === "urgent" && !datedLater) || t.scheduledFor === today) return "urgent";
   if ((t.dueDate && t.dueDate < today) || (t.scheduledFor && t.scheduledFor < today)) return "pastDue";
   if (t.dueDate === today) return "today";
   if (t.dueDate && t.dueDate <= weekEnd) return "thisWeek";
