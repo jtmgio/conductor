@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentBlock, getTimeLabel } from "@/lib/schedule";
 import { today, formatDateOnly, dayOf, plannedDate } from "@/lib/dates";
+import { checkWhy, notesWithWhy, WHY_MIN_WORDS } from "@/lib/task-why";
 import { invalidateRebalanceCache } from "@/lib/schedule-rebalance";
 import { refineTask, splitRawTask, type RefinedTask } from "@/lib/task-refine";
 import { formatMessage } from "@/lib/format-message";
@@ -564,9 +565,10 @@ const handler = createMcpHandler(
       {
         title: "Create task",
         description:
-          "Create a task in Conductor from natural language. By default the text is AI-refined into a proper task card (short title, details in notes, checklist, resolved due date) and, if no role is given, the right role/company is inferred from the role directory + staff names. If the result has needsClarification: true, the task was NOT created — ask the user which role/company they want, then call again with the role parameter. Defaults to the backlog — set isToday only when the user explicitly wants it on today's plan; set plannedFor to plan it for a later day (week planning). Use dueDate only for a real deadline. In a command center, call list_projects first and pass project when one fits. Use notBefore, not dueDate, for wait-until dates.",
+          `Create a task in Conductor from natural language. Requires why: what the task is for and what done looks like, at least ${WHY_MIN_WORDS} words. Without it the task is NOT created. Write it from what this session knows; ask Josh only for what you don't know — never invent it. By default the text is AI-refined into a proper task card (short title, details in notes, checklist, resolved due date) and, if no role is given, the right role/company is inferred from the role directory + staff names. If the result has needsClarification: true, the task was NOT created — ask the user which role/company they want, then call again with the role parameter. Defaults to the backlog — set isToday only when the user explicitly wants it on today's plan; set plannedFor to plan it for a later day (week planning). Use dueDate only for a real deadline. In a command center, call list_projects first and pass project when one fits. Use notBefore, not dueDate, for wait-until dates.`,
         inputSchema: {
           text: z.string().min(1).describe("The todo in natural language — full context welcome, it gets refined"),
+          why: z.string().optional().describe(`Required. What this task is for and what done looks like, in plain words, at least ${WHY_MIN_WORDS} words. Leads the task's notes. If you don't know, ask Josh.`),
           role: z.string().optional().describe("Role/company name (partial ok) or role id. Omit to auto-infer."),
           priority: z.enum(["normal", "urgent"]).optional().describe("Override — otherwise inferred"),
           isToday: z.boolean().optional().describe("Put on today's plan instead of backlog"),
@@ -578,7 +580,15 @@ const handler = createMcpHandler(
           owner: z.enum(["me", "claude"]).optional().describe('"me" (default) if only Josh can do it, "claude" if a Claude Code session can run it. Propose it when filing.'),
         },
       },
-      async ({ text, role, priority, isToday, plannedFor, dueDate, refine, project, notBefore, owner }) => {
+      async ({ text, why, role, priority, isToday, plannedFor, dueDate, refine, project, notBefore, owner }) => {
+        const whyCheck = checkWhy(why);
+        if (!whyCheck.ok) {
+          return ok({
+            needsDetail: true,
+            reason: whyCheck.reason,
+            instruction: `Task NOT created. Write what this task is for and what done looks like from what this session knows; ask Josh for any part you don't know. Then call create_task again with why (at least ${WHY_MIN_WORDS} words). Never invent it.`,
+          });
+        }
         const planned = plannedDate(isToday, plannedFor);
         let resolved = role ? await resolveRole(role) : null;
         let refined: RefinedTask | null = null;
@@ -626,7 +636,7 @@ const handler = createMcpHandler(
           data: {
             roleId: resolved.id,
             title: refined?.title || fallback!.title,
-            notes: refined?.notes || fallback?.notes || undefined,
+            notes: notesWithWhy(whyCheck.why, refined?.notes || fallback?.notes),
             checklist: refined?.checklist || undefined,
             priority: priority || refined?.priority || "normal",
             owner: owner ?? "me",
