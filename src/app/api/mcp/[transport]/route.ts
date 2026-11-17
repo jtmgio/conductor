@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentBlock, getTimeLabel } from "@/lib/schedule";
 import { today, formatDateOnly, dayOf, plannedDate } from "@/lib/dates";
 import { checkWhy, notesWithWhy, WHY_MIN_WORDS } from "@/lib/task-why";
+import { checkDayCap, DAY_CAP } from "@/lib/day-cap";
 import { invalidateRebalanceCache } from "@/lib/schedule-rebalance";
 import { refineTask, splitRawTask, type RefinedTask } from "@/lib/task-refine";
 import { formatMessage } from "@/lib/format-message";
@@ -109,6 +110,24 @@ function projectShape(
     links: Array.isArray(p.links) ? p.links : [],
     status: p.status,
     openTasks: openTaskKeys.filter(Boolean),
+  };
+}
+
+/** null when the plan fits; otherwise the refusal to return. Counts this company only. */
+async function dayCapRefusal(roleId: string, day: Date, adding: string[], ignore: string[] = []) {
+  const onDay = await prisma.task.findMany({
+    where: { roleId, ...OPEN_TASK, scheduledFor: day, id: { notIn: ignore } },
+    select: { id: true, number: true, externalKey: true, title: true, role: { select: { taskPrefix: true } } },
+  });
+  const check = checkDayCap(onDay.map((t) => t.id), adding);
+  if (check.ok) return null;
+  const date = formatDateOnly(day);
+  return {
+    dayFull: true,
+    date,
+    cap: DAY_CAP,
+    alreadyPlanned: onDay.map((t) => ({ key: taskKey(t, t.role) ?? t.id, title: t.title })),
+    instruction: `Not saved. ${date} already has ${check.planned} of ${DAY_CAP} tasks planned for this company. Ask Josh: plan it for another day, or swap one of alreadyPlanned off this day first.`,
   };
 }
 
@@ -572,7 +591,7 @@ const handler = createMcpHandler(
           role: z.string().optional().describe("Role/company name (partial ok) or role id. Omit to auto-infer."),
           priority: z.enum(["normal", "urgent"]).optional().describe("Override — otherwise inferred"),
           isToday: z.boolean().optional().describe("Put on today's plan instead of backlog"),
-          plannedFor: z.string().optional().describe("YYYY-MM-DD: the day Josh plans to do it (week planning). Not a deadline — that's dueDate. Use instead of isToday, not with it."),
+          plannedFor: z.string().optional().describe("YYYY-MM-DD: the day Josh plans to do it (week planning). Not a deadline — that's dueDate. Use instead of isToday, not with it. A company holds at most 5 planned tasks per day; past that it returns dayFull and saves nothing."),
           dueDate: z.string().optional().describe("YYYY-MM-DD real deadline — otherwise inferred from the text. Not for 'do it Tuesday'; use plannedFor."),
           refine: z.boolean().optional().describe("Set false to skip AI refinement and save the text verbatim (role required)"),
           project: z.string().optional().describe("Project name in this role. Call list_projects first. Never guessed by the server."),
@@ -632,6 +651,11 @@ const handler = createMcpHandler(
         // rather than making the whole paragraph the title.
         const fallback = refined?.title ? null : splitRawTask(text);
 
+        if (planned) {
+          const full = await dayCapRefusal(resolved.id, planned, ["(new task)"]);
+          if (full) return ok(full);
+        }
+
         const task = await prisma.task.create({
           data: {
             roleId: resolved.id,
@@ -674,7 +698,7 @@ const handler = createMcpHandler(
           done: z.boolean().optional(),
           priority: z.enum(["normal", "urgent"]).optional(),
           isToday: z.boolean().optional().describe("true = today's plan, false = back to backlog"),
-          plannedFor: z.string().nullable().optional().describe("YYYY-MM-DD day Josh plans to do it, or null to unplan. Not a deadline. Use instead of isToday, not with it."),
+          plannedFor: z.string().nullable().optional().describe("YYYY-MM-DD day Josh plans to do it, or null to unplan. Not a deadline. Use instead of isToday, not with it. Max 5 planned per company per day; past that it returns dayFull and saves nothing."),
           dueDate: z.string().nullable().optional().describe("YYYY-MM-DD real deadline, or null to clear. Not for planning a day — use plannedFor."),
           notes: z.string().optional(),
           checklist: z.array(z.string()).optional().describe("Replace the checklist with these steps; [] clears it. Steps already ticked keep their tick if the text is unchanged."),
@@ -727,6 +751,10 @@ const handler = createMcpHandler(
           data.done = done;
           if (done) data.doneAt = new Date();
         }
+        if (planned) {
+          const full = await dayCapRefusal(target.id, planned, [id]);
+          if (full) return ok(full);
+        }
         if (planned !== undefined) data.scheduledFor = planned;
         if (dueDate !== undefined) data.dueDate = dueDate ? new Date(`${dueDate}T00:00:00`) : null;
         if (checklist !== undefined) data.checklist = await mergeChecklist(id, checklist);
@@ -745,7 +773,7 @@ const handler = createMcpHandler(
       {
         title: "Plan today",
         description:
-          "Record today's plan for one project session, after Josh confirms the picks. Sets scheduledFor = today on each task. With replace:true, first clears today's plan in the same project(s) as the picks (loose picks clear loose), never the whole company. Refuses a task outside role. Say 'Planned: VQ-1, VQ-2.' and nothing else.",
+          "Record today's plan for one project session, after Josh confirms the picks. Sets scheduledFor = today on each task. With replace:true, first clears today's plan in the same project(s) as the picks (loose picks clear loose), never the whole company. Refuses a task outside role. A company's day holds at most 5 tasks; past that it returns dayFull and changes nothing. Say 'Planned: VQ-1, VQ-2.' and nothing else.",
         inputSchema: {
           role: z.string().trim().min(1).describe("Role/company name (partial ok) or id. Required."),
           taskIds: z.array(z.string()).min(1).describe("Task keys (VQ-14) or ids to put on today's plan."),
@@ -768,12 +796,19 @@ const handler = createMcpHandler(
         const toCandidates = (ts: typeof picks): PlanCandidate[] =>
           ts.map((t) => ({ id: t.id, projectId: t.projectId, done: t.done, scheduledFor: formatDateOnly(t.scheduledFor) }));
         let cleared: typeof picks = [];
+        let clearIds: string[] = [];
+        let candidates: typeof picks = [];
         if (replace) {
-          const candidates = await prisma.task.findMany({
+          candidates = await prisma.task.findMany({
             where: { roleId: r.id, ...OPEN_TASK, scheduledFor: today() },
             include,
           });
-          const clearIds = planClearSet(toCandidates(picks), toCandidates(candidates), date);
+          clearIds = planClearSet(toCandidates(picks), toCandidates(candidates), date);
+        }
+        // Checked before anything is cleared, so a refused plan leaves today as it was.
+        const full = await dayCapRefusal(r.id, today(), ids, clearIds);
+        if (full) return ok(full);
+        if (replace) {
           await prisma.task.updateMany({ where: { id: { in: clearIds } }, data: { scheduledFor: null } });
           cleared = candidates.filter((c) => clearIds.includes(c.id));
         }
