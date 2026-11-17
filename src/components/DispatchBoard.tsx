@@ -9,6 +9,7 @@ import { TaskKeyChip } from "@/components/TaskKeyChip";
 import { useToast } from "@/components/ui/toast";
 import { groupBoard } from "@/lib/board-groups";
 import { taskBlurb } from "@/lib/task-blurb";
+import { rowDates } from "@/lib/row-dates";
 import { cn } from "@/lib/utils";
 
 type Horizon = "today" | "week" | "all";
@@ -63,14 +64,6 @@ interface Chip {
 const HORIZONS: [Horizon, string][] = [["today", "Today"], ["week", "Week"], ["all", "All"]];
 
 const SECTION_LABEL = "text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-2";
-
-/** "2026-10-24" (or a full ISO stamp after a PUT merge) → "Oct 24", read as a local date. */
-function formatDue(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const [y, m, d] = value.slice(0, 10).split("-").map(Number);
-  if (!y || !m || !d) return null;
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
 
 function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -193,8 +186,17 @@ function Picker({ placeholder, options, value, onChange }: { placeholder: string
   );
 }
 
-function BlockedRow({ task, onTick, onOpen }: { task: StuckRow; onTick: () => void; onOpen: () => void }) {
-  const due = formatDue(task.dueDate);
+function RowDates({ task, today }: { task: BoardRow; today: string }) {
+  const { planned, due } = rowDates(task.scheduledFor, task.dueDate, today);
+  return (
+    <>
+      {planned && <span className="shrink-0 text-[12px] font-medium" style={{ color: task.role.color }}>{planned}</span>}
+      {due && <span className="shrink-0 text-[12px] text-[var(--text-tertiary)]">{due}</span>}
+    </>
+  );
+}
+
+function BlockedRow({ task, today, onTick, onOpen }: { task: StuckRow; today: string; onTick: () => void; onOpen: () => void }) {
   return (
     <motion.div
       layout
@@ -229,7 +231,7 @@ function BlockedRow({ task, onTick, onOpen }: { task: StuckRow; onTick: () => vo
             <Lock className="h-3 w-3" />
             {task.days !== null ? plural(task.days, "day") : "blocked"}
           </span>
-          {due && <span className="shrink-0 text-[12px] text-[var(--text-tertiary)]">{due}</span>}
+          <RowDates task={task} today={today} />
         </div>
         <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-[var(--text-tertiary)]">
           {task.blockedReason || "No reason given — open it and say what it's waiting on."}
@@ -239,8 +241,7 @@ function BlockedRow({ task, onTick, onOpen }: { task: StuckRow; onTick: () => vo
   );
 }
 
-function TaskRow({ task, note, onTick, onOpen }: { task: BoardRow; note?: string; onTick: () => void; onOpen: () => void }) {
-  const due = formatDue(task.dueDate);
+function TaskRow({ task, today, note, onTick, onOpen }: { task: BoardRow; today: string; note?: string; onTick: () => void; onOpen: () => void }) {
   const blurb = taskBlurb(task.notes, task.title);
   return (
     <motion.div
@@ -277,7 +278,7 @@ function TaskRow({ task, note, onTick, onOpen }: { task: BoardRow; note?: string
             </span>
           )}
           {note && <span className="shrink-0 text-[12px] text-[var(--text-secondary)]">{note}</span>}
-          {due && <span className="shrink-0 text-[12px] text-[var(--text-tertiary)]">{due}</span>}
+          <RowDates task={task} today={today} />
         </div>
         {blurb && <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-[var(--text-tertiary)]">{blurb}</p>}
       </div>
@@ -559,7 +560,7 @@ export function DispatchBoard() {
                               {!project && <p className={`${SECTION_LABEL} pl-11`}>{p.name ?? "loose"}</p>}
                               <AnimatePresence initial={false}>
                                 {p.rows.map((t) => (
-                                  <TaskRow key={t.id} task={t} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
+                                  <TaskRow key={t.id} task={t} today={data.date} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
                                 ))}
                               </AnimatePresence>
                             </motion.div>
@@ -573,7 +574,7 @@ export function DispatchBoard() {
             ) : (
               <AnimatePresence initial={false}>
                 {data.board.map((t) => (
-                  <TaskRow key={t.id} task={t} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
+                  <TaskRow key={t.id} task={t} today={data.date} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
                 ))}
               </AnimatePresence>
             )}
@@ -597,7 +598,7 @@ export function DispatchBoard() {
                 </p>
                 <AnimatePresence initial={false}>
                   {blocked.map((t) => (
-                    <BlockedRow key={t.id} task={t} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
+                    <BlockedRow key={t.id} task={t} today={data.date} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
                   ))}
                 </AnimatePresence>
               </motion.section>
@@ -608,7 +609,7 @@ export function DispatchBoard() {
                 <p className={SECTION_LABEL}>Stuck</p>
                 <AnimatePresence initial={false}>
                   {otherStuck.map((t) => (
-                    <TaskRow key={t.id} task={t} note={stuckNote(t)} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
+                    <TaskRow key={t.id} task={t} today={data.date} note={stuckNote(t)} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
                   ))}
                 </AnimatePresence>
               </motion.section>
@@ -628,7 +629,7 @@ export function DispatchBoard() {
                 <p className={SECTION_LABEL}>In review</p>
                 <AnimatePresence initial={false}>
                   {data.waitingOnReview.map((t) => (
-                    <TaskRow key={t.id} task={t} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
+                    <TaskRow key={t.id} task={t} today={data.date} onTick={() => completeTask(t.id)} onOpen={() => setDrawerTaskId(t.id)} />
                   ))}
                 </AnimatePresence>
               </motion.section>
