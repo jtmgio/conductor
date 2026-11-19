@@ -101,13 +101,10 @@ fails closed if unset). Returns today's meetings in `TIMEZONE`:
 - One borderless `NSPanel` per `NSScreen`, sized to the full screen frame,
   level `.screenSaver` (above full-screen apps and the menu bar),
   `collectionBehavior` `[.canJoinAllSpaces, .fullScreenAuxiliary]`.
-- **Title-free (Josh's call).** The overlay may be on a screen share, so it shows
-  nothing that names the meeting or the company. The card has the company-color
-  dot (no name), "MEETING IN", a large live minute count ("2 min" → "1 min" →
-  "Starting now"), `10:00 – 10:30 AM`, then **Snooze 1 min** and
-  **Dismiss esc**, plus a hint line, "⌃⌥M for details". That's a deliberate
-  change from the mockup: no title, no company name, no "Next:" line. Details
-  live only in the ⌃⌥M panel.
+- **Shows title + company (Josh's call, 2026-11-19, reversing the earlier title-free
+  pick).** Card: company dot + name, "MEETING IN", live count, meeting title, time
+  range, Snooze 1 min, Dismiss esc, "⌃⌥M for today's meetings". A screen share
+  shows it until esc — accepted.
 - The card is only on the main screen. Other screens get just the dimmed backdrop.
 - Plays a chime once when it appears (system sound, e.g. `NSSound(named: "Glass")`).
 - Focus *(builder call)*: the main-screen panel becomes key, so it receives

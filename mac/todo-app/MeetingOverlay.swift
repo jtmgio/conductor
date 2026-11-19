@@ -1,7 +1,7 @@
 // The full-screen meeting alert: a dim panel on every screen, the card on the main one.
 //
-// Title-free on purpose — it may land on a screen share, so it never names the meeting
-// or the company. Details live in the ⌃⌥M panel.
+// Shows the meeting title and company (Josh reversed the title-free call on 2026-11-19,
+// accepting that a screen share will show it until esc).
 //
 // Keys: the card's panel takes keyboard focus without activating the app (a
 // non-activating panel, the Spotlight trick), so whatever app you were in stays in front.
@@ -69,14 +69,20 @@ struct AlertCard: View {
     var body: some View {
         if let m = model.meeting {
             VStack(alignment: .leading, spacing: 28) {
-                HStack {
+                HStack(spacing: 10) {
                     Circle().fill(Color(hex: m.company.color)).frame(width: 12, height: 12)
+                    Text(m.company.name).font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Color(hex: "#C9C4BC"))
                     Spacer()
                     Text("MEETING IN").font(.system(size: 15, weight: .semibold)).tracking(0.3)
                         .foregroundStyle(Palette.accent)
                 }
                 countdown(m)
-                Text(timeRange(m)).font(.system(size: 22, weight: .medium)).foregroundStyle(Palette.secondary)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(m.title).font(.system(size: 44, weight: .semibold)).tracking(-0.8)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    Text(timeRange(m)).font(.system(size: 18)).foregroundStyle(Palette.secondary)
+                }
                 HStack(spacing: 12) {
                     Button(action: onSnooze) {
                         Text("Snooze 1 min").font(.system(size: 17, weight: .semibold))
@@ -93,7 +99,7 @@ struct AlertCard: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 8)
-                Text("⌃⌥M for details").font(.system(size: 14)).foregroundStyle(Palette.secondary)
+                Text("⌃⌥M for today's meetings").font(.system(size: 14)).foregroundStyle(Palette.secondary)
             }
             .padding(.vertical, 48).padding(.horizontal, 56)
             .frame(width: 680)

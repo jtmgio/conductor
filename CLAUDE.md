@@ -584,8 +584,9 @@ The resident `Todo.app --daemon` also owns meeting alerts, outside the browser.
   Timing rules live in pure `mac/todo-app/MeetingSchedule.swift`, tested by
   `bash mac/todo-app/tests/run.sh`: alert 2 min before, stop 2 min after, snooze 1 min (always
   comes back once), dismiss is final for the day.
-- **The overlay is title-free on purpose** — it can land on a screen share, so it shows only the
-  company-color dot, the countdown and the time range. Details live in the **⌃⌥M** panel.
+- The overlay shows the company, the countdown, the meeting title and the time range. It was
+  title-free at first (screen-share worry); Josh reversed that on 2026-11-19, so a share shows it
+  until `esc`. **⌃⌥M** lists the whole day.
 - The overlay takes keys without activating the app (non-activating panel) and swallows
   everything except `esc` (dismiss), so typing can't trigger it.
 - Runs on Josh's MacBook Pro as a client (`~/.conductor/url` → the tower's Tailscale URL).
