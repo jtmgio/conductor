@@ -54,6 +54,14 @@ do {
     check(s.due(now: t0 + 120 + 121) == nil, "snoozeExpires closes after grace")
 }
 do {
+    var s = fresh()
+    check(s.alsoDue(now: t0).map(\.id) == ["B"], "alsoDue lists the other due meeting")
+    s.dismiss("B")
+    check(s.alsoDue(now: t0).isEmpty, "alsoDue skips dismissed")
+    let s2 = fresh()
+    check(s2.alsoDue(now: t0 - 121).isEmpty, "alsoDue empty when nothing due")
+}
+do {
     var s = MeetingSchedule()
     check(!s.loaded, "loaded false before any fetch")
     s.replace([], day: day)

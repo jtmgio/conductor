@@ -81,14 +81,22 @@ struct MeetingSchedule {
 
     /// The earliest meeting that should be on screen now, if any.
     func due(now: Date) -> Meeting? {
-        meetings.first { m in
-            if dismissed.contains(m.id) { return false }
-            // A snooze always brings it back once, then closes like a normal alert would —
-            // never a full-screen alert for a meeting that ended while the lid was shut.
-            if let until = snoozedUntil[m.id] { return now >= until && now <= until.addingTimeInterval(Self.grace) }
-            return now >= m.startsAt.addingTimeInterval(-Self.lead)
-                && now <= m.startsAt.addingTimeInterval(Self.grace)
-        }
+        meetings.first { isDue($0, now: now) }
+    }
+
+    /// The other meetings due right now, behind the one on screen — the alert's
+    /// "also starting" line, so a double-booking isn't hidden until you dismiss.
+    func alsoDue(now: Date) -> [Meeting] {
+        Array(meetings.filter { isDue($0, now: now) }.dropFirst())
+    }
+
+    private func isDue(_ m: Meeting, now: Date) -> Bool {
+        if dismissed.contains(m.id) { return false }
+        // A snooze always brings it back once, then closes like a normal alert would —
+        // never a full-screen alert for a meeting that ended while the lid was shut.
+        if let until = snoozedUntil[m.id] { return now >= until && now <= until.addingTimeInterval(Self.grace) }
+        return now >= m.startsAt.addingTimeInterval(-Self.lead)
+            && now <= m.startsAt.addingTimeInterval(Self.grace)
     }
 
     /// Meetings that haven't ended, earliest first — the ⌃⌥M panel.

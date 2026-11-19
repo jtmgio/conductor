@@ -46,12 +46,13 @@ final class MeetingWatcher {
             shownId = due.id
             overlay.show(
                 meeting: due,
+                also: schedule.alsoDue(now: now),
                 now: now,
                 onSnooze: { [weak self] in self?.snooze(due.id) },
                 onDismiss: { [weak self] in self?.dismiss(due.id) }
             )
         } else {
-            overlay.update(now: now)
+            overlay.update(now: now, also: schedule.alsoDue(now: now))
         }
     }
 

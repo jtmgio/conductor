@@ -44,6 +44,7 @@ enum Palette {
 
 final class OverlayModel: ObservableObject {
     @Published var meeting: Meeting?
+    @Published var also: [Meeting] = []
     @Published var now = Date()
 }
 
@@ -99,6 +100,16 @@ struct AlertCard: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 8)
+                if let first = model.also.first {
+                    HStack(spacing: 10) {
+                        Circle().fill(Color(hex: first.company.color)).frame(width: 10, height: 10)
+                        Text(alsoLine(first, more: model.also.count - 1))
+                            .font(.system(size: 16, weight: .medium)).lineLimit(1)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Palette.raised, in: RoundedRectangle(cornerRadius: 10))
+                }
                 Text("⌃⌥M for today's meetings").font(.system(size: 14)).foregroundStyle(Palette.secondary)
             }
             .padding(.vertical, 48).padding(.horizontal, 56)
@@ -108,6 +119,12 @@ struct AlertCard: View {
             .shadow(color: .black.opacity(0.5), radius: 40, y: 30)
             .foregroundStyle(Palette.text)
         }
+    }
+
+    /// "Also at 2:00 · Refinement Session · Healthmap Solutions (+1 more)"
+    private func alsoLine(_ m: Meeting, more: Int) -> String {
+        let base = "Also at \(twelveHour(m.startTime)) · \(m.title) · \(m.company.name)"
+        return more > 0 ? "\(base) (+\(more) more)" : base
     }
 
     @ViewBuilder private func countdown(_ m: Meeting) -> some View {
@@ -144,10 +161,11 @@ final class MeetingOverlay {
     private var onDismiss: () -> Void = {}
     private var screenObserver: NSObjectProtocol?
 
-    func show(meeting: Meeting, now: Date, onSnooze: @escaping () -> Void, onDismiss: @escaping () -> Void) {
+    func show(meeting: Meeting, also: [Meeting], now: Date, onSnooze: @escaping () -> Void, onDismiss: @escaping () -> Void) {
         self.onSnooze = onSnooze
         self.onDismiss = onDismiss
         model.meeting = meeting
+        model.also = also
         model.now = now
         if !chimed.contains(meeting.id) {
             chimed.insert(meeting.id)
@@ -171,8 +189,9 @@ final class MeetingOverlay {
         panels.first { $0.screen == main }?.makeKeyAndOrderFront(nil)
     }
 
-    func update(now: Date) {
+    func update(now: Date, also: [Meeting]) {
         model.now = now
+        model.also = also
     }
 
     func hide() {
