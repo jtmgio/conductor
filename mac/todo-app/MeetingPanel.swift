@@ -119,13 +119,26 @@ final class MeetingPanelController {
         let host = NSHostingController(rootView: MeetingPanelView(model: model))
         host.sizingOptions = [.preferredContentSize]
         p.contentViewController = host
-        p.center()
-        p.makeKeyAndOrderFront(nil)
         panel = p
+        recenter()
+        p.makeKeyAndOrderFront(nil)
         Task {
             await watcher.refresh()
             render(watcher)
+            recenter()  // the refreshed list can change the height
         }
+    }
+
+    /// Center on the screen in use at its real size. center() before SwiftUI has sized the
+    /// content centers an empty box, which then grows off to the right and down.
+    private func recenter() {
+        guard let p = panel, let view = p.contentViewController?.view else { return }
+        view.layoutSubtreeIfNeeded()
+        let size = view.fittingSize
+        let screen = (NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }
+            ?? NSScreen.main)?.visibleFrame ?? .zero
+        p.setFrame(NSRect(x: screen.midX - size.width / 2, y: screen.midY - size.height / 2,
+                          width: size.width, height: size.height), display: true)
     }
 
     private func render(_ watcher: MeetingWatcher) {
