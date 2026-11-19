@@ -31,6 +31,16 @@ func timeRange(_ m: Meeting) -> String {
         : "\(twelveHour(m.startTime)) \(a) – \(twelveHour(m.endTime)) \(b)"
 }
 
+extension View {
+    /// The hand cursor over a clickable control. Plain-style buttons don't set it on their
+    /// own, and a non-activating panel gets no cursor rects from the app.
+    func pointingHand() -> some View {
+        onHover { inside in
+            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+    }
+}
+
 enum Palette {
     static let card = Color(hex: "#1E1E1B")
     static let border = Color(hex: "#333330")
@@ -91,12 +101,14 @@ struct AlertCard: View {
                             .frame(maxWidth: .infinity, minHeight: 56)
                             .background(Palette.accent, in: RoundedRectangle(cornerRadius: 12))
                     }
+                    .pointingHand()
                     Button(action: onDismiss) {
                         Text("Dismiss  esc").font(.system(size: 16, weight: .medium))
                             .foregroundStyle(Palette.text)
                             .padding(.horizontal, 22).frame(minHeight: 56)
                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.line))
                     }
+                    .pointingHand()
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 8)
