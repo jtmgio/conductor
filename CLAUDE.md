@@ -287,6 +287,7 @@ rsync -avz old-machine:/path/to/uploads/ ./uploads/
 | Manual calendar sync | `bash cron/calendar-sync.sh` |
 | Quick-capture a task | `⌃⌥Space` (or ⌘Space → `todo` → Enter, or `bash mac/conductor-capture.sh "..."`) |
 | Install the capture hotkey | `bash mac/install-hotkey.sh` |
+| Today's meetings (Mac) | `⌃⌥M` (Todo.app daemon) |
 | Rebuild the capture app | `bash mac/build-capture-app.sh` |
 | Check LaunchAgent status | `launchctl list \| grep conductor` |
 | Reload LaunchAgent | `launchctl unload ~/Library/LaunchAgents/com.conductor.calendar-sync.plist && launchctl load ~/Library/LaunchAgents/com.conductor.calendar-sync.plist` |
@@ -572,10 +573,29 @@ grant. `--uninstall` removes it; Spotlight still works either way. To change the
   holding the tower's `MCP_API_TOKEN`. No Docker, no Postgres, no `.env`. Config lives outside
   the repo because a Spotlight-launched app inherits no shell profile.
 
+### Meeting alert (Todo.app daemon)
+
+The resident `Todo.app --daemon` also owns meeting alerts, outside the browser.
+
+- `GET /api/meetings/today` (`src/app/api/meetings/today/route.ts`) — bearer-authed with
+  `MCP_API_TOKEN`; today's non-ignored, non-hidden meetings with absolute `startsAt`/`endsAt`
+  computed from date + HH:MM in `TIMEZONE` (`zonedInstant()`, `src/lib/zoned-time.ts`).
+- The daemon fetches every 60s (keeps the last good list when offline) and checks every 10s.
+  Timing rules live in pure `mac/todo-app/MeetingSchedule.swift`, tested by
+  `bash mac/todo-app/tests/run.sh`: alert 2 min before, stop 2 min after, snooze 1 min (always
+  comes back once), dismiss is final for the day.
+- **The overlay is title-free on purpose** — it can land on a screen share, so it shows only the
+  company-color dot, the countdown and the time range. Details live in the **⌃⌥M** panel.
+- The overlay takes keys without activating the app (non-activating panel) and swallows
+  everything except `esc` (dismiss), so typing can't trigger it.
+- Runs on Josh's MacBook Pro as a client (`~/.conductor/url` → the tower's Tailscale URL).
+- Specs: `docs/superpowers/specs/2026-11-19-mac-meeting-alert-design.md`.
+
 ## Alert layer
 
-Two blocking overlays (`Reminders`, `MeetingAlert`) mount as peers in
-`AppShell`. `src/lib/alert-lock.ts` gives them one shared registry and a fixed
+`Reminders` is the blocking overlay mounted in `AppShell`. (`MeetingAlert` was
+unmounted on 2026-11-19 — meeting alerts moved to Todo.app, see "Meeting alert"
+under Spotlight quick capture; the component stays in the repo.) `src/lib/alert-lock.ts` gives them one shared registry and a fixed
 priority ladder — reminder 84, meeting 88 — and marks `document.body` with
 `data-alert-open` so `⌘K` stays shut while any of them holds the screen.
 

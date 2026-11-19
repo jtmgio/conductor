@@ -9,7 +9,6 @@ import { BottomNav } from "./BottomNav";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { GlobalSearch } from "./GlobalSearch";
 import { Reminders } from "./Reminders";
-import { MeetingAlert } from "./MeetingAlert";
 import { useHotkeys, type Shortcut } from "@/hooks/useHotkeys";
 import { ScheduleProvider, useSchedule } from "./ScheduleContext";
 import { cn } from "@/lib/utils";
@@ -127,8 +126,8 @@ function AppFrame({ children }: { children: React.ReactNode }) {
       {/* Mandatory health/routine reminders — banner at/after each reminder's time on its days */}
       <Reminders />
 
-      {/* Meeting starting soon — same unmissable modal, fires on every page */}
-      <MeetingAlert />
+      {/* Meeting alerts moved to Todo.app (mac/todo-app/MeetingOverlay.swift) on 2026-11-19 —
+          MeetingAlert.tsx stays in the repo, unmounted. */}
 
 
     </div>

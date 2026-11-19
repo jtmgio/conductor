@@ -3,7 +3,8 @@
  *
  * Three blocking overlays mount as peers in AppShell — Reminders, MeetingAlert
  * and CommsSweepAlert — and none of them knew the others
- * existed. Reminders and MeetingAlert both rendered at z-[80], so DOM order
+ * existed. (MeetingAlert was unmounted on 2026-11-19 — meeting alerts now come
+ * from the Todo.app daemon, outside the browser — but its rung stays reserved.) Reminders and MeetingAlert both rendered at z-[80], so DOM order
  * silently decided which one you saw, and dismissing the top one revealed a
  * second you never knew was queued. GlobalSearch sat at z-[60], *below* all of
  * them, so ⌘K during an alert opened the palette behind an opaque backdrop and
