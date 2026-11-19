@@ -428,6 +428,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyRef: EventHotKeyRef?
     /// Daemon only: polls today's meetings and raises the full-screen alert.
     let meetingWatcher = MeetingWatcher(cfg: Config.load())
+    private let meetingPanel = MeetingPanelController()
+    private var panelHotKeyRef: EventHotKeyRef?
 
     /// --daemon: stay resident and open the window on ⌃⌥Space (launchd keeps it alive).
     /// Without it, this is the one-shot Spotlight launch: window now, quit when done.
@@ -520,10 +522,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         InstallEventHandler(
             GetApplicationEventTarget(),
-            { _, _, userData in
+            { _, event, userData in
                 guard let userData else { return noErr }
                 let me = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
-                DispatchQueue.main.async { me.showWindow() }
+                // Which hotkey fired: 1 = ⌃⌥Space capture, 2 = ⌃⌥M meetings panel.
+                var hk = EventHotKeyID()
+                GetEventParameter(
+                    event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+                    nil, MemoryLayout<EventHotKeyID>.size, nil, &hk
+                )
+                let which = hk.id
+                DispatchQueue.main.async { which == 2 ? me.togglePanel() : me.showWindow() }
                 return noErr
             },
             1, &spec, Unmanaged.passUnretained(self).toOpaque(), nil
@@ -538,6 +547,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             0,
             &hotKeyRef
         )
+
+        let panelId = EventHotKeyID(signature: OSType(0x434E4454), id: 2)
+        RegisterEventHotKey(
+            UInt32(kVK_ANSI_M),
+            UInt32(controlKey | optionKey),
+            panelId,
+            GetApplicationEventTarget(),
+            0,
+            &panelHotKeyRef
+        )
+    }
+
+    /// ⌃⌥M — today's meetings. Daemon only (the hotkeys only exist there).
+    @MainActor func togglePanel() {
+        meetingPanel.toggle(watcher: meetingWatcher)
     }
 
     // One-shot mode quits with its window; the daemon outlives every window it opens.
