@@ -109,6 +109,16 @@ enum API {
         return try JSONDecoder().decode(FormatResponse.self, from: data)
     }
 
+    /// Today's meetings for the alert and the ⌃⌥M panel (GET /api/meetings/today).
+    static func meetings(_ cfg: Config) async throws -> MeetingsResponse {
+        var req = URLRequest(url: URL(string: "\(cfg.baseURL)/api/meetings/today")!)
+        req.setValue("Bearer \(cfg.token)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 15
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp)
+        return try MeetingsResponse.decoder.decode(MeetingsResponse.self, from: data)
+    }
+
     private static func check(_ resp: URLResponse) throws {
         guard let http = resp as? HTTPURLResponse else { return }
         switch http.statusCode {
@@ -416,6 +426,8 @@ struct CaptureView: View {
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
     private var hotKeyRef: EventHotKeyRef?
+    /// Daemon only: polls today's meetings and raises the full-screen alert.
+    let meetingWatcher = MeetingWatcher(cfg: Config.load())
 
     /// --daemon: stay resident and open the window on ⌃⌥Space (launchd keeps it alive).
     /// Without it, this is the one-shot Spotlight launch: window now, quit when done.
@@ -425,6 +437,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         installEditMenu()
         if isDaemon {
             registerHotKey()
+            meetingWatcher.start()
         } else {
             showWindow()
         }
