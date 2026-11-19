@@ -54,7 +54,8 @@ echo "Building $APP_PATH ..."
 rm -rf "$APP_PATH"
 mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources"
 
-swiftc -O -o "$APP_PATH/Contents/MacOS/$APP_NAME" "$SOURCE"
+# Every .swift beside main.swift is part of the app (tests/ is a separate harness).
+swiftc -O -o "$APP_PATH/Contents/MacOS/$APP_NAME" "$SCRIPT_DIR"/todo-app/*.swift
 
 cat > "$APP_PATH/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
