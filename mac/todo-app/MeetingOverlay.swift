@@ -160,6 +160,11 @@ final class MeetingOverlay {
         }
     }
 
+    func refocus() {
+        let main = NSScreen.main ?? NSScreen.screens.first
+        panels.first { $0.screen == main }?.makeKeyAndOrderFront(nil)
+    }
+
     func update(now: Date) {
         model.now = now
     }

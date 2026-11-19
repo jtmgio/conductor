@@ -49,6 +49,9 @@ struct MeetingSchedule {
 
     private(set) var day: String = ""
     private(set) var meetings: [Meeting] = []
+    /// A fetch has landed for `day`. False means "never reached Conductor today" — the panel
+    /// must say so rather than claim there are no meetings.
+    private(set) var loaded = false
     private var dismissed: Set<String> = []
     private var snoozedUntil: [String: Date] = [:]
 
@@ -57,6 +60,7 @@ struct MeetingSchedule {
         if day != self.day { clear() }
         self.day = day
         self.meetings = meetings.sorted { $0.startsAt < $1.startsAt }
+        loaded = true
     }
 
     /// The local day changed. Drops yesterday's list even when no fetch has succeeded.
@@ -79,7 +83,9 @@ struct MeetingSchedule {
     func due(now: Date) -> Meeting? {
         meetings.first { m in
             if dismissed.contains(m.id) { return false }
-            if let until = snoozedUntil[m.id] { return now >= until }
+            // A snooze always brings it back once, then closes like a normal alert would —
+            // never a full-screen alert for a meeting that ended while the lid was shut.
+            if let until = snoozedUntil[m.id] { return now >= until && now <= until.addingTimeInterval(Self.grace) }
             return now >= m.startsAt.addingTimeInterval(-Self.lead)
                 && now <= m.startsAt.addingTimeInterval(Self.grace)
         }
@@ -100,6 +106,7 @@ struct MeetingSchedule {
 
     private mutating func clear() {
         meetings = []
+        loaded = false
         dismissed = []
         snoozedUntil = [:]
     }

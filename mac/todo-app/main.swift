@@ -111,7 +111,12 @@ enum API {
 
     /// Today's meetings for the alert and the ⌃⌥M panel (GET /api/meetings/today).
     static func meetings(_ cfg: Config) async throws -> MeetingsResponse {
-        var req = URLRequest(url: URL(string: "\(cfg.baseURL)/api/meetings/today")!)
+        // Runs at daemon launch: a malformed ~/.conductor/url must fail this call, not
+        // crash-loop the daemon (and the capture hotkey with it) under launchd.
+        guard let url = URL(string: "\(cfg.baseURL)/api/meetings/today") else {
+            throw Err.message("Bad Conductor URL: \(cfg.baseURL)")
+        }
+        var req = URLRequest(url: url)
         req.setValue("Bearer \(cfg.token)", forHTTPHeaderField: "Authorization")
         req.timeoutInterval = 15
         let (data, resp) = try await URLSession.shared.data(for: req)

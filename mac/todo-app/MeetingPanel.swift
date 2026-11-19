@@ -6,6 +6,8 @@ import SwiftUI
 
 final class PanelModel: ObservableObject {
     @Published var meetings: [Meeting] = []
+    /// No fetch has landed today — say so, never "No more meetings today."
+    @Published var unreachable = false
     @Published var now = Date()
 }
 
@@ -30,7 +32,12 @@ struct MeetingPanelView: View {
             Divider().overlay(Palette.border)
 
             VStack(spacing: 0) {
-                if model.meetings.isEmpty {
+                if model.unreachable {
+                    Text("Can't reach Conductor — meetings unknown.")
+                        .font(.system(size: 15)).foregroundStyle(Palette.accent)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                } else if model.meetings.isEmpty {
                     Text("No more meetings today.")
                         .font(.system(size: 15)).foregroundStyle(Palette.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -85,6 +92,7 @@ struct MeetingPanelView: View {
 final class MeetingPanelController {
     private var panel: AlertPanel?
     private let model = PanelModel()
+    private weak var watcher: MeetingWatcher?
 
     nonisolated init() {}
 
@@ -97,7 +105,8 @@ final class MeetingPanelController {
             backing: .buffered,
             defer: false
         )
-        p.level = .floating
+        // Above the meeting alert (.screenSaver) — the alert itself says "⌃⌥M for details".
+        p.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         p.backgroundColor = .clear
         p.isOpaque = false
@@ -106,6 +115,7 @@ final class MeetingPanelController {
         p.becomesKeyOnlyIfNeeded = false
         p.hidesOnDeactivate = false
         p.onEscape = { [weak self] in self?.close() }
+        self.watcher = watcher
         let host = NSHostingController(rootView: MeetingPanelView(model: model))
         host.sizingOptions = [.preferredContentSize]
         p.contentViewController = host
@@ -121,10 +131,12 @@ final class MeetingPanelController {
     private func render(_ watcher: MeetingWatcher) {
         model.now = Date()
         model.meetings = watcher.schedule.upcoming(now: model.now)
+        model.unreachable = !watcher.schedule.loaded
     }
 
     private func close() {
         panel?.orderOut(nil)
         panel = nil
+        watcher?.refocusAlert()  // esc must keep working on an alert that's still up
     }
 }

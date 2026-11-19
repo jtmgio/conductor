@@ -55,6 +55,11 @@ final class MeetingWatcher {
         }
     }
 
+    /// Hand keyboard focus back to the alert, if one is up (after the ⌃⌥M panel closes).
+    func refocusAlert() {
+        overlay.refocus()
+    }
+
     private func snooze(_ id: String) {
         schedule.snooze(id, now: Date())
         hide()

@@ -48,6 +48,21 @@ do {
 }
 do {
     var s = fresh()
+    s.snooze("A", now: t0 + 60)
+    s.dismiss("B")
+    check(s.due(now: t0 + 120)?.id == "A", "snoozeExpires returns")
+    check(s.due(now: t0 + 120 + 121) == nil, "snoozeExpires closes after grace")
+}
+do {
+    var s = MeetingSchedule()
+    check(!s.loaded, "loaded false before any fetch")
+    s.replace([], day: day)
+    check(s.loaded, "loaded true after an empty fetch")
+    s.rollover(to: "2026-11-20")
+    check(!s.loaded, "loaded false after rollover")
+}
+do {
+    var s = fresh()
     s.dismiss("A")
     check(s.due(now: t0 - 60)?.id != "A" && s.due(now: t0 + 60)?.id != "A", "dismissIsFinal")
 }
