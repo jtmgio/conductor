@@ -12,7 +12,7 @@ let t0 = Date(timeIntervalSince1970: 1_795_100_000)
 let day = "2026-11-19"
 func meeting(_ id: String, _ start: Date) -> Meeting {
     Meeting(id: id, title: id, startsAt: start, endsAt: start.addingTimeInterval(1800),
-            startTime: "10:00", endTime: "10:30", company: MeetingCompany(name: "vQuip", color: "#2dd4bf"))
+            startTime: "10:00", endTime: "10:30", joinUrl: nil, company: MeetingCompany(name: "vQuip", color: "#2dd4bf"))
 }
 let A = meeting("A", t0)
 let B = meeting("B", t0.addingTimeInterval(30))
@@ -113,6 +113,20 @@ do {
     """
     let r = try? MeetingsResponse.decoder.decode(MeetingsResponse.self, from: Data(json.utf8))
     check(r?.meetings.first?.startsAt == Date(timeIntervalSince1970: 1_795_100_400), "decodesServerJSON")
+    check(r?.meetings.first?.joinURL == nil, "noJoinUrlIsNil")
+}
+do {
+    let json = """
+    {"date":"2026-11-19","meetings":[{"id":"m1","title":"Sync","joinUrl":"https://meet.google.com/abc-defg-hij",
+     "startsAt":"2026-11-19T15:00:00.000Z","endsAt":"2026-11-19T15:30:00.000Z",
+     "startTime":"10:00","endTime":"10:30","company":{"name":"vQuip","color":"#2dd4bf"}},
+     {"id":"m2","title":"Bad","joinUrl":"javascript:alert(1)",
+     "startsAt":"2026-11-19T15:00:00.000Z","endsAt":"2026-11-19T15:30:00.000Z",
+     "startTime":"10:00","endTime":"10:30","company":{"name":"vQuip","color":"#2dd4bf"}}]}
+    """
+    let r = try? MeetingsResponse.decoder.decode(MeetingsResponse.self, from: Data(json.utf8))
+    check(r?.meetings.first?.joinURL?.absoluteString == "https://meet.google.com/abc-defg-hij", "decodesJoinUrl")
+    check(r?.meetings.last?.joinURL == nil, "refusesNonHttpsJoinUrl")
 }
 
 print(failures == 0 ? "all passed" : "\(failures) failed")

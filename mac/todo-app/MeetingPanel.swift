@@ -82,6 +82,15 @@ struct MeetingPanelView: View {
                     .padding(.horizontal, 10).padding(.vertical, 4)
                     .background(Palette.accent, in: Capsule())
             }
+            if let url = m.joinURL {
+                Button(action: { NSWorkspace.shared.open(url) }) {
+                    Text("Join").font(.system(size: 13, weight: .semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .overlay(Capsule().stroke(Palette.line))
+                }
+                .buttonStyle(.plain)
+                .pointingHand()
+            }
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
         .background(isNext ? Palette.raised : .clear, in: RoundedRectangle(cornerRadius: 10))

@@ -392,6 +392,7 @@ model Meeting {
   attendees     String[]
   isIgnored     Boolean  @default(false)
   userHidden    Boolean  @default(false)  // user-deleted from UI; sync should not surface it again
+  joinUrl       String?  // Meet/Teams/Zoom link found by findJoinUrl(); opened by the Mac alert
   prepTaskId    String?  @unique
   prepTask      Task?    @relation(fields: [prepTaskId], references: [id])
   meetingNoteId  String?  @unique

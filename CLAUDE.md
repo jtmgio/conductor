@@ -587,6 +587,10 @@ The resident `Todo.app --daemon` also owns meeting alerts, outside the browser.
 - The overlay shows the company, the countdown, the meeting title and the time range. It was
   title-free at first (screen-share worry); Josh reversed that on 2026-11-19, so a share shows it
   until `esc`. **⌃⌥M** lists the whole day.
+- **Join links (2026-11-20).** `cron/calendar-events.swift` sends the event URL plus every https
+  link in the full notes as `links`; `findJoinUrl()` (`src/lib/join-url.ts`, tested) keeps the
+  first exact Meet / Teams / Zoom host and stores it on `Meeting.joinUrl`. The alert shows **Join**
+  (opens it and dismisses) and ⌃⌥M rows show a Join pill. The app opens https URLs only.
 - The overlay takes keys without activating the app (non-activating panel) and swallows
   everything except `esc` (dismiss), so typing can't trigger it.
 - Runs on Josh's MacBook Pro as a client (`~/.conductor/url` → the tower's Tailscale URL).

@@ -34,6 +34,7 @@ store.requestFullAccessToEvents { granted, error in
 
     let timeFmt = DateFormatter()
     timeFmt.dateFormat = "HH:mm"
+    let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 
     var results: [[String: Any]] = []
     for e in events {
@@ -64,6 +65,20 @@ store.requestFullAccessToEvents { granted, error in
         // Notes
         if let notes = e.notes, !notes.isEmpty {
             dict["notes"] = String(notes.prefix(200))
+        }
+
+        // Links — the event's URL field plus every link in the FULL notes. Teams puts its
+        // join link well past the 200-char notes cut; the server picks the meeting link.
+        var links: [String] = []
+        if let u = e.url?.absoluteString, !u.isEmpty { links.append(u) }
+        if let notes = e.notes, !notes.isEmpty, let detector = linkDetector {
+            let range = NSRange(notes.startIndex..., in: notes)
+            for m in detector.matches(in: notes, options: [], range: range) {
+                if let u = m.url?.absoluteString, u.hasPrefix("https://") { links.append(u) }
+            }
+        }
+        if !links.isEmpty {
+            dict["links"] = Array(links.prefix(20))
         }
 
         results.append(dict)

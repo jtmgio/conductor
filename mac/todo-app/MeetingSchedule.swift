@@ -19,7 +19,14 @@ struct Meeting: Decodable, Identifiable, Hashable {
     let endsAt: Date
     let startTime: String
     let endTime: String
+    let joinUrl: String?
     let company: MeetingCompany
+
+    /// The link the Join button opens — https only, so a bad row can't launch anything else.
+    var joinURL: URL? {
+        guard let s = joinUrl, let u = URL(string: s), u.scheme == "https", u.host != nil else { return nil }
+        return u
+    }
 }
 
 struct MeetingsResponse: Decodable {

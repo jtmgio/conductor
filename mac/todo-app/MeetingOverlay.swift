@@ -95,13 +95,31 @@ struct AlertCard: View {
                     Text(timeRange(m)).font(.system(size: 18)).foregroundStyle(Palette.secondary)
                 }
                 HStack(spacing: 12) {
-                    Button(action: onSnooze) {
-                        Text("Snooze 1 min").font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(Palette.ink)
-                            .frame(maxWidth: .infinity, minHeight: 56)
-                            .background(Palette.accent, in: RoundedRectangle(cornerRadius: 12))
+                    if let url = m.joinURL {
+                        // Join is the primary action when there's a link: open it, close the alert.
+                        Button(action: { NSWorkspace.shared.open(url); onDismiss() }) {
+                            Text("Join").font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(Palette.ink)
+                                .frame(maxWidth: .infinity, minHeight: 56)
+                                .background(Palette.accent, in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        .pointingHand()
+                        Button(action: onSnooze) {
+                            Text("Snooze 1 min").font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(Palette.text)
+                                .padding(.horizontal, 22).frame(minHeight: 56)
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.line))
+                        }
+                        .pointingHand()
+                    } else {
+                        Button(action: onSnooze) {
+                            Text("Snooze 1 min").font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(Palette.ink)
+                                .frame(maxWidth: .infinity, minHeight: 56)
+                                .background(Palette.accent, in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        .pointingHand()
                     }
-                    .pointingHand()
                     Button(action: onDismiss) {
                         Text("Dismiss  esc").font(.system(size: 16, weight: .medium))
                             .foregroundStyle(Palette.text)

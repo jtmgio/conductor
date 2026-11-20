@@ -30,6 +30,7 @@ export async function GET(req: Request) {
       title: true,
       startTime: true,
       endTime: true,
+      joinUrl: true,
       role: { select: { name: true, color: true } },
     },
     orderBy: { startTime: "asc" },

@@ -4,6 +4,7 @@ import { trackUsage } from "@/lib/ai-usage";
 import { createCompletion, createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
 import { logSync, type SyncTrigger } from "@/lib/sync-logger";
 import { parseDateOnly } from "@/lib/dates";
+import { findJoinUrl } from "@/lib/join-url";
 
 const DEFAULT_IGNORE_PATTERNS = [
   "OOO", "Out of Office", "Busy", "Deep Work", "Focus Time",
@@ -31,6 +32,7 @@ interface CalendarEvent {
   attendees?: string[];
   location?: string;
   notes?: string;
+  links?: string[];
 }
 
 interface Meeting {
@@ -38,6 +40,7 @@ interface Meeting {
   startTime: string;
   endTime: string;
   attendees?: string[];
+  joinUrl?: string | null;
   isIgnored: boolean;
   roleId: string | null;
   calendarAccount?: string;
@@ -160,6 +163,7 @@ async function processStructuredEvents(
       startTime: event.startTime,
       endTime: event.endTime,
       attendees: event.attendees,
+      joinUrl: findJoinUrl([...(event.links ?? []), event.location, event.notes]),
       isIgnored,
       roleId,
       calendarAccount: event.calendarAccount,
@@ -396,6 +400,7 @@ async function reconcileAndSave(
       if (existing.roleId !== roleId) changes.roleId = roleId;
       if (existing.isIgnored !== (meeting.isIgnored || false)) changes.isIgnored = meeting.isIgnored || false;
       if (JSON.stringify(existing.attendees) !== JSON.stringify(meeting.attendees || [])) changes.attendees = meeting.attendees || [];
+      if ((existing.joinUrl ?? null) !== (meeting.joinUrl ?? null)) changes.joinUrl = meeting.joinUrl ?? null;
 
       if (Object.keys(changes).length > 0) {
         await prisma.meeting.update({ where: { id: existing.id }, data: changes });
@@ -474,6 +479,7 @@ async function reconcileAndSave(
           startTime: meeting.startTime,
           endTime: meeting.endTime,
           attendees: meeting.attendees || [],
+          joinUrl: meeting.joinUrl ?? null,
           isIgnored: meeting.isIgnored || false,
           prepTaskId,
           followUpNotes: meeting.relevantFollowUps?.length
