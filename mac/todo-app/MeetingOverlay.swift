@@ -197,7 +197,7 @@ final class MeetingOverlay {
     }
 
     func refocus() {
-        let main = NSScreen.main ?? NSScreen.screens.first
+        let main = NSScreen.screens.first  // the menu-bar display, not the focused one
         panels.first { $0.screen == main }?.makeKeyAndOrderFront(nil)
     }
 
@@ -215,7 +215,7 @@ final class MeetingOverlay {
     private func buildPanels() {
         panels.forEach { $0.orderOut(nil) }
         panels = []
-        let main = NSScreen.main ?? NSScreen.screens.first
+        let main = NSScreen.screens.first  // the menu-bar display, not the focused one
         for screen in NSScreen.screens {
             let isMain = screen == main
             let panel = AlertPanel(
