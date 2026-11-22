@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { trackUsage } from "@/lib/ai-usage";
-import { createCompletion, createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
+import { createCompletion, getDefaultTextModel, DEFAULT_CLAUDE_MODEL } from "@/lib/ai-provider";
 import { logSync, type SyncTrigger } from "@/lib/sync-logger";
 import { parseDateOnly } from "@/lib/dates";
 import { findJoinUrl } from "@/lib/join-url";
@@ -187,9 +187,7 @@ async function processStructuredEvents(
         return parts.join("\n");
       }).join("\n");
 
-      // Falls back to the local MLX server if Anthropic fails (credits, outage) —
-      // prep tasks should degrade to local, not silently vanish
-      const response = await createCompletionWithLocalFallback({
+      const response = await createCompletion({
         model: getDefaultTextModel(),
         max_tokens: 1024,
         messages: [{
@@ -270,7 +268,7 @@ async function processScreenshot(
     : "";
 
   const response = await createCompletion({
-    model: "claude-sonnet-4-6",
+    model: DEFAULT_CLAUDE_MODEL,
     max_tokens: 2048,
     messages: [
       {

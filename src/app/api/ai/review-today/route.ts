@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
+import { createCompletion, getDefaultTextModel } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 import { getScheduleBlocks } from "@/lib/schedule";
 import { today, parseDateOnly } from "@/lib/dates";
@@ -112,7 +112,7 @@ Rules:
 - Only return the JSON, no markdown fences`;
 
   try {
-    const result = await createCompletionWithLocalFallback({
+    const result = await createCompletion({
       model: getDefaultTextModel(),
       system: "You are a productivity coach. Return only valid JSON.",
       messages: [{ role: "user", content: prompt }],

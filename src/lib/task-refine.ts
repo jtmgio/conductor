@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
+import { createCompletion, getDefaultTextModel } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export interface RefinedTask {
@@ -162,14 +162,13 @@ CRITICAL RULES:
    NOT evidence — that is case (c). If you cannot quote evidence words, confidence is "low".` : ""}
 ${roleDirectory ? "7" : "6"}. Return ONLY the JSON object, no markdown fences`;
 
-  const result = await createCompletionWithLocalFallback({
+  const result = await createCompletion({
     model: getDefaultTextModel(),
     system: "You are a task parser. Return only valid JSON.",
     messages: [{ role: "user", content: prompt }],
     max_tokens: 1024,
     // Parsing/classification wants determinism — server default temp makes role
     // inference and JSON shape vary run to run
-    temperature: 0.1,
   });
 
   await trackUsage("task-refine", result.model, result.usage, roleId || undefined);

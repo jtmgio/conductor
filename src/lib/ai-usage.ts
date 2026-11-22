@@ -2,9 +2,7 @@ import { prisma } from "./prisma";
 
 const RATES: Record<string, { inputPerM: number; outputPerM: number }> = {
   // Anthropic
-  "claude-sonnet-4-6": { inputPerM: 3.0, outputPerM: 15.0 },
-  "claude-haiku-4-5-20251001": { inputPerM: 0.25, outputPerM: 1.25 },
-  "claude-opus-4-6": { inputPerM: 15.0, outputPerM: 75.0 },
+  "claude-opus-5-5": { inputPerM: 4.0, outputPerM: 20.0 },
   // OpenAI
   "gpt-5.4": { inputPerM: 2.5, outputPerM: 15.0 },
   "gpt-5.4-mini": { inputPerM: 0.75, outputPerM: 4.5 },
@@ -14,8 +12,6 @@ const RATES: Record<string, { inputPerM: number; outputPerM: number }> = {
 const DEFAULT_RATE = { inputPerM: 3.0, outputPerM: 15.0 };
 
 function calculateCostCents(model: string, inputTokens: number, outputTokens: number): number {
-  // Local MLX models are free — don't let DEFAULT_RATE invent phantom costs
-  if (model.startsWith("local/") || model.startsWith("mlx-community/")) return 0;
   const rate = RATES[model] || DEFAULT_RATE;
   const inputCost = (inputTokens / 1_000_000) * rate.inputPerM;
   const outputCost = (outputTokens / 1_000_000) * rate.outputPerM;

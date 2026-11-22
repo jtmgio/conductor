@@ -1,6 +1,6 @@
 import { assembleContext } from "@/lib/ai-context";
 import { voiceGuideBlock } from "@/lib/voice-guide";
-import { createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
+import { createCompletion, getDefaultTextModel } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export type MessageFormat = "slack" | "teams" | "email" | "sms";
@@ -97,7 +97,7 @@ function emphasizedSpans(raw: string): { code: string[]; bold: string[]; italic:
 /**
  * Put back emphasis and code formatting the model dropped.
  *
- * The prompt asks for it and the local model (Qwen3 30B) still flattens `**Blocked**` to
+ * The prompt asks for it and the model can still flatten `**Blocked**` to
  * plain "blocked" and strips the backticks off `typeorm` most of the time — it's pulled
  * toward the voice guide's terseness, and no amount of instruction reliably wins. So this is
  * done in code: for each code/bold/italic span in the raw message, find its unwrapped
@@ -290,16 +290,13 @@ If your draft dropped any of them, put them back before returning it.
 RAW MESSAGE:
 ${rawMessage}`;
 
-  const result = await createCompletionWithLocalFallback({
+  const result = await createCompletion({
     model: getDefaultTextModel(),
     // The voice guide goes last so it's the freshest thing in the system prompt — it is the
     // whole point of this call, and role tone/profile context sit above it as modifiers.
     system: `${systemPrompt}\n\n[Context]\n${contextMessages}\n\n[VOICE GUIDE — the source of truth for how the user writes. Match it exactly.]\n${voiceGuideBlock()}`,
     messages: [{ role: "user", content: prompt }],
     max_tokens: 2048,
-    // Formatting is a fidelity task — without this the MLX server's default (~0.7)
-    // makes structure preservation a dice roll (observed: lists flattened to prose)
-    temperature: 0.2,
   });
 
   await trackUsage("format-message", result.model, result.usage, roleId);

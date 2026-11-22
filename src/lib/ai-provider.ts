@@ -22,48 +22,27 @@ export interface AIResponse {
   usage: { input_tokens: number; output_tokens: number };
 }
 
-// --- Local MLX server (Conductor's own — see docs/RUNBOOK_LOCAL_AI.md) ---
-//
-// Conductor runs its own mlx_lm.server (com.conductor.mlx, port 11436). Port 11435
-// is the kosmos PRODUCTION server — never point these defaults back at it. An mlx
-// server will try to LOAD a model it doesn't have if a request names one (multi-GB
-// RAM spike), so callLocal hard-rejects any model other than LOCAL_AI_MODEL.
+// Default model for every text job. DEFAULT_AI_MODEL overrides it globally.
+export const DEFAULT_CLAUDE_MODEL = "claude-opus-5-5";
 
-export function getLocalModelId(): string {
-  return process.env.LOCAL_AI_MODEL || "mlx-community/gemma-4-26B-A4B-it-qat-OptiQ-4bit";
-}
-
-function getLocalBaseUrl(): string {
-  // host.docker.internal: the app runs in Docker, the MLX server on the macOS host
-  return process.env.LOCAL_AI_BASE_URL || "http://host.docker.internal:11436/v1";
-}
-
-// Default model for text-only background/structured jobs: local-first (free, private,
-// no failed-cloud detour). Set DEFAULT_AI_MODEL to a cloud id to flip back globally.
-// Vision paths must NOT use this — they pin a cloud model explicitly.
 export function getDefaultTextModel(): string {
-  return process.env.DEFAULT_AI_MODEL || `local/${getLocalModelId()}`;
+  return process.env.DEFAULT_AI_MODEL || DEFAULT_CLAUDE_MODEL;
 }
 
 // --- Allowed models for user-selectable endpoints ---
 
 export const ALLOWED_MODELS = [
   // Anthropic
-  "claude-sonnet-4-6",
-  "claude-haiku-4-5-20251001",
-  "claude-opus-4-6",
+  DEFAULT_CLAUDE_MODEL,
   // OpenAI
   "gpt-5.4",
   "gpt-5.4-mini",
   "gpt-5.4-pro",
-  // Local MLX (Conductor's dedicated server)
-  `local/${getLocalModelId()}`,
 ];
 
 // --- Provider detection ---
 
-export function getProvider(model: string): "anthropic" | "openai" | "local" {
-  if (model.startsWith("local/")) return "local";
+export function getProvider(model: string): "anthropic" | "openai" {
   if (model.startsWith("gpt-")) return "openai";
   return "anthropic";
 }
@@ -79,60 +58,24 @@ export async function createCompletion(params: {
 }): Promise<AIResponse> {
   const provider = getProvider(params.model);
 
-  if (provider === "local") {
-    return callLocal(params);
-  }
   if (provider === "openai") {
     return callOpenAI(params);
   }
   return callAnthropic(params);
 }
 
-// Try the requested cloud model; on failure (billing, network, outage) retry once on
-// the local MLX server. Used by background/structured jobs (e.g. calendar prep) that
-// should degrade to local rather than silently produce nothing.
-export async function createCompletionWithLocalFallback(params: {
-  model: string;
-  system?: string;
-  messages: AIMessage[];
-  max_tokens: number;
-  temperature?: number;
-}): Promise<AIResponse> {
-  try {
-    return await createCompletion(params);
-  } catch (err) {
-    if (getProvider(params.model) === "local") throw err;
-    // Vision requests never fall back — the local model is text-only and silently
-    // ignoring the image would produce confidently wrong output
-    const hasImages = params.messages.some(
-      (m) => Array.isArray(m.content) && m.content.some((b) => b.type === "image"),
-    );
-    if (hasImages) {
-      console.error(
-        `AI provider ${params.model} failed and request contains images — not falling back to text-only local model:`,
-        err instanceof Error ? err.message : err,
-      );
-      throw err;
-    }
-    console.error(
-      `AI provider ${params.model} failed, falling back to local MLX (${getLocalModelId()}):`,
-      err instanceof Error ? err.message : err,
-    );
-    return createCompletion({ ...params, model: `local/${getLocalModelId()}` });
-  }
-}
-
-// Cloud cost guard: uploads/history may carry local-scale documents (100K+ tokens,
-// fine and free on the local server). Cloud providers get each text segment capped
-// so selecting Sonnet with a huge document in-thread can't produce a surprise bill.
+// Cost guard: uploads and history can carry very large documents. Each text
+// segment is capped so a huge document in-thread can't produce a surprise bill.
 const CLOUD_MAX_TEXT_CHARS = Number(process.env.CLOUD_AI_MAX_TEXT_CHARS) || 60_000;
 
 function capForCloud(text: string): string {
   if (text.length <= CLOUD_MAX_TEXT_CHARS) return text;
-  return text.slice(0, CLOUD_MAX_TEXT_CHARS) + "\n\n[…content truncated for cloud model — full text available to the local model]";
+  return text.slice(0, CLOUD_MAX_TEXT_CHARS) + "\n\n[…content truncated to keep the request size bounded]";
 }
 
 // --- Anthropic implementation ---
+
+const ANTHROPIC_MIN_MAX_TOKENS = 16_000;
 
 async function callAnthropic(params: {
   model: string;
@@ -166,13 +109,20 @@ async function callAnthropic(params: {
     return { role: m.role, content: blocks };
   });
 
+  // Claude Opus 5.5 always thinks, and thinking counts toward max_tokens. Callers
+  // size max_tokens for the reply alone, so give every request room for both.
+  // temperature is not sent: Opus 5.5 rejects sampling parameters with a 400.
   const response = await anthropic.messages.create({
-    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
     model: params.model,
-    max_tokens: params.max_tokens,
+    max_tokens: Math.max(params.max_tokens, ANTHROPIC_MIN_MAX_TOKENS),
+    output_config: { effort: "low" },
     ...(params.system ? { system: params.system } : {}),
     messages,
   });
+
+  if (response.stop_reason === "refusal") {
+    throw new Error(`Claude declined the request (stop_reason: refusal)`);
+  }
 
   const text = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
@@ -249,101 +199,6 @@ async function callOpenAI(params: {
   return {
     text,
     model: response.model,
-    usage: {
-      input_tokens: response.usage?.prompt_tokens || 0,
-      output_tokens: response.usage?.completion_tokens || 0,
-    },
-  };
-}
-
-// --- Local MLX implementation (OpenAI-compatible mlx_lm.server) ---
-
-async function callLocal(params: {
-  model: string;
-  system?: string;
-  messages: AIMessage[];
-  max_tokens: number;
-  temperature?: number;
-}): Promise<AIResponse> {
-  const requested = params.model.replace(/^local\//, "");
-  const loaded = getLocalModelId();
-  if (requested !== loaded) {
-    // Naming an unloaded model would make the shared server try to fetch/load it —
-    // never acceptable on the kosmos production box.
-    throw new Error(
-      `Local model "${requested}" is not the configured LOCAL_AI_MODEL ("${loaded}") — refusing to trigger a model load on the shared MLX server`,
-    );
-  }
-
-  const client = new OpenAI({
-    baseURL: getLocalBaseUrl(),
-    apiKey: "mlx", // server requires none; SDK requires a value
-    timeout: 120_000, // shared server may be busy with kosmos traffic — fail, don't wedge
-    maxRetries: 1,
-  });
-
-  const messages: OpenAI.ChatCompletionMessageParam[] = [];
-  // mlx_lm.server understands "system", not OpenAI's newer "developer" role
-  if (params.system) {
-    messages.push({ role: "system", content: params.system });
-  }
-  for (const m of params.messages) {
-    // The local model is text-only — flatten content blocks, note dropped images
-    const text = typeof m.content === "string"
-      ? m.content
-      : m.content
-          .map((b) => (b.type === "image" ? "[image attachment omitted — local model is text-only]" : b.text || ""))
-          .join("\n");
-    messages.push({ role: m.role, content: text });
-  }
-
-  // Input guard: load-tested 2026-07-06 — beyond ~55K tokens of context, prompt
-  // processing trips the macOS Metal GPU watchdog ("Impacting Interactivity") and
-  // CRASHES the server. Cap total input well under that; trim the largest text
-  // blocks (documents) first, never the newest message.
-  const maxInputChars = Number(process.env.LOCAL_AI_MAX_INPUT_CHARS) || 160_000; // ≈40K tok
-  const textOf = (m: AIMessage) =>
-    typeof m.content === "string" ? m.content : m.content.map((b) => b.text || "").join("");
-  let totalChars = params.messages.reduce((n, m) => n + textOf(m).length, 0) + (params.system?.length || 0);
-  if (totalChars > maxInputChars) {
-    const marker = "\n[…document trimmed to fit the local model's safe context window]";
-    // Trim largest messages first (documents live in big blocks), excluding the final message
-    const trimmable = params.messages.slice(0, -1).sort((a, b) => textOf(b).length - textOf(a).length);
-    for (const m of trimmable) {
-      if (totalChars <= maxInputChars) break;
-      const text = textOf(m);
-      const excess = totalChars - maxInputChars;
-      const keep = Math.max(2_000, text.length - excess);
-      if (keep >= text.length) continue;
-      m.content = text.slice(0, keep) + marker;
-      totalChars -= text.length - (keep + marker.length);
-    }
-  }
-
-  // Cap local generations: keeps chat replies inside the 120s client timeout and
-  // bounds how long any one request occupies the shared Metal GPU
-  const maxTokens = Math.min(
-    params.max_tokens,
-    Number(process.env.LOCAL_AI_MAX_TOKENS) || 2048,
-  );
-
-  const response = await client.chat.completions.create({
-    model: requested,
-    max_tokens: maxTokens,
-    ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
-    messages,
-    // Gemma 4 (like Qwen3.5/3.6 before it) is a hybrid reasoning model that "thinks"
-    // before answering unless told not to; its chat template honors the same flag.
-    // Disable thinking for faster replies and no reasoning tokens burned against
-    // the maxTokens cap.
-    chat_template_kwargs: { enable_thinking: false },
-  } as OpenAI.ChatCompletionCreateParamsNonStreaming);
-
-  const text = response.choices[0]?.message?.content || "";
-
-  return {
-    text,
-    model: `local/${response.model}`,
     usage: {
       input_tokens: response.usage?.prompt_tokens || 0,
       output_tokens: response.usage?.completion_tokens || 0,

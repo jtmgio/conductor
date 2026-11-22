@@ -13,7 +13,7 @@ Conductor is a personal productivity operating system for an engineer managing m
 - PostgreSQL 16 (local on EC2 in prod, Docker in dev)
 - Prisma ORM (16 models)
 - NextAuth (credentials provider, single-user)
-- Local MLX server (Qwen3 30B, default for text) + Anthropic Claude API (Sonnet 4.6, Haiku 4.5, Opus 4.6) + OpenAI (GPT-5.4 family) — see docs/RUNBOOK_LOCAL_AI.md
+- Anthropic Claude API (Claude Opus 5.5, the default for every AI feature) + OpenAI (GPT-5.4 family, selectable in chat)
 - File processing: pdf-parse, mammoth, sharp
 
 ## Key schema notes
@@ -417,13 +417,13 @@ AI can return `:::artifact{title="..." type="html|react|mermaid"}` blocks. Rende
 
 ### Model selector
 
-Qwen3 30B (local MLX, current default), Sonnet 4.6, Haiku 4.5, Opus 4.6, GPT-5.4 family (if OpenAI key set). Dropdown in AI page header.
+Claude Opus 5.5 (default), GPT-5.4 family (if OpenAI key set). Dropdown in AI page header.
 
-### Local AI (MLX) — read `docs/RUNBOOK_LOCAL_AI.md` before touching
+### AI provider (`src/lib/ai-provider.ts`)
 
-- Model ids prefixed `local/` route to Conductor's own MLX server on the macOS host: `com.conductor.mlx` LaunchAgent, venv at `~/projects/jtmg/tower/host-services/conductor-mlx/.venv`, port 11436, Qwen3-30B-A3B (`LOCAL_AI_BASE_URL` via `host.docker.internal`).
-- **Port 11435 is the kosmos PRODUCTION server (`com.kosmos.mlx`, `~/mlx-venv`) — never touch it, never point Conductor at it.** `callLocal()` only ever sends `LOCAL_AI_MODEL` (an unknown id would make an mlx server try to load it — RAM spike).
-- `createCompletionWithLocalFallback()` in `src/lib/ai-provider.ts` retries any failed cloud call on local — used by **all text-only AI routes** so billing outages degrade to local instead of losing features. Vision paths (`ai/extract` on images, calendar screenshot fallback) stay cloud-only. Local usage is tracked at $0, output capped by `LOCAL_AI_MAX_TOKENS` (2048), text-only (images dropped with a placeholder). Chat defaults to the local model.
+- Every AI feature runs on Claude Opus 5.5 (`DEFAULT_CLAUDE_MODEL`; `DEFAULT_AI_MODEL` overrides). There is no local fallback since 2026-11-22: a failed Claude call fails the feature.
+- Opus 5.5 always thinks and rejects `temperature`, so `callAnthropic()` sends neither, sets effort `low`, and floors `max_tokens` at 16K so thinking can't eat the reply. A `refusal` stop reason throws.
+- **Port 11435 is the kosmos PRODUCTION server (`com.kosmos.mlx`) — never touch it.**
 
 ## Integrations
 
@@ -506,7 +506,7 @@ Qwen3 30B (local MLX, current default), Sonnet 4.6, Haiku 4.5, Opus 4.6, GPT-5.4
 
 ⌘Space → `todo` → Enter. A SwiftUI window: what to do, which company, today or backlog —
 all keyboard (`⌘1…9` company, `⌘T` today/backlog, `Enter` add, `Esc` cancel). Files through
-the same MLX refine as MCP `create_task` and confirms with the task key ("Added to vQuip · VQ-156").
+the same AI refine as MCP `create_task` and confirms with the task key ("Added to vQuip · VQ-156").
 
 **Named `Todo`, not `Conductor`, on purpose** — Spotlight ranks open windows above apps, so
 the running Conductor browser window always won the "conductor" match. `todo` has no competitor.
@@ -525,7 +525,7 @@ the clipboard**. The whole flow is copy a draft → `⌃⌥Space` → `⌘M` →
   clipboard is the deliverable; the window has nothing left to do.
 - **Emphasis is restored in code, not by the model.** `restoreEmphasis()` in
   `src/lib/format-message.ts` re-wraps every bold/italic span from the raw message in the
-  platform's syntax. The prompt asks for it too, but the local Qwen model flattens
+  platform's syntax. The prompt asks for it too, but the model flattens
   `**Blocked**` to plain "blocked" most of the time no matter how it's asked — it's pulled
   toward the voice guide's terseness. The pass is conservative (first plain occurrence,
   never inside code, nothing under 3 chars). Gap: a header line the model deletes outright

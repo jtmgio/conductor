@@ -49,7 +49,7 @@ export async function GET(req: Request) {
  *   { "text": "reply to dana about the sailthru scores by friday" }
  *   -> { ok, title, company }
  *
- * Same MLX refine + role inference as MCP create_task. Since a Shortcut can't answer
+ * Same AI refine + role inference as MCP create_task. Since a Shortcut can't answer
  * a clarifying question, an unconfident company falls back to the current schedule
  * block's company, then the top-priority company. The response says where it landed
  * so the Shortcut can read it back ("Added to Zeta").
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
   try {
     refined = await refineTask({ rawText: text, inferRole: !explicitRoleId });
   } catch {
-    // MLX unavailable — save verbatim below
+    // AI unavailable — save verbatim below
   }
 
   // Resolve company: explicit pick → confident inference → current block → top-priority.

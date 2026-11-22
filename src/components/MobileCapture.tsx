@@ -58,7 +58,7 @@ export function MobileCapture({ currentBlock }: { currentBlock?: { roleId: strin
       if (res.ok) {
         const t = await res.json();
         setAdded((a) => [{ id: t.id, title, roleName: role?.name || "", roleColor: role?.color || "#888", refining: true }, ...a].slice(0, 8));
-        // MLX tidies the title/date in the background; swap it in when it lands.
+        // The AI tidies the title/date in the background; swap it in when it lands.
         refineTaskInBackground(t.id, title, roleId, (r) => {
           setAdded((a) => a.map((x) => (x.id === t.id ? { ...x, title: r.title, refining: false } : x)));
         });

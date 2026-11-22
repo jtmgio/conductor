@@ -377,7 +377,7 @@ export function TodayCockpit({ currentBlock, offClockMessage }: { currentBlock: 
         });
         if (res.ok) {
           const t = await res.json();
-          refineTaskInBackground(t.id, text, roleId, () => fetchTasks()); // MLX tidies it, then refresh
+          refineTaskInBackground(t.id, text, roleId, () => fetchTasks()); // the AI tidies it, then refresh
         }
       } catch {}
       fetchTasks();

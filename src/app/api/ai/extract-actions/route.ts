@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { createCompletionWithLocalFallback, getDefaultTextModel } from "@/lib/ai-provider";
+import { createCompletion, getDefaultTextModel } from "@/lib/ai-provider";
 import { trackUsage } from "@/lib/ai-usage";
 
 export async function POST(req: NextRequest) {
@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "text and roleId required" }, { status: 400 });
   }
 
-  const response = await createCompletionWithLocalFallback({
+  const response = await createCompletion({
     model: getDefaultTextModel(),
     max_tokens: 1024,
     system: "Extract actionable tasks and follow-ups from this AI assistant response. Only include concrete, specific action items. Return JSON only.",

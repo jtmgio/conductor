@@ -1,5 +1,5 @@
 // Async task refine for the v2 capture surfaces. The task is created verbatim first
-// (instant, never blocks), then this tidies it in the background via the local MLX
+// (instant, never blocks), then this tidies it in the background via the AI
 // refine (/api/tasks/refine → short title, notes, checklist, due date) and PUTs the
 // result onto the existing task. scheduledFor / status are left untouched.
 
