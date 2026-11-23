@@ -65,9 +65,9 @@ export function MeetingsNow() {
   // The look is AgendaStrip's "Today's Meetings" card on the Today page, minus the
   // editing controls (delete, prep tasks) — this window is for glancing, not managing.
   return (
-    <div className="h-screen overflow-y-auto bg-[var(--surface)] text-[var(--text-primary)] p-2">
-      <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] overflow-hidden">
-        <div className="flex items-center gap-2.5 px-4 py-3 min-w-0">
+    <div className="h-screen overflow-y-auto bg-[var(--surface)] text-[var(--text-primary)] p-2 max-[380px]:p-0">
+      <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] overflow-hidden max-[380px]:rounded-none max-[380px]:border-0">
+        <div className="flex items-center gap-2.5 px-4 py-3 min-w-0 max-[380px]:px-3 max-[380px]:py-2">
           <Calendar className="h-4 w-4 shrink-0 text-[var(--accent-blue)]" />
           <span className="text-[14px] font-medium text-[var(--text-primary)] shrink-0">Today&apos;s Meetings</span>
           {rows.length > 0 && (
@@ -85,19 +85,19 @@ export function MeetingsNow() {
         )}
 
         {rows.length > 0 && (
-          <div className="px-3 pb-3 flex flex-col gap-1.5">
+          <div className="px-3 pb-3 flex flex-col gap-1.5 max-[380px]:px-1.5 max-[380px]:pb-1.5 max-[380px]:gap-0.5">
             {rows.map((m) => {
               const highlighted = m.state !== "later";
               const isNow = m.state === "now";
               return (
                 <div
                   key={m.id}
-                  className={`flex items-start gap-3 px-3.5 py-3 rounded-xl ${
+                  className={`flex items-start gap-3 px-3.5 py-3 rounded-xl max-[380px]:gap-2 max-[380px]:px-2.5 max-[380px]:py-2 ${
                     highlighted ? "bg-[var(--surface-sunken)] ring-1 ring-[var(--border-subtle)]" : ""
                   }`}
                   style={highlighted ? { borderLeft: `3px solid ${m.role.color}` } : undefined}
                 >
-                  <div className="flex flex-col items-end shrink-0 w-[72px] pt-0.5 max-[260px]:hidden">
+                  <div className="flex flex-col items-end shrink-0 w-[72px] pt-0.5 max-[380px]:hidden">
                     <span className={`text-[13px] font-medium ${isNow ? "text-[var(--accent-blue)]" : "text-[var(--text-secondary)]"}`}>
                       {formatTime(m.startTime)}
                     </span>
@@ -105,18 +105,25 @@ export function MeetingsNow() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: m.role.color }} />
-                      <span className="text-[14px] font-medium text-[var(--text-primary)] leading-snug">{m.title}</span>
+                    <div
+                      className={`hidden max-[380px]:block text-[12px] font-medium tabular-nums mb-0.5 ${
+                        isNow ? "text-[var(--accent-blue)]" : "text-[var(--text-secondary)]"
+                      }`}
+                    >
+                      {formatTime(m.startTime)} – {formatTime(m.endTime)}
+                    </div>
+                    <div className="flex items-start gap-2 mb-0.5">
+                      <span className="w-2 h-2 rounded-full shrink-0 mt-[7px]" style={{ backgroundColor: m.role.color }} />
+                      <span className="min-w-0 text-[14px] font-medium text-[var(--text-primary)] leading-snug line-clamp-2 max-[380px]:text-[13px]" title={m.title}>{m.title}</span>
                       {isNow && (
                         <span className="text-[11px] font-medium text-[var(--accent-blue)] bg-[var(--accent-blue)]/10 px-1.5 py-0.5 rounded-full shrink-0">
                           NOW
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 text-[12px] text-[var(--text-tertiary)]">
-                      <span>{m.role.name}</span>
-                      {m.state === "next" && <span>{untilLabel(m.startTime, minute)}</span>}
+                    <div className="flex items-center gap-3 text-[12px] text-[var(--text-tertiary)] whitespace-nowrap min-w-0">
+                      <span className="truncate">{m.role.name}</span>
+                      {m.state === "next" && <span className="shrink-0">{untilLabel(m.startTime, minute)}</span>}
                     </div>
                   </div>
 
