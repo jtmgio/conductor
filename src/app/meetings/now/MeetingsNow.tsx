@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Calendar, Check, Video } from "lucide-react";
+import { Calendar, Check, Trash2, Video } from "lucide-react";
 import { remainingToday, untilLabel } from "@/lib/meetings-now";
 
 interface Meeting {
@@ -52,6 +52,19 @@ export function MeetingsNow() {
     };
   }, []);
 
+  // Same soft-delete the Today card uses: the meeting is hidden (userHidden), never removed,
+  // so calendar sync won't bring it back. It also drops out of the Mac alert.
+  const hide = async (id: string) => {
+    setMeetings((prev) => prev?.filter((m) => m.id !== id) ?? prev);
+    try {
+      const res = await fetch(`/api/meetings/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+    } catch {
+      const res = await fetch("/api/meetings").catch(() => null);
+      if (res?.ok) setMeetings(await res.json());
+    }
+  };
+
   const rows = meetings ? remainingToday(meetings, minute) : [];
   const first = rows[0];
 
@@ -92,7 +105,7 @@ export function MeetingsNow() {
               return (
                 <div
                   key={m.id}
-                  className={`flex items-start gap-3 px-3.5 py-3 rounded-xl max-[380px]:gap-2 max-[380px]:px-2.5 max-[380px]:py-2 ${
+                  className={`group/row flex items-start gap-3 px-3.5 py-3 rounded-xl max-[380px]:gap-2 max-[380px]:px-2.5 max-[380px]:py-2 ${
                     highlighted ? "bg-[var(--surface-sunken)] ring-1 ring-[var(--border-subtle)]" : ""
                   }`}
                   style={highlighted ? { borderLeft: `3px solid ${m.role.color}` } : undefined}
@@ -138,6 +151,15 @@ export function MeetingsNow() {
                       Join
                     </a>
                   )}
+
+                  <button
+                    onClick={() => hide(m.id)}
+                    className="shrink-0 self-start p-1.5 -mr-1 rounded opacity-30 group-hover/row:opacity-70 hover:!opacity-100 hover:bg-[var(--surface-sunken)] hover:text-red-400 transition-all text-[var(--text-tertiary)]"
+                    aria-label="Delete meeting"
+                    title="Delete meeting"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               );
             })}
