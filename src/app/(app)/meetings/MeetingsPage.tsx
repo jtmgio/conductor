@@ -10,6 +10,7 @@ import {
   ChevronDown,
   FileText,
   Loader2,
+  PictureInPicture2,
   Paperclip,
   Search,
   Users,
@@ -222,7 +223,17 @@ export function MeetingsPage() {
   return (
     <>
       <div className="mx-auto max-w-3xl pt-1">
-        <h1 className="text-[26px] font-bold tracking-tight text-[var(--text-primary)]">Meetings</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-[26px] font-bold tracking-tight text-[var(--text-primary)]">Meetings</h1>
+          {/* A popup window, not a tab: Chrome lets popups shrink far smaller than a normal window. */}
+          <button
+            onClick={() => window.open("/meetings/now", "meetings-now", "popup,width=380,height=180")}
+            className="min-h-[44px] px-3 rounded-xl border border-[var(--border-subtle)] text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors inline-flex items-center gap-2"
+          >
+            <PictureInPicture2 className="h-4 w-4" />
+            Today window
+          </button>
+        </div>
         <p className="mt-1 text-[14px] text-[var(--text-tertiary)]">
           Everything your calendar synced — prep, notes, and transcripts in one place.
         </p>
