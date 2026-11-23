@@ -82,7 +82,7 @@ export function MeetingsNow() {
       <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] overflow-hidden max-[380px]:rounded-none max-[380px]:border-0">
         <div className="flex items-center gap-2.5 px-4 py-3 min-w-0 max-[380px]:px-3 max-[380px]:py-2">
           <Calendar className="h-4 w-4 shrink-0 text-[var(--accent-blue)]" />
-          <span className="text-[14px] font-medium text-[var(--text-primary)] shrink-0">Today&apos;s Meetings</span>
+          <span className="text-[15px] font-medium text-[var(--text-primary)] shrink-0">Today&apos;s Meetings</span>
           {rows.length > 0 && (
             <span className="text-[13px] text-[var(--text-tertiary)] truncate max-[340px]:hidden">
               {formatTime(rows[0].startTime)} – {formatTime(rows[rows.length - 1].endTime)}
@@ -111,30 +111,30 @@ export function MeetingsNow() {
                   style={highlighted ? { borderLeft: `3px solid ${m.role.color}` } : undefined}
                 >
                   <div className="flex flex-col items-end shrink-0 w-[72px] pt-0.5 max-[380px]:hidden">
-                    <span className={`text-[13px] font-medium ${isNow ? "text-[var(--accent-blue)]" : "text-[var(--text-secondary)]"}`}>
+                    <span className={`text-[14px] font-medium ${isNow ? "text-[var(--accent-blue)]" : "text-[var(--text-secondary)]"}`}>
                       {formatTime(m.startTime)}
                     </span>
-                    <span className="text-[11px] text-[var(--text-tertiary)]">{formatTime(m.endTime)}</span>
+                    <span className="text-[12px] text-[var(--text-tertiary)]">{formatTime(m.endTime)}</span>
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <div
-                      className={`hidden max-[380px]:block text-[12px] font-medium tabular-nums mb-0.5 ${
+                      className={`hidden max-[380px]:block text-[13.5px] font-medium tabular-nums mb-0.5 ${
                         isNow ? "text-[var(--accent-blue)]" : "text-[var(--text-secondary)]"
                       }`}
                     >
                       {formatTime(m.startTime)} – {formatTime(m.endTime)}
                     </div>
                     <div className="flex items-start gap-2 mb-0.5">
-                      <span className="w-2 h-2 rounded-full shrink-0 mt-[7px]" style={{ backgroundColor: m.role.color }} />
-                      <span className="min-w-0 text-[14px] font-medium text-[var(--text-primary)] leading-snug line-clamp-2 max-[380px]:text-[13px]" title={m.title}>{m.title}</span>
+                      <span className="w-2 h-2 rounded-full shrink-0 mt-[8px]" style={{ backgroundColor: m.role.color }} />
+                      <span className="min-w-0 text-[16px] font-medium text-[var(--text-primary)] leading-snug line-clamp-2 max-[380px]:text-[15px]" title={m.title}>{m.title}</span>
                       {isNow && (
                         <span className="text-[11px] font-medium text-[var(--accent-blue)] bg-[var(--accent-blue)]/10 px-1.5 py-0.5 rounded-full shrink-0">
                           NOW
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 text-[12px] text-[var(--text-tertiary)] whitespace-nowrap min-w-0">
+                    <div className="flex items-center gap-3 text-[13px] text-[var(--text-tertiary)] whitespace-nowrap min-w-0">
                       <span className="truncate">{m.role.name}</span>
                       {m.state === "next" && <span className="shrink-0">{untilLabel(m.startTime, minute)}</span>}
                     </div>
