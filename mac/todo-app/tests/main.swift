@@ -129,5 +129,88 @@ do {
     check(r?.meetings.last?.joinURL == nil, "refusesNonHttpsJoinUrl")
 }
 
+// MARK: - ReminderSchedule
+
+let r0 = Date(timeIntervalSince1970: 1_795_200_000)
+let rday = "2026-11-24"
+func rem(_ id: String, _ due: Date, icon: String? = "pill", tier: String = "normal",
+         mins: Int? = nil, acked: Bool = false) -> Reminder {
+    Reminder(id: id, label: id, icon: icon, tier: tier, durationMin: mins, dueAt: due, ackedToday: acked)
+}
+func rs(_ list: [Reminder]) -> ReminderSchedule {
+    var s = ReminderSchedule()
+    s.replace(list, day: rday)
+    return s
+}
+
+do {
+    let s = rs([rem("V", r0)])
+    check(s.due(now: r0 - 1) == nil, "notDueBeforeTime")
+    check(s.due(now: r0)?.id == "V", "dueAtTime")
+    check(s.due(now: r0 + 6 * 3600)?.id == "V", "staysDueAllDay")
+}
+do {
+    let s = rs([rem("vit", r0), rem("shake", r0 + 5 * 3600)])
+    check(s.due(now: r0 + 5 * 3600 + 60)?.id == "shake", "latestDueFirst")
+}
+do {
+    var s = rs([rem("vit", r0), rem("shake", r0 + 60)])
+    s.ack("shake")
+    check(s.due(now: r0 + 120)?.id == "vit", "localAckHides")
+}
+do {
+    let s = rs([rem("V", r0, acked: true)])
+    check(s.due(now: r0) == nil, "serverAckHides")
+}
+do {
+    var s = rs([rem("V", r0)])
+    s.snooze("V", now: r0)
+    check(s.due(now: r0 + 299) == nil, "snoozeHidesFiveMinutes")
+    check(s.due(now: r0 + 300)?.id == "V", "snoozeReturnsAtFive")
+}
+do {
+    var s = rs([rem("S", r0, icon: "stretch", mins: 15)])
+    s.start("S", now: r0)
+    check(s.due(now: r0 + 60) == nil, "startHidesWhileRunning")
+    check(s.running(now: r0 + 60)?.1 == r0 + 900, "runningEndsAfterDuration")
+    var s2 = s
+    check(s2.finished(now: r0 + 899).isEmpty, "notFinishedEarly")
+    let done = s2.finished(now: r0 + 900)
+    check(done.map(\.id) == ["S"], "finishedReturnsIt")
+    check(s2.finished(now: r0 + 901).isEmpty, "finishedOnlyOnce")
+    check(s2.due(now: r0 + 901) == nil && s2.running(now: r0 + 901) == nil, "finishedIsAcked")
+}
+do {
+    var s = rs([rem("V", r0)])
+    s.ack("V")
+    check(s.unsyncedAcks() == ["V"], "unsyncedAckListed")
+    s.replace([rem("V", r0, acked: true)], day: rday)
+    check(s.unsyncedAcks().isEmpty, "unsyncedAckClearsWhenServerHasIt")
+}
+do {
+    var s = rs([rem("V", r0), rem("W", r0, mins: 15)])
+    s.snooze("V", now: r0)
+    s.start("W", now: r0)
+    s.rollover(to: "2026-11-25")
+    check(s.due(now: r0 + 10) == nil && s.running(now: r0 + 10) == nil, "rolloverDropsList")
+    s.replace([rem("V", r0 + 86400), rem("W", r0 + 86400, mins: 15)], day: "2026-11-25")
+    check(s.due(now: r0 + 86400)?.id != nil && s.running(now: r0 + 86400) == nil, "rolloverClearsState")
+}
+do {
+    check(rem("a", r0, icon: "pill").primaryLabel == "Taken", "pillSaysTaken")
+    check(rem("a", r0, icon: "syringe").primaryLabel == "Taken", "syringeSaysTaken")
+    check(rem("a", r0, icon: "stretch", mins: 15).primaryLabel == "Start", "timedSaysStart")
+    check(rem("a", r0, icon: "mail").primaryLabel == "Done", "otherSaysDone")
+    check(rem("a", r0, tier: "critical").isCritical, "criticalFlag")
+}
+do {
+    let json = """
+    {"date":"2026-11-24","reminders":[{"id":"r1","label":"Take vitamins","icon":"pill","tier":"critical",
+     "durationMin":null,"dueAt":"2026-11-24T14:45:00.000Z","ackedToday":false}]}
+    """
+    let r = try? MeetingsResponse.decoder.decode(RemindersResponse.self, from: Data(json.utf8))
+    check(r?.reminders.first?.dueAt == ISO8601DateFormatter().date(from: "2026-11-24T14:45:00Z"), "decodesRemindersJSON")
+}
+
 print(failures == 0 ? "all passed" : "\(failures) failed")
 exit(failures == 0 ? 0 : 1)
