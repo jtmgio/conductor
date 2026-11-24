@@ -13,6 +13,11 @@ final class MeetingWatcher {
     private var fetchTimer: Timer?
     private var tickTimer: Timer?
     private var shownId: String?
+    /// Called after the alert shows or hides, so the reminder alert yields or returns at once.
+    var onAlertChange: (() -> Void)?
+
+    /// A meeting alert holds the screen. Reminders wait behind it.
+    var isShowing: Bool { shownId != nil }
 
     /// nonisolated so AppDelegate can hold one as a stored property; all work happens on main.
     nonisolated init(cfg: Config) {
@@ -51,6 +56,7 @@ final class MeetingWatcher {
                 onSnooze: { [weak self] in self?.snooze(due.id) },
                 onDismiss: { [weak self] in self?.dismiss(due.id) }
             )
+            onAlertChange?()
         } else {
             overlay.update(now: now, also: schedule.alsoDue(now: now))
         }
@@ -76,6 +82,7 @@ final class MeetingWatcher {
     private func hide() {
         shownId = nil
         overlay.hide()
+        onAlertChange?()
     }
 
     private static let dayFormatter: DateFormatter = {

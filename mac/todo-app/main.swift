@@ -21,6 +21,8 @@ import SwiftUI
 struct Config {
     let baseURL: String
     let token: String
+    /// ~/.conductor/reminders exists: this Mac shows reminder alerts (the MacBook only).
+    var remindersOn = false
 
     static func load() -> Config {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -35,7 +37,8 @@ struct Config {
         if let f = try? String(contentsOf: home.appending(path: ".conductor/capture-token"), encoding: .utf8) {
             token = f.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        return Config(baseURL: url, token: token)
+        let remindersOn = FileManager.default.fileExists(atPath: home.appending(path: ".conductor/reminders").path)
+        return Config(baseURL: url, token: token, remindersOn: remindersOn)
     }
 }
 
@@ -122,6 +125,32 @@ enum API {
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp)
         return try MeetingsResponse.decoder.decode(MeetingsResponse.self, from: data)
+    }
+
+    /// Today's reminders for the reminder alert (GET /api/reminders/today).
+    static func reminders(_ cfg: Config) async throws -> RemindersResponse {
+        guard let url = URL(string: "\(cfg.baseURL)/api/reminders/today") else {
+            throw Err.message("Bad Conductor URL: \(cfg.baseURL)")
+        }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(cfg.token)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 15
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp)
+        return try MeetingsResponse.decoder.decode(RemindersResponse.self, from: data)
+    }
+
+    /// Mark a reminder done for today (POST /api/reminders/:id/ack).
+    static func ackReminder(_ cfg: Config, id: String) async throws {
+        guard let url = URL(string: "\(cfg.baseURL)/api/reminders/\(id)/ack") else {
+            throw Err.message("Bad Conductor URL: \(cfg.baseURL)")
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(cfg.token)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 15
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        try check(resp)
     }
 
     private static func check(_ resp: URLResponse) throws {
@@ -433,6 +462,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyRef: EventHotKeyRef?
     /// Daemon only: polls today's meetings and raises the full-screen alert.
     let meetingWatcher = MeetingWatcher(cfg: Config.load())
+    /// Daemon only, and only where ~/.conductor/reminders exists: reminder alerts.
+    private lazy var reminderWatcher = ReminderWatcher(cfg: Config.load(), meeting: meetingWatcher)
     private let meetingPanel = MeetingPanelController()
     private var panelHotKeyRef: EventHotKeyRef?
 
@@ -445,6 +476,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if isDaemon {
             registerHotKey()
             meetingWatcher.start()
+            if Config.load().remindersOn { reminderWatcher.start() }
         } else {
             showWindow()
         }
