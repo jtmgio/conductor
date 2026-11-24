@@ -2,14 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { dayOf } from "@/lib/dates";
 import { zonedInstant } from "@/lib/zoned-time";
+import { hasBearer } from "@/lib/bearer";
 
 export const dynamic = "force-dynamic";
-
-function authorized(req: Request): boolean {
-  const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-  const expected = process.env.MCP_API_TOKEN;
-  return !!expected && token === expected;
-}
 
 /**
  * Today's meetings for the Todo.app meeting alert and ⌃⌥M panel. Bearer-authed like
@@ -19,7 +14,7 @@ function authorized(req: Request): boolean {
  * so the app never does timezone math and a laptop in another zone alerts on time.
  */
 export async function GET(req: Request) {
-  if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!hasBearer(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const tz = process.env.TIMEZONE || "America/New_York";
   const date = dayOf(new Date());

@@ -3,10 +3,12 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { today } from "@/lib/dates";
+import { hasBearer } from "@/lib/bearer";
 
-// POST — acknowledge a reminder for today (marks it taken; hides until tomorrow)
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
+// POST — acknowledge a reminder for today (marks it taken; hides until tomorrow).
+// Session (web) or bearer (Todo.app daemon).
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const session = hasBearer(req) ? true : await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
