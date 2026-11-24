@@ -596,22 +596,40 @@ The resident `Todo.app --daemon` also owns meeting alerts, outside the browser.
 - Runs on Josh's MacBook Pro as a client (`~/.conductor/url` → the tower's Tailscale URL).
 - Specs: `docs/superpowers/specs/2026-11-19-mac-meeting-alert-design.md`.
 
+### Reminder alert (Todo.app daemon)
+
+Reminders (vitamins, TRT, stand-ups) alert through the same daemon, **on the MacBook only**.
+
+- **On-switch:** the marker file `~/.conductor/reminders`, read at daemon start. The MacBook
+  has it; the tower doesn't, so the tower stays quiet. No marker, no reminder watcher.
+- `GET /api/reminders/today` (bearer `MCP_API_TOKEN`) — today's active reminders with absolute
+  `dueAt` from `zonedInstant()`, weekday from the `TIMEZONE` date (`src/lib/reminders-today.ts`,
+  tested). `POST /api/reminders/:id/ack` takes the bearer token as well as the session.
+  `hasBearer()` (`src/lib/bearer.ts`) is shared with `/api/meetings/today`.
+- Rules in pure `mac/todo-app/ReminderSchedule.swift`, tested by `bash mac/todo-app/tests/run.sh`:
+  due from its time until acked, all day; latest due shows first; snooze 5 min; a timed
+  reminder acks when its countdown hits zero. Copied from the old browser `Reminders.tsx`.
+- Buttons: Taken (pill/syringe) / Done / Start (timed); Snooze 5 min on critical (no Skip),
+  Skip otherwise. **esc always snoozes**, never clears for the day.
+- Overlay sits one level below the meeting alert and yields while a meeting alert is up
+  (`MeetingWatcher.onAlertChange`); it returns without a second chime.
+- Timed: Start → corner countdown (top-right, never takes focus) → chime + "Sit down" /
+  "<label> complete" card, closes on click or after 2 min.
+- Reminders are still edited in Settings. If the MacBook is closed, nothing fires.
+- **After a rebuild use `bash mac/install-hotkey.sh`**, not just `launchctl kickstart -k`:
+  on 2026-11-24 kickstart after a rebuild left the agent in "spawn failed" (EX_CONFIG).
+- Spec: `docs/superpowers/specs/2026-11-24-mac-reminder-alert-design.md`.
+
 ## Alert layer
 
-`Reminders` is the blocking overlay mounted in `AppShell`. (`MeetingAlert` was
-unmounted on 2026-11-19 — meeting alerts moved to Todo.app, see "Meeting alert"
-under Spotlight quick capture; the component stays in the repo.) `src/lib/alert-lock.ts` gives them one shared registry and a fixed
-priority ladder — reminder 84, meeting 88 — and marks `document.body` with
-`data-alert-open` so `⌘K` stays shut while any of them holds the screen.
-
-They are still independent systems that can all become *due* at once; the
-lock makes the stacking deliberate, it does not serialise them. A single queue
-that owns the screen is the remaining work, and matters more once the app is
-resident. The company-switch takeover (`BlockTransition`) was removed on
-2026-10-28 at Josh's request. The comms-sweep modal (`CommsSweepAlert`, "Check
-Slack, Teams, and messages") was unmounted on 2026-11-09, also at his request;
-the component and `/api/comms-cover` remain, and `CommsCoverStrip` still shows
-the next sweep.
+No blocking overlay is mounted in the browser any more. Meeting alerts moved to
+Todo.app on 2026-11-19 and reminders on 2026-11-24 (see "Meeting alert" and
+"Reminder alert" under Spotlight quick capture). `Reminders.tsx`, `MeetingAlert.tsx`
+and `src/lib/alert-lock.ts` stay in the repo, unmounted. The company-switch
+takeover (`BlockTransition`) was removed on 2026-10-28 at Josh's request. The
+comms-sweep modal (`CommsSweepAlert`) was unmounted on 2026-11-09, also at his
+request; the component and `/api/comms-cover` remain, and `CommsCoverStrip` still
+shows the next sweep.
 
 ## Task keys
 
