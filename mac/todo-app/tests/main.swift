@@ -212,5 +212,19 @@ do {
     check(r?.reminders.first?.dueAt == ISO8601DateFormatter().date(from: "2026-11-24T14:45:00Z"), "decodesRemindersJSON")
 }
 
+do {
+    var s = rs([rem("V", r0)])
+    s.markChimed("V")
+    check(s.hasChimed("V"), "chimeRemembered")
+    s.replace([rem("V", r0 + 86400)], day: "2026-11-25")
+    check(!s.hasChimed("V"), "chimeResetsWhenFetchSeesNewDay")
+}
+do {
+    var s = rs([rem("S", r0, icon: "stretch", mins: 15)])
+    s.start("S", now: r0)
+    s.replace([], day: rday)
+    check(s.running(now: r0 + 60) == nil, "timerDropsWhenReminderRemoved")
+}
+
 print(failures == 0 ? "all passed" : "\(failures) failed")
 exit(failures == 0 ? 0 : 1)

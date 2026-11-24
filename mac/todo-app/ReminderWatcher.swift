@@ -16,9 +16,6 @@ final class ReminderWatcher {
     private var fetchTimer: Timer?
     private var tickTimer: Timer?
     private var secondTimer: Timer?
-    /// Already chimed today. A reminder pushed aside by a meeting comes back silently;
-    /// one coming back from a snooze is a new alert and chimes again.
-    private var chimed: Set<String> = []
 
     nonisolated init(cfg: Config, meeting: MeetingWatcher) {
         self.cfg = cfg
@@ -46,12 +43,7 @@ final class ReminderWatcher {
 
     private func tick() {
         let now = Date()
-        let day = MeetingWatcher.localDay()
-        if day != schedule.day {
-            chimed = []
-            timer.close()
-        }
-        schedule.rollover(to: day)
+        schedule.rollover(to: MeetingWatcher.localDay())
 
         for r in schedule.finished(now: now) {
             sendAck(r.id)
@@ -61,6 +53,10 @@ final class ReminderWatcher {
         if let (r, endsAt) = schedule.running(now: now) {
             timer.showCountdown(r, endsAt: endsAt)
             timer.tick(now: now)
+        } else if timer.isRunning {
+            // The timer's reminder is gone (new day, or turned off in Settings): don't
+            // leave a frozen countdown and a 1s timer behind.
+            timer.close()
         }
         updateSecondTimer()
 
@@ -69,8 +65,8 @@ final class ReminderWatcher {
             return
         }
         if overlay.shownId == due.id { return }
-        if !chimed.contains(due.id) {
-            chimed.insert(due.id)
+        if !schedule.hasChimed(due.id) {
+            schedule.markChimed(due.id)
             NSSound(named: "Glass")?.play()
         }
         overlay.show(
@@ -103,7 +99,7 @@ final class ReminderWatcher {
 
     private func snooze(_ id: String) {
         schedule.snooze(id, now: Date())
-        chimed.remove(id)
+        schedule.unmarkChimed(id)  // back from a snooze is a new alert
         overlay.hide()
         tick()
     }

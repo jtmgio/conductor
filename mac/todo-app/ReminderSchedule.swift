@@ -39,6 +39,9 @@ struct ReminderSchedule {
     private var acked: Set<String> = []
     private var snoozedUntil: [String: Date] = [:]
     private var runningUntil: [String: Date] = [:]
+    /// Already chimed today. Lives here, not in the watcher, so it resets with the rest of
+    /// the day's state however the new day is noticed (a fetch or the clock tick).
+    private var chimed: Set<String> = []
 
     /// A fetch landed. Same day keeps local acks, snoozes and timers; a new day starts clean.
     mutating func replace(_ reminders: [Reminder], day: String) {
@@ -53,6 +56,10 @@ struct ReminderSchedule {
         clear()
         self.day = day
     }
+
+    mutating func markChimed(_ id: String) { chimed.insert(id) }
+    func hasChimed(_ id: String) -> Bool { chimed.contains(id) }
+    mutating func unmarkChimed(_ id: String) { chimed.remove(id) }
 
     mutating func ack(_ id: String) {
         acked.insert(id)
@@ -108,5 +115,6 @@ struct ReminderSchedule {
         acked = []
         snoozedUntil = [:]
         runningUntil = [:]
+        chimed = []
     }
 }
